@@ -32,17 +32,29 @@ namespace states {
                 goalPose.at(0) = ctrlData->inertialF_linearPosition.latitude;
                 goalPose.at(1) = ctrlData->inertialF_linearPosition.longitude;
                 goalPose.at(2) = systemStatus_->conf.surfaceDepth;
+             } else if (taskData_->taskPhases.front().second == "GOAL") {
+                 if (systemStatus_->conf.goalPositionSelection == 0 || systemStatus_->conf.goalPositions.size() < systemStatus_->conf.goalPositionSelection) {
+                    std::cerr << "Goal waypoint requested, but no goal positions are configured OR 0 was selected. Skipping.\n";
+                    return this->SetNextMissionState();
+                }
+                std::cerr << "Goal waypoint requested, using Goal position " << systemStatus_->conf.goalPositionSelection - 1 << ": ";
+                std::cerr << systemStatus_->conf.goalPositions[systemStatus_->conf.goalPositionSelection - 1].position.latitude << ", "
+                          << systemStatus_->conf.goalPositions[systemStatus_->conf.goalPositionSelection - 1].position.longitude << ", "
+                          << systemStatus_->conf.diveDepth << "\n";
+                goalPose.at(0) = systemStatus_->conf.goalPositions[systemStatus_->conf.goalPositionSelection - 1].position.latitude;
+                goalPose.at(1) = systemStatus_->conf.goalPositions[systemStatus_->conf.goalPositionSelection - 1].position.longitude;
+                goalPose.at(2) = systemStatus_->conf.goalPositions[systemStatus_->conf.goalPositionSelection - 1].depth;
             } else if (taskData_->taskPhases.front().second == "DEBUG") {
-                if (systemStatus_->conf.debug_position_selection == 0 || systemStatus_->conf.debugPositions.size() < systemStatus_->conf.debug_position_selection) {
+                if (systemStatus_->conf.debugPositionSelection == 0 || systemStatus_->conf.debugPositions.size() < systemStatus_->conf.debugPositionSelection) {
                     std::cerr << "Debug waypoint requested, but no debug positions are configured OR 0 was selected. Skipping.\n";
                     return this->SetNextMissionState();
                 }
-                std::cerr << "Debug waypoint requested, using debug position " << systemStatus_->conf.debug_position_selection - 1 << ": ";
-                std::cerr << systemStatus_->conf.debugPositions[systemStatus_->conf.debug_position_selection - 1].latitude << ", "
-                          << systemStatus_->conf.debugPositions[systemStatus_->conf.debug_position_selection - 1].longitude << ", "
+                std::cerr << "Debug waypoint requested, using debug position " << systemStatus_->conf.debugPositionSelection - 1 << ": ";
+                std::cerr << systemStatus_->conf.debugPositions[systemStatus_->conf.debugPositionSelection - 1].latitude << ", "
+                          << systemStatus_->conf.debugPositions[systemStatus_->conf.debugPositionSelection - 1].longitude << ", "
                           << systemStatus_->conf.diveDepth << "\n";
-                goalPose.at(0) = systemStatus_->conf.debugPositions[0].latitude;
-                goalPose.at(1) = systemStatus_->conf.debugPositions[0].longitude;
+                goalPose.at(0) = systemStatus_->conf.debugPositions[systemStatus_->conf.debugPositionSelection - 1].latitude;
+                goalPose.at(1) = systemStatus_->conf.debugPositions[systemStatus_->conf.debugPositionSelection - 1].longitude;
                 goalPose.at(2) = systemStatus_->conf.diveDepth;
             }
 

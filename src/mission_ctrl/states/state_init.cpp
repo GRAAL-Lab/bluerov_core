@@ -55,20 +55,21 @@ namespace states {
                 // taskData_->taskPhases.push(std::make_pair(states::ID::homing, ""));
             } else if (taskData_->taskType == taskBenchmarks::INTERVENTION) {
                 taskData_->taskPhases.push(std::make_pair(states::ID::init, ""));
-                taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DIVE"));
-                
-                taskData_->taskPhases.push(std::make_pair(states::ID::sleep, "30"));
 
-                taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DEBUG"));
+                //taskData_->taskPhases.push(std::make_pair(states::ID::sleep, "30"));
+               // taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DIVE"));
+                
+                //taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DEBUG"));
 
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToDepth, "MANIPULATION_CONSOLE_SEARCH"));
                 taskData_->taskPhases.push(std::make_pair(states::ID::searchForObject, opis::manipulationConsole));
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToDepth, ""));
 
-                taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DEBUG"));
+                // taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "GOAL"));
+                // taskData_->taskPhases.push(std::make_pair(states::ID::sleep, "30"));
+
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "SURFACE"));
 
-                //taskData_->taskPhases.push(std::make_pair(states::ID::homing, ""));
 
             } else if (taskData_->taskType == taskBenchmarks::INSPECTION_AND_INTERVENTION) {
                 // taskData_->taskPhases.push(std::make_pair(states::ID::init, ""));
