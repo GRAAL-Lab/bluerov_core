@@ -22,6 +22,7 @@ find_package(Eigen3 REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(PkgConfig REQUIRED)
 find_package(action_msgs REQUIRED)
+find_package(geographic_msgs REQUIRED)
 
 # Collect all .msg and .srv files
 file(GLOB_RECURSE MSG_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "msg/*.msg")
@@ -32,7 +33,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   ${MSG_FILES}
   ${SRV_FILES}
   ${ACTION_FILES}
-  DEPENDENCIES std_msgs geometry_msgs builtin_interfaces action_msgs
+  DEPENDENCIES std_msgs geometry_msgs builtin_interfaces action_msgs geographic_msgs
 )
 
 # Define the helper library
@@ -51,6 +52,7 @@ ament_target_dependencies(${PROJECT_NAME}_lib
   PkgConfig
   rosidl_default_runtime
   action_msgs
+  geographic_msgs
 )
 
 # Include directories for the helper library
