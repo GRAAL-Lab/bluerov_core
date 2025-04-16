@@ -106,6 +106,8 @@ void KCL::SetupTransitions() {
     fsm_.AddState(States::SURFACE, surfaceState_.get());
     fsm_.AddState(States::PATH_FOLLOWING, pathFollowingState_.get());
 
+
+    //TO DO: edit the transitions
     // Enable transitions
     fsm_.EnableTransition(States::IDLE, States::HOLD, true);
     fsm_.EnableTransition(States::IDLE, States::WAYPOINT_NAVIGATION, true);
