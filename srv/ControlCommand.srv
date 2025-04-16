@@ -1,0 +1,32 @@
+# Request part of the service
+string state         # State to set; can be IDLE, JOYSTICK, TRAJECTORY_PLANNING, HOLD, PATH_PLANNING
+float64 x            # x-coordinate for TRAJECTORY_PLANNING
+float64 y            # y-coordinate for TRAJECTORY_PLANNING
+float64 z            # z-coordinate for TRAJECTORY_PLANNING
+float64 roll         # roll for TRAJECTORY_PLANNING
+float64 pitch        # pitch for TRAJECTORY_PLANNING
+float64 yaw          # yaw for TRAJECTORY_PLANNING
+float64 time_to_reach # Desired time to reach the goal in seconds for TRAJECTORY_PLANNING
+
+int32 path_planning_2d_3d # Whether the path to follow is 2D serpentine, 3D serpentine or 3D helix
+
+# For Path Following 2D Serpentine or 3D Serpentine
+float64 serpentine_angle           # Angle of the serpentine path
+bool serpentine_direction          # Direction of the serpentine path; true=FORWARD, false=BACKWARD
+float64 serpentine_offset          # Offset for the serpentine path
+geometry_msgs/Vector3[] serpentine_polygon_vertices # Polygon vertices for the serpentine path
+float64 dive_depth                 # Dive depth for the serpentine path
+float64 curvature                  # Curvature of the serpentine path
+float64 dip_num_points             # Number of points in the dip
+float64 dive_length                # Length of the dive
+
+# For Path Following 3D Helix
+geometry_msgs/Vector3 helix_start_pos         # Start position on the helix
+geometry_msgs/Vector3 helix_axis_pos          # Point on the helix axis
+geometry_msgs/Vector3 helix_axis_dir          # Direction of the helix axis
+float64 helix_frequency           # Length along the helix axis for one period of revolution
+int32 helix_num_quadrants          # Number of quadrants in the helix
+bool helix_counter_clockwise       # Direction of revolution; false=clockwise, true=counterclockwise
+---
+# Response part of the service
+bool success         # Whether the operation was successful

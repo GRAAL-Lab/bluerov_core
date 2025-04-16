@@ -1,0 +1,34 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>auv_core_helper</name>
+  <version>0.1.0</version>
+  <description>Combined package for AUV core messages and helper functionalities in ROS2.</description>
+  <maintainer email="youssef.attia@edu.unige.it">Youssef Attia</maintainer>
+  <license>MIT</license>
+  <author>Youssef Attia</author>
+
+  <!-- Build tools -->
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+
+  <!-- Dependencies for building and running -->
+  <depend>rosidl_default_generators</depend>
+  <depend>std_msgs</depend>
+  <depend>builtin_interfaces</depend>
+  <depend>geometry_msgs</depend>
+  <depend>rclcpp</depend>
+  <depend>Eigen3</depend>
+  <depend>ament_index_cpp</depend>
+  <depend>libconfig</depend>
+
+  <!-- Test dependencies (optional) -->
+  <test_depend>ament_lint_auto</test_depend>
+  <test_depend>ament_lint_common</test_depend>
+
+  <!-- Export build type -->
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
