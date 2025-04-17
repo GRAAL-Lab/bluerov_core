@@ -81,7 +81,7 @@ void KCL::HandleControlCommand(
     std::shared_ptr<auv_core_helper::srv::ControlCommand::Response> response) {
         //TO DO!
         //print the request
-        RCLCPP_INFO(this->get_logger(), "Received request to transition to state: %s", request->state.c_str());
+        // RCLCPP_INFO(this->get_logger(), "Received request to transition to state: %s", request->state.c_str());
 }
 
 void KCL::SetupTransitions() {
