@@ -80,6 +80,7 @@ private:
     uint8_t target_system_{0};          // Target system ID (from heartbeat)
     uint8_t target_component_{0};       // Target component ID (from heartbeat)
     bool got_heartbeat_{false};         // Flag indicating if heartbeat was received
+    bool is_armed_{false};              // Flag indicating if vehicle is armed
 
     //--------------------------------------------------------------------------
     // State Variables
@@ -120,6 +121,12 @@ private:
     
     /// Current waypoint being navigated to (ENU coordinates)
     geometry_msgs::msg::PoseStamped current_waypoint_;
+    
+    /// Pending waypoint/path when mode change is in progress
+    geometry_msgs::msg::PoseStamped pending_waypoint_; 
+    nav_msgs::msg::Path pending_path_;
+    bool has_pending_waypoint_{false};
+    bool has_pending_path_{false};
     
     /// Waypoint navigation state
     bool waypoint_navigation_active_{false}; // Actively following waypoints
@@ -198,6 +205,12 @@ private:
     bool isWaypointReached();
     
     /**
+     * @brief Check if the vehicle is armed
+     * @return true if armed, false otherwise
+     */
+    bool isArmed();
+    
+    /**
      * @brief Set ArduSub to GUIDED mode for waypoint navigation
      */
     void setGuidedMode();
@@ -269,5 +282,65 @@ private:
      * @brief Set the update interval for MAVLink messages
      */
     void setMessageInterval(uint16_t message_id, float frequency_hz);
+    
+    /**
+     * @brief Send MAV_CMD_OVERRIDE_GOTO command to interrupt current navigation
+     * 
+     * This commands the vehicle to immediately move to the specified position.
+     * It can be used in emergency situations to redirect the vehicle.
+     * 
+     * @param position Target position in ENU coordinates
+     * @param continue_cmd If true, the vehicle will continue executing mission after reaching position
+     */
+    void sendOverrideGoto(const geometry_msgs::msg::Point& position, bool continue_cmd = false);
+    
+    /**
+     * @brief Send MAV_CMD_DO_SET_HOME command to set the home position
+     * 
+     * This sets the home position of the vehicle, which is used as the reference
+     * for RTL mode and relative positions.
+     * 
+     * @param latitude Latitude in degrees (use NAN to use current position)
+     * @param longitude Longitude in degrees (use NAN to use current position)
+     * @param altitude Altitude in meters (above MSL)
+     * @param use_current If true, ignore lat/lon/alt and use current position
+     */
+    void sendSetHome(float latitude, float longitude, float altitude, bool use_current = false);
+    
+    /**
+     * @brief Send MAV_CMD_CONDITION_YAW command to set vehicle heading
+     * 
+     * This command sets the heading of the vehicle. It can be used in combination
+     * with waypoints to control the facing direction.
+     * 
+     * @param heading_deg Target heading in degrees
+     * @param is_relative If true, heading is relative to current heading
+     * @param direction Direction to rotate: 1=clockwise, -1=counterclockwise, 0=shortest
+     * @param angular_rate Angular rate for rotation (degrees/second)
+     */
+    void sendConditionYaw(float heading_deg, bool is_relative = false, int direction = 0, float angular_rate = 0.0f);
+    
+    /**
+     * @brief Send a waypoint in global coordinates
+     * 
+     * Sends waypoint using SET_POSITION_TARGET_GLOBAL_INT message to enable
+     * global positioning and navigation.
+     * 
+     * @param lat_int Latitude (degrees * 1e7)
+     * @param lon_int Longitude (degrees * 1e7)
+     * @param alt Altitude in meters (negative for below sea level)
+     */
+    void sendGlobalWaypoint(int32_t lat_int, int32_t lon_int, float alt);
+    
+    /**
+     * @brief Convert a global waypoint to MAVLink SET_POSITION_TARGET_GLOBAL_INT message
+     * 
+     * @param lat_int Latitude (degrees * 1e7)
+     * @param lon_int Longitude (degrees * 1e7)
+     * @param alt Altitude in meters
+     * @param global_target Output structure for MAVLink message
+     */
+    void prepareGlobalPositionTarget(int32_t lat_int, int32_t lon_int, float alt, 
+                                    mavlink_set_position_target_global_int_t& global_target);
 };
 

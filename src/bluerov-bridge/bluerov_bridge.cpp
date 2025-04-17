@@ -241,6 +241,22 @@ void BlueROVBridge::receiveData()
             requestDataStreams();
           }
           
+          // Update armed state and log when it changes
+          bool previous_armed_state = is_armed_;
+          is_armed_ = (hb.base_mode & MAV_MODE_FLAG_SAFETY_ARMED) != 0;
+          
+          // Log arming state changes
+          if (is_armed_ != previous_armed_state) {
+            RCLCPP_INFO(this->get_logger(), 
+                "Vehicle arm state changed: %s (base_mode=0x%02X)", 
+                is_armed_ ? "ARMED" : "DISARMED", hb.base_mode);
+          }
+          
+          // Always log the armed state at debug level for troubleshooting
+          RCLCPP_DEBUG(this->get_logger(), 
+              "Current vehicle state: %s (base_mode=0x%02X, custom_mode=%u)", 
+              is_armed_ ? "ARMED" : "DISARMED", hb.base_mode, hb.custom_mode);
+          
           // Check the current vehicle mode
           // For ArduSub, customMode contains the mode number
           uint32_t current_mode = hb.custom_mode;
@@ -293,6 +309,45 @@ void BlueROVBridge::receiveData()
               if (requested_mode_ == "GUIDED") {
                 guided_mode_active_ = true;
                 position_hold_active_ = false;
+                
+                // Process any pending waypoint or path that was waiting for GUIDED mode
+                if (has_pending_waypoint_) {
+                  RCLCPP_INFO(this->get_logger(), "Processing pending waypoint now that GUIDED mode is active");
+                  
+                  // Clear any existing waypoints
+                  std::queue<geometry_msgs::msg::PoseStamped> empty;
+                  std::swap(waypoint_queue_, empty);
+                  
+                  // Add the pending waypoint to the queue
+                  waypoint_queue_.push(pending_waypoint_);
+                  
+                  // Start processing the waypoint
+                  if (!waypoint_navigation_active_) {
+                    processNextWaypoint();
+                  }
+                  
+                  has_pending_waypoint_ = false;
+                }
+                else if (has_pending_path_) {
+                  RCLCPP_INFO(this->get_logger(), "Processing pending path with %zu waypoints now that GUIDED mode is active",
+                              pending_path_.poses.size());
+                  
+                  // Clear any existing waypoints
+                  std::queue<geometry_msgs::msg::PoseStamped> empty;
+                  std::swap(waypoint_queue_, empty);
+                  
+                  // Add all waypoints from the path to the queue
+                  for (const auto& pose : pending_path_.poses) {
+                    waypoint_queue_.push(pose);
+                  }
+                  
+                  // Start processing the path
+                  if (!waypoint_navigation_active_) {
+                    processNextWaypoint();
+                  }
+                  
+                  has_pending_path_ = false;
+                }
               } else if (requested_mode_ == "POSHOLD") {
                 position_hold_active_ = true;
                 guided_mode_active_ = false;
@@ -305,6 +360,10 @@ void BlueROVBridge::receiveData()
                   "Mode change to %s timed out after %d attempts!", 
                   requested_mode_.c_str(), mode_change_attempts_);
               mode_change_requested_ = false;
+              
+              // Clear any pending waypoints as mode change failed
+              has_pending_waypoint_ = false;
+              has_pending_path_ = false;
               
               // Don't reset mode_change_attempts_ here to limit future attempts
             }
@@ -453,129 +512,67 @@ void BlueROVBridge::requestDataStreams()
 }
 
 
-
 //=============================================================================
-// controlLoop()
+// sendMavlinkMessage
 //=============================================================================
-void BlueROVBridge::controlLoop()
+void BlueROVBridge::sendMavlinkMessage(const mavlink_message_t& msg)
 {
-  if (guided_mode_active_) {
-    return;   // Skip control loop if guided mode is active
-  }
-
-  // 1) Check for valid home position
-  if (std::isnan(poseHome_[0]) || std::isnan(poseHome_[1]) || std::isnan(poseHome_[2])) {
-    RCLCPP_WARN(this->get_logger(), "Home position not set yet. Skipping pose calculation.");
+  if (sock_fd_ < 0) {
     return;
   }
-  if (!got_heartbeat_ /* or !home_pose_set_, etc. */) {
-    RCLCPP_WARN_ONCE(this->get_logger(), 
-        "No heartbeat/position data yet; skipping control loop...");
-    return;  
-  }
 
-  // Print PWM values
-  //RCLCPP_INFO(this->get_logger(), "PWM Values: [%f, %f, %f, %f, %f, %f]",
-  //  velocityDesiredPwm_[0], velocityDesiredPwm_[1], velocityDesiredPwm_[2],
-  //  velocityDesiredPwm_[3], velocityDesiredPwm_[4], velocityDesiredPwm_[5]);
+  uint8_t tx_buffer[MAVLINK_MAX_PACKET_LEN];
+  uint16_t msg_len = mavlink_msg_to_send_buffer(tx_buffer, &msg);
 
-  //--------------------------------------------------------------------------
-  // POSE: Transform from NED -> ENU
-  //--------------------------------------------------------------------------
-
-  // Calculate relative position in NED
-  double relative_x_ned = poseActual_[0] - poseHome_[0];
-  double relative_y_ned = poseActual_[1] - poseHome_[1];
-  double relative_z_ned = poseActual_[2] - poseHome_[2];
-
-  // NED -> ENU rotation
-  Eigen::Matrix3d R_NED_to_ENU;
-  R_NED_to_ENU << 0,  1,  0,
-                  1,  0,  0,
-                  0,  0, -1;
-
-  // Transform position from NED to ENU
-  Eigen::Vector3d position_ned(relative_x_ned, relative_y_ned, relative_z_ned);
-  Eigen::Vector3d position_enu = R_NED_to_ENU * position_ned;
-
-
-  double transformed_x = position_enu(0);
-  double transformed_y = position_enu(1);
-  double transformed_z = position_enu(2);
-
-  double roll  = poseActual_[3];
-  double pitch = poseActual_[4];
-  double yaw   = poseActual_[5];
-
-  // Publish PoseStamped (same logic as Python version)
-  auv_core_helper::msg::PoseStamped pose_msg;
-  pose_msg.header.stamp = this->now();
-  pose_msg.header.frame_id = "world";  // matches Python's 'world'
-
-  // Note how the Python code swapped X/Y in the final output
-  pose_msg.x = transformed_x;
-  pose_msg.y = transformed_y;
-  pose_msg.z = transformed_z;
-
-  // roll, pitch, yaw 
-  pose_msg.roll  = roll;
-  pose_msg.pitch = pitch;
-  pose_msg.yaw   = yaw;
-
-  pose_actual_pub_->publish(pose_msg);
-
-  //--------------------------------------------------------------------------
-  // VELOCITY: Transform from NED -> ENU and publish
-  //--------------------------------------------------------------------------
-
-  // Linear velocity in NED
-  Eigen::Vector3d vel_ned(
-      velocityActual_[0],
-      velocityActual_[1],
-      velocityActual_[2]
+  ssize_t bytes_sent = sendto(
+      sock_fd_,
+      tx_buffer,
+      msg_len,
+      0,
+      reinterpret_cast<const struct sockaddr*>(&remote_addr_),
+      sizeof(remote_addr_)
   );
-  // Transform to ENU
-  Eigen::Vector3d vel_enu = R_NED_to_ENU * vel_ned;
-
-  // Fill the Twist message
-  geometry_msgs::msg::Twist velocity_msg;
-  // Again, note the swapping to match the X/Y logic above
-  velocity_msg.linear.x = vel_enu(0);
-  velocity_msg.linear.y = vel_enu(1);
-  velocity_msg.linear.z = vel_enu(2);
-
-  // Angular velocities: we typically keep rollspeed, pitchspeed, yawspeed as-is
-  velocity_msg.angular.x = velocityActual_[3];
-  velocity_msg.angular.y = velocityActual_[4];
-  velocity_msg.angular.z = velocityActual_[5];
-
-  // Publish it
-  velocity_actual_pub_->publish(velocity_msg);
-
-  //--------------------------------------------------------------------------
-  // CONTROL: Send RC overrides based on velocityDesired_
-  //--------------------------------------------------------------------------
-
-  // int forward_pwm  = velocityToPwm(velocityDesired_[0]); // forward/back
-  // int lateral_pwm  = velocityToPwm(velocityDesired_[1]); // left/right
-  // int vertical_pwm = velocityToPwm(velocityDesired_[2]); // up/down
-  // int roll_pwm     = velocityToPwm(velocityDesired_[3]); // roll rate
-  // int pitch_pwm    = velocityToPwm(velocityDesired_[4]); // pitch rate
-  // int yaw_pwm      = velocityToPwm(velocityDesired_[5]); // yaw rate
-
-  velocityDesiredPwm_ = velocityToPwm(velocityDesired_, maxVelocities_, minVelocities_);
-  setRcChannelPwm(velocityDesiredPwm_);
-
-  // Then set the RC channels in the same order:
-  // 1=pitch, 2=roll, 3=throttle, 4=yaw, 5=forward, 6=lateral
-  // setRcChannelPwm(1, pitch_pwm);
-  // setRcChannelPwm(2, roll_pwm);
-  // setRcChannelPwm(3, vertical_pwm);
-  // setRcChannelPwm(4, yaw_pwm);
-  // setRcChannelPwm(5, forward_pwm);
-  // setRcChannelPwm(6, lateral_pwm);
+  if (bytes_sent < 0) {
+    RCLCPP_ERROR(this->get_logger(),
+        "Failed sending MAVLink message (errno=%d).", errno);
+  }
 }
 
+//=============================================================================
+// setMessageInterval
+//=============================================================================
+void BlueROVBridge::setMessageInterval(uint16_t message_id, float frequency_hz)
+{
+  if (!got_heartbeat_) {
+    RCLCPP_WARN(this->get_logger(),
+        "setMessageInterval(%d) called, but no autopilot heartbeat yet!", message_id);
+    return;
+  }
+
+  // Interval in microseconds
+  float interval_us = 1.0e6f / frequency_hz;  
+
+  mavlink_message_t msg;
+  // param1 = message_id
+  // param2 = desired interval in microseconds
+  mavlink_msg_command_long_pack(
+      system_id_,
+      component_id_,
+      &msg,
+      target_system_,
+      target_component_,
+      MAV_CMD_SET_MESSAGE_INTERVAL,
+      0, // confirmation
+      static_cast<float>(message_id), // param1
+      interval_us,                    // param2
+      0.0f, 0.0f, 0.0f, 0.0f, 0.0f    // param3..7 unused
+  );
+
+  sendMavlinkMessage(msg);
+  RCLCPP_INFO(this->get_logger(),
+      "Requested message #%d at %.1f Hz (%.0f us).",
+      message_id, frequency_hz, interval_us);
+}
 
 //=============================================================================
 // velocityCallback
@@ -837,6 +834,128 @@ void BlueROVBridge::disarm()
 }
 
 //=============================================================================
+// controlLoop()
+//=============================================================================
+void BlueROVBridge::controlLoop()
+{
+  if (guided_mode_active_) {
+    return;   // Skip control loop if guided mode is active
+  }
+
+  // 1) Check for valid home position
+  if (std::isnan(poseHome_[0]) || std::isnan(poseHome_[1]) || std::isnan(poseHome_[2])) {
+    RCLCPP_WARN(this->get_logger(), "Home position not set yet. Skipping pose calculation.");
+    return;
+  }
+  if (!got_heartbeat_ /* or !home_pose_set_, etc. */) {
+    RCLCPP_WARN_ONCE(this->get_logger(), 
+        "No heartbeat/position data yet; skipping control loop...");
+    return;  
+  }
+
+  // Print PWM values
+  //RCLCPP_INFO(this->get_logger(), "PWM Values: [%f, %f, %f, %f, %f, %f]",
+  //  velocityDesiredPwm_[0], velocityDesiredPwm_[1], velocityDesiredPwm_[2],
+  //  velocityDesiredPwm_[3], velocityDesiredPwm_[4], velocityDesiredPwm_[5]);
+
+  //--------------------------------------------------------------------------
+  // POSE: Transform from NED -> ENU
+  //--------------------------------------------------------------------------
+
+  // Calculate relative position in NED
+  double relative_x_ned = poseActual_[0] - poseHome_[0];
+  double relative_y_ned = poseActual_[1] - poseHome_[1];
+  double relative_z_ned = poseActual_[2] - poseHome_[2];
+
+  // NED -> ENU rotation
+  Eigen::Matrix3d R_NED_to_ENU;
+  R_NED_to_ENU << 0,  1,  0,
+                  1,  0,  0,
+                  0,  0, -1;
+
+  // Transform position from NED to ENU
+  Eigen::Vector3d position_ned(relative_x_ned, relative_y_ned, relative_z_ned);
+  Eigen::Vector3d position_enu = R_NED_to_ENU * position_ned;
+
+
+  double transformed_x = position_enu(0);
+  double transformed_y = position_enu(1);
+  double transformed_z = position_enu(2);
+
+  double roll  = poseActual_[3];
+  double pitch = poseActual_[4];
+  double yaw   = poseActual_[5];
+
+  // Publish PoseStamped (same logic as Python version)
+  auv_core_helper::msg::PoseStamped pose_msg;
+  pose_msg.header.stamp = this->now();
+  pose_msg.header.frame_id = "world";  // matches Python's 'world'
+
+  // Note how the Python code swapped X/Y in the final output
+  pose_msg.x = transformed_x;
+  pose_msg.y = transformed_y;
+  pose_msg.z = transformed_z;
+
+  // roll, pitch, yaw 
+  pose_msg.roll  = roll;
+  pose_msg.pitch = pitch;
+  pose_msg.yaw   = yaw;
+
+  pose_actual_pub_->publish(pose_msg);
+
+  //--------------------------------------------------------------------------
+  // VELOCITY: Transform from NED -> ENU and publish
+  //--------------------------------------------------------------------------
+
+  // Linear velocity in NED
+  Eigen::Vector3d vel_ned(
+      velocityActual_[0],
+      velocityActual_[1],
+      velocityActual_[2]
+  );
+  // Transform to ENU
+  Eigen::Vector3d vel_enu = R_NED_to_ENU * vel_ned;
+
+  // Fill the Twist message
+  geometry_msgs::msg::Twist velocity_msg;
+  // Again, note the swapping to match the X/Y logic above
+  velocity_msg.linear.x = vel_enu(0);
+  velocity_msg.linear.y = vel_enu(1);
+  velocity_msg.linear.z = vel_enu(2);
+
+  // Angular velocities: we typically keep rollspeed, pitchspeed, yawspeed as-is
+  velocity_msg.angular.x = velocityActual_[3];
+  velocity_msg.angular.y = velocityActual_[4];
+  velocity_msg.angular.z = velocityActual_[5];
+
+  // Publish it
+  velocity_actual_pub_->publish(velocity_msg);
+
+  //--------------------------------------------------------------------------
+  // CONTROL: Send RC overrides based on velocityDesired_
+  //--------------------------------------------------------------------------
+
+  // int forward_pwm  = velocityToPwm(velocityDesired_[0]); // forward/back
+  // int lateral_pwm  = velocityToPwm(velocityDesired_[1]); // left/right
+  // int vertical_pwm = velocityToPwm(velocityDesired_[2]); // up/down
+  // int roll_pwm     = velocityToPwm(velocityDesired_[3]); // roll rate
+  // int pitch_pwm    = velocityToPwm(velocityDesired_[4]); // pitch rate
+  // int yaw_pwm      = velocityToPwm(velocityDesired_[5]); // yaw rate
+
+  velocityDesiredPwm_ = velocityToPwm(velocityDesired_, maxVelocities_, minVelocities_);
+  setRcChannelPwm(velocityDesiredPwm_);
+
+  // Then set the RC channels in the same order:
+  // 1=pitch, 2=roll, 3=throttle, 4=yaw, 5=forward, 6=lateral
+  // setRcChannelPwm(1, pitch_pwm);
+  // setRcChannelPwm(2, roll_pwm);
+  // setRcChannelPwm(3, vertical_pwm);
+  // setRcChannelPwm(4, yaw_pwm);
+  // setRcChannelPwm(5, forward_pwm);
+  // setRcChannelPwm(6, lateral_pwm);
+}
+
+//=============================================================================
 // velocityToPwm
 //=============================================================================
 /**
@@ -903,7 +1022,6 @@ Eigen::VectorXd BlueROVBridge::velocityToPwm(const Eigen::VectorXd& velocities,
     return pwmValues;
 }
 
-
 //=============================================================================
 // setRcChannelPwm
 //=============================================================================
@@ -967,77 +1085,54 @@ void BlueROVBridge::setRcChannelPwm(const Eigen::VectorXd& velocityDesiredPwm)
 
     sendMavlinkMessage(msg);
 }
-
-
-
-//=============================================================================
-// sendMavlinkMessage
-//=============================================================================
-void BlueROVBridge::sendMavlinkMessage(const mavlink_message_t& msg)
-{
-  if (sock_fd_ < 0) {
-    return;
-  }
-
-  uint8_t tx_buffer[MAVLINK_MAX_PACKET_LEN];
-  uint16_t msg_len = mavlink_msg_to_send_buffer(tx_buffer, &msg);
-
-  ssize_t bytes_sent = sendto(
-      sock_fd_,
-      tx_buffer,
-      msg_len,
-      0,
-      reinterpret_cast<const struct sockaddr*>(&remote_addr_),
-      sizeof(remote_addr_)
-  );
-  if (bytes_sent < 0) {
-    RCLCPP_ERROR(this->get_logger(),
-        "Failed sending MAVLink message (errno=%d).", errno);
-  }
-}
-
-//=============================================================================
-// setMessageInterval
-//=============================================================================
-void BlueROVBridge::setMessageInterval(uint16_t message_id, float frequency_hz)
-{
-  if (!got_heartbeat_) {
-    RCLCPP_WARN(this->get_logger(),
-        "setMessageInterval(%d) called, but no autopilot heartbeat yet!", message_id);
-    return;
-  }
-
-  // Interval in microseconds
-  float interval_us = 1.0e6f / frequency_hz;  
-
-  mavlink_message_t msg;
-  // param1 = message_id
-  // param2 = desired interval in microseconds
-  mavlink_msg_command_long_pack(
-      system_id_,
-      component_id_,
-      &msg,
-      target_system_,
-      target_component_,
-      MAV_CMD_SET_MESSAGE_INTERVAL,
-      0, // confirmation
-      static_cast<float>(message_id), // param1
-      interval_us,                    // param2
-      0.0f, 0.0f, 0.0f, 0.0f, 0.0f    // param3..7 unused
-  );
-
-  sendMavlinkMessage(msg);
-  RCLCPP_INFO(this->get_logger(),
-      "Requested message #%d at %.1f Hz (%.0f us).",
-      message_id, frequency_hz, interval_us);
-}
-
 //=============================================================================
 // waypointCallback
 // Handles a single waypoint received from the /auv/waypoint topic
 //=============================================================================
 void BlueROVBridge::waypointCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
 {
+  // Add more debug information about current state
+  RCLCPP_INFO(this->get_logger(), 
+      "Waypoint request received. Current state: heartbeat=%s, armed=%s, guided=%s, mode_change_requested=%s",
+      got_heartbeat_ ? "YES" : "NO",
+      is_armed_ ? "YES" : "NO",
+      guided_mode_active_ ? "YES" : "NO",
+      mode_change_requested_ ? "YES" : "NO");
+      
+  // Check if the vehicle is armed and in GUIDED mode before accepting waypoints
+  if (!got_heartbeat_) {
+    RCLCPP_WARN(this->get_logger(), "Cannot accept waypoint - no heartbeat received yet");
+    return;
+  }
+  
+  if (!isArmed()) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Cannot accept waypoint - vehicle is not armed (base_mode: 0x%02X)", 
+        poseActual_.size() >= 6 ? static_cast<int>(poseActual_[5]) : 0);
+        
+    // If we're already trying to arm, don't try again
+    if (!mode_change_requested_) {
+      RCLCPP_INFO(this->get_logger(), "Attempting to arm the vehicle before accepting waypoint");
+      arm("GUIDED");  // Arm and set to GUIDED mode in one step
+      
+      // Store the waypoint and process it once arming is confirmed
+      pending_waypoint_ = *msg;
+      has_pending_waypoint_ = true;
+    }
+    return;
+  }
+  
+  if (!guided_mode_active_ && !mode_change_requested_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Vehicle not in GUIDED mode. Setting GUIDED mode before accepting waypoint.");
+    setGuidedMode();
+    
+    // Store the waypoint and process it once mode change is confirmed
+    pending_waypoint_ = *msg;
+    has_pending_waypoint_ = true;
+    return;
+  }
+
   RCLCPP_INFO(this->get_logger(), 
       "Received new waypoint: x=%.2f, y=%.2f, z=%.2f", 
       msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
@@ -1074,6 +1169,49 @@ void BlueROVBridge::pathCallback(const nav_msgs::msg::Path::SharedPtr msg)
     return;
   }
   
+  // Add more debug information about current state
+  RCLCPP_INFO(this->get_logger(), 
+      "Path request received with %zu waypoints. Current state: heartbeat=%s, armed=%s, guided=%s, mode_change_requested=%s",
+      msg->poses.size(),
+      got_heartbeat_ ? "YES" : "NO",
+      is_armed_ ? "YES" : "NO",
+      guided_mode_active_ ? "YES" : "NO",
+      mode_change_requested_ ? "YES" : "NO");
+  
+  // Check if the vehicle is armed and in GUIDED mode before accepting waypoints
+  if (!got_heartbeat_) {
+    RCLCPP_WARN(this->get_logger(), "Cannot accept path - no heartbeat received yet");
+    return;
+  }
+  
+  if (!isArmed()) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Cannot accept path - vehicle is not armed (base_mode: 0x%02X)", 
+        poseActual_.size() >= 6 ? static_cast<int>(poseActual_[5]) : 0);
+        
+    // If we're already trying to arm, don't try again
+    if (!mode_change_requested_) {
+      RCLCPP_INFO(this->get_logger(), "Attempting to arm the vehicle before accepting path");
+      arm("GUIDED");  // Arm and set to GUIDED mode in one step
+      
+      // Store the path and process it once arming is confirmed
+      pending_path_ = *msg;
+      has_pending_path_ = true;
+    }
+    return;
+  }
+  
+  if (!guided_mode_active_ && !mode_change_requested_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Vehicle not in GUIDED mode. Setting GUIDED mode before accepting path.");
+    setGuidedMode();
+    
+    // Store the path and process it once mode change is confirmed
+    pending_path_ = *msg;
+    has_pending_path_ = true;
+    return;
+  }
+  
   RCLCPP_INFO(this->get_logger(), "Received path with %zu waypoints", msg->poses.size());
   
   // Clear existing waypoints
@@ -1099,6 +1237,26 @@ void BlueROVBridge::pathCallback(const nav_msgs::msg::Path::SharedPtr msg)
         "Path with %zu waypoints added to queue. Will navigate after current waypoint is reached.", 
         msg->poses.size());
   }
+}
+
+//=============================================================================
+// isArmed
+// Checks if the vehicle is currently armed
+//=============================================================================
+bool BlueROVBridge::isArmed() 
+{
+  if (!got_heartbeat_) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
+        "No heartbeat received yet, cannot determine arm state");
+    return false;
+  }
+  
+  // Log the armed state whenever it's checked
+  RCLCPP_DEBUG(this->get_logger(), "isArmed() check: %s", 
+               is_armed_ ? "ARMED" : "DISARMED");
+               
+  // Just return the cached arm state from the last heartbeat
+  return is_armed_;
 }
 
 //=============================================================================
@@ -1166,11 +1324,23 @@ void BlueROVBridge::waypointNavigationTimer()
     
     // Process the next waypoint if available
     if (!waypoint_queue_.empty()) {
+      RCLCPP_INFO(this->get_logger(), "Processing next waypoint in queue (%zu remaining)", 
+                  waypoint_queue_.size());
       processNextWaypoint();
     } else {
-      RCLCPP_INFO(this->get_logger(), "Waypoint queue empty. Switching to POSHOLD mode. ");
+      RCLCPP_INFO(this->get_logger(), "Path following complete - last waypoint reached");
       waypoint_navigation_active_ = false;
-      setPosHoldMode();  // Switch to POSHOLD mode directly
+      
+      // Store the final position for position hold
+      position_hold_waypoint_ = current_waypoint_;
+      
+      // Switch to POSHOLD mode to maintain position at the last waypoint
+      setPosHoldMode();
+      
+      // Additional notification that the complete path has been followed
+      std_msgs::msg::Bool path_complete_msg;
+      path_complete_msg.data = true;
+      waypoint_reached_pub_->publish(path_complete_msg);
     }
   }
 }
@@ -1310,6 +1480,53 @@ void BlueROVBridge::setPosHoldMode() {
 }
 
 //=============================================================================
+// sendConditionYaw
+// Sends MAV_CMD_CONDITION_YAW command to control vehicle heading
+//=============================================================================
+void BlueROVBridge::sendConditionYaw(float heading_deg, bool is_relative, int direction, float angular_rate)
+{
+  if (!got_heartbeat_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Cannot send CONDITION_YAW command; no autopilot heartbeat discovered!");
+    return;
+  }
+  
+  RCLCPP_INFO(this->get_logger(),
+      "Setting vehicle heading: %.1f degrees, %s, direction=%d, rate=%.1f deg/s",
+      heading_deg, is_relative ? "relative" : "absolute", direction, angular_rate);
+  
+  // Clamp heading to 0-360 range if absolute
+  if (!is_relative) {
+    heading_deg = fmod(heading_deg, 360.0f);
+    if (heading_deg < 0) {
+      heading_deg += 360.0f;
+    }
+  }
+  
+  // Create command message
+  mavlink_message_t msg;
+  mavlink_msg_command_long_pack(
+      system_id_,
+      component_id_,
+      &msg,
+      target_system_,
+      target_component_,
+      MAV_CMD_CONDITION_YAW,
+      0,                               // confirmation
+      heading_deg,                     // param1: target angle (degrees)
+      angular_rate,                    // param2: angular speed (deg/sec)
+      direction,                       // param3: direction: -1=CCW, 1=CW, 0=shortest
+      is_relative ? 1.0f : 0.0f,       // param4: 0=absolute, 1=relative
+      0.0f, 0.0f, 0.0f                 // param5-7: unused
+  );
+  
+  // Send the message
+  sendMavlinkMessage(msg);
+  
+  RCLCPP_INFO(this->get_logger(), "CONDITION_YAW command sent");
+}
+
+//=============================================================================
 // sendWaypointToArdupilot
 // Converts a waypoint to MAVLink SET_POSITION_TARGET_LOCAL_NED message
 //=============================================================================
@@ -1349,6 +1566,32 @@ void BlueROVBridge::sendWaypointToArdupilot(const geometry_msgs::msg::PoseStampe
   RCLCPP_INFO(this->get_logger(), 
       "Sent waypoint to ArduPilot: NED(%.2f, %.2f, %.2f)",
       position_target.x, position_target.y, position_target.z);
+      
+  // Calculate desired yaw to point towards the waypoint
+  if (home_pose_set_) {
+    // Calculate the current position in NED
+    double relative_x_ned = poseActual_[0] - poseHome_[0];
+    double relative_y_ned = poseActual_[1] - poseHome_[1];
+    
+    // Calculate vector to target from current position
+    double dx = position_target.x - relative_x_ned;
+    double dy = position_target.y - relative_y_ned;
+    
+    // Calculate heading in degrees (0 is North, positive clockwise)
+    double heading_deg = std::atan2(dy, dx) * 180.0 / M_PI;
+    
+    // Convert to 0-360 range
+    if (heading_deg < 0) {
+      heading_deg += 360.0;
+    }
+    
+    // Send yaw command to face the waypoint
+    // 0=shortest path determination, 5=reasonable rotation rate (deg/sec)
+    sendConditionYaw(static_cast<float>(heading_deg), false, 0, 5.0f);
+    
+    RCLCPP_INFO(this->get_logger(), 
+        "Setting heading towards waypoint: %.1f degrees", heading_deg);
+  }
 }
 
 //=============================================================================
@@ -1378,11 +1621,11 @@ void BlueROVBridge::convertENUtoNED(const geometry_msgs::msg::PoseStamped& enu,
   ned.target_component = target_component_;
   ned.coordinate_frame = MAV_FRAME_LOCAL_NED;
   
-  // Create mask for position only (ignore velocity, acceleration, yaw and yaw rate)
+  // Create mask 
   // Each bit set to 1 means "ignore this dimension"
-  //ned.type_mask = 0b111111111000; // Use position only
+  ned.type_mask =0b0000000111000000 ; 
   
-  ned.type_mask= 0b0000001111000000;
+  
   // Convert ENU to NED coordinates
   ned.x = enu.pose.position.y;  // North = East (ENU.y -> NED.x)
   ned.y = enu.pose.position.x;  // East = North (ENU.x -> NED.y)
@@ -1397,4 +1640,223 @@ void BlueROVBridge::convertENUtoNED(const geometry_msgs::msg::PoseStamped& enu,
   ned.afz = 0.0f;
   ned.yaw = 0.0f;
   ned.yaw_rate = 0.0f;
+}
+
+//=============================================================================
+// sendGlobalWaypoint
+// Sends a waypoint using SET_POSITION_TARGET_GLOBAL_INT message
+//=============================================================================
+void BlueROVBridge::sendGlobalWaypoint(int32_t lat_int, int32_t lon_int, float alt)
+{
+  if (!got_heartbeat_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Cannot send global waypoint; no autopilot heartbeat discovered!");
+    return;
+  }
+  
+  // Ensure we're in GUIDED mode
+  if (!guided_mode_active_ && !mode_change_requested_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Vehicle not in GUIDED mode. Setting GUIDED mode before sending global waypoint.");
+    setGuidedMode();
+    return;
+  }
+  
+  RCLCPP_INFO(this->get_logger(),
+      "Sending global waypoint: lat=%d, lon=%d, alt=%.2f", 
+      lat_int, lon_int, alt);
+  
+  // Create the position target message
+  mavlink_set_position_target_global_int_t global_target;
+  prepareGlobalPositionTarget(lat_int, lon_int, alt, global_target);
+  
+  // Create the MAVLink message
+  mavlink_message_t msg;
+  mavlink_msg_set_position_target_global_int_encode(
+      system_id_,
+      component_id_,
+      &msg,
+      &global_target
+  );
+  
+  // Send the message
+  sendMavlinkMessage(msg);
+  
+  RCLCPP_INFO(this->get_logger(), 
+      "Global waypoint sent successfully.");
+}
+
+//=============================================================================
+// prepareGlobalPositionTarget
+// Prepares a MAVLink SET_POSITION_TARGET_GLOBAL_INT structure
+//=============================================================================
+void BlueROVBridge::prepareGlobalPositionTarget(int32_t lat_int, int32_t lon_int, float alt, 
+                                              mavlink_set_position_target_global_int_t& global_target)
+{
+  // Clear the structure
+  memset(&global_target, 0, sizeof(global_target));
+  
+  // Set header information
+  global_target.time_boot_ms = static_cast<uint32_t>(this->now().nanoseconds() / 1000000);
+  global_target.target_system = target_system_;
+  global_target.target_component = target_component_;
+  
+  // Set coordinate frame
+  global_target.coordinate_frame = MAV_FRAME_GLOBAL_INT;  // Or MAV_FRAME_GLOBAL_RELATIVE_ALT_INT
+  
+  // Create type_mask - ignore velocity and acceleration
+  // bit set to 1 means "ignore this dimension"
+  global_target.type_mask = 0b0000111111000000;  // Ignore velocity, acceleration, yaw, yaw rate
+  
+  // Set position (lat/lon in degrees*1e7, altitude in meters)
+  global_target.lat_int = lat_int;
+  global_target.lon_int = lon_int;
+  global_target.alt = alt;
+  
+  // Set velocities and accelerations to zero (not used with the defined type_mask)
+  global_target.vx = 0.0f;
+  global_target.vy = 0.0f;
+  global_target.vz = 0.0f;
+  global_target.afx = 0.0f;
+  global_target.afy = 0.0f;
+  global_target.afz = 0.0f;
+  global_target.yaw = 0.0f;
+  global_target.yaw_rate = 0.0f;
+}
+
+//=============================================================================
+// sendOverrideGoto
+// Sends MAV_CMD_OVERRIDE_GOTO command to interrupt current navigation
+//=============================================================================
+void BlueROVBridge::sendOverrideGoto(const geometry_msgs::msg::Point& position, bool continue_cmd)
+{
+  if (!got_heartbeat_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Cannot send OVERRIDE_GOTO command; no autopilot heartbeat discovered!");
+    return;
+  }
+  
+  if (!guided_mode_active_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Vehicle not in GUIDED mode, OVERRIDE_GOTO command may not work as expected");
+  }
+  
+  RCLCPP_INFO(this->get_logger(),
+      "Sending MAV_CMD_OVERRIDE_GOTO to position: (%.2f, %.2f, %.2f), continue=%s",
+      position.x, position.y, position.z, continue_cmd ? "true" : "false");
+  
+  // Convert from ENU to NED coordinate system for ArduPilot
+  float x_ned = position.y;  // North = East in ENU
+  float y_ned = position.x;  // East = North in ENU
+  float z_ned = -position.z; // Down = -Up in ENU
+  
+  // Create command message
+  mavlink_message_t msg;
+  mavlink_msg_command_long_pack(
+      system_id_,
+      component_id_,
+      &msg,
+      target_system_,
+      target_component_,
+      MAV_CMD_OVERRIDE_GOTO,
+      0,                          // confirmation
+      continue_cmd ? 1 : 0,       // param1: 0=Do not continue mission, 1=Continue mission
+      MAV_GOTO_DO_HOLD,           // param2: MAV_GOTO enum
+      MAV_FRAME_LOCAL_NED,        // param3: Frame (local NED)
+      0.0f,                       // param4: Yaw (not used, set to 0)
+      x_ned,                      // param5: Latitude/X position
+      y_ned,                      // param6: Longitude/Y position
+      z_ned                       // param7: Altitude/Z position
+  );
+  
+  // Send the message
+  sendMavlinkMessage(msg);
+  
+  RCLCPP_INFO(this->get_logger(), 
+      "OVERRIDE_GOTO command sent to NED position: (%.2f, %.2f, %.2f)",
+      x_ned, y_ned, z_ned);
+      
+  // If this is an emergency command that should interrupt current navigation,
+  // update internal state to reflect that
+  if (!continue_cmd) {
+    waypoint_navigation_active_ = false;
+    
+    // Clear the waypoint queue (optional, depending on desired behavior)
+    std::queue<geometry_msgs::msg::PoseStamped> empty;
+    std::swap(waypoint_queue_, empty);
+    
+    // Create a new waypoint at the override position
+    geometry_msgs::msg::PoseStamped override_wp;
+    override_wp.header.stamp = this->now();
+    override_wp.header.frame_id = "world";
+    override_wp.pose.position = position;
+    
+    // Update the current waypoint
+    current_waypoint_ = override_wp;
+  }
+}
+
+//=============================================================================
+// sendSetHome
+// Sends MAV_CMD_DO_SET_HOME command to set home position
+//=============================================================================
+void BlueROVBridge::sendSetHome(float latitude, float longitude, float altitude, bool use_current)
+{
+  if (!got_heartbeat_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Cannot send DO_SET_HOME command; no autopilot heartbeat discovered!");
+    return;
+  }
+  
+  // Create the position information string properly
+  std::string position_str;
+  if (use_current) {
+    position_str = "current position";
+  } else {
+    position_str = "lat=" + std::to_string(latitude) + 
+                  ", lon=" + std::to_string(longitude) + 
+                  ", alt=" + std::to_string(altitude);
+  }
+  
+  RCLCPP_INFO(this->get_logger(), "Setting home position: %s", position_str.c_str());
+  
+  // Create command message
+  mavlink_message_t msg;
+  mavlink_msg_command_long_pack(
+      system_id_,
+      component_id_,
+      &msg,
+      target_system_,
+      target_component_,
+      MAV_CMD_DO_SET_HOME,
+      0,                                // confirmation
+      use_current ? 1.0f : 0.0f,        // param1: 1=use current position, 0=use specified position
+      0.0f,                             // param2: reserved
+      0.0f,                             // param3: reserved
+      0.0f,                             // param4: yaw angle (not used)
+      latitude,                         // param5: latitude (ignored if use_current=1)
+      longitude,                        // param6: longitude (ignored if use_current=1)
+      altitude                          // param7: altitude (ignored if use_current=1)
+  );
+  
+  // Send the message multiple times for reliability
+  constexpr int NUM_RETRIES = 3;
+  constexpr int RETRY_DELAY_MS = 100;
+  
+  for (int i = 0; i < NUM_RETRIES; i++) {
+    sendMavlinkMessage(msg);
+    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY_MS));
+  }
+  
+  RCLCPP_INFO(this->get_logger(), "DO_SET_HOME command sent (repeated %d times)", NUM_RETRIES);
+  
+  // If we're using the current position, update our internal home pose
+  if (use_current) {
+    poseHome_ = poseActual_;
+    home_pose_set_ = true;
+    
+    RCLCPP_INFO(this->get_logger(),
+        "Updated internal home pose to current position: NED=(%.2f, %.2f, %.2f)",
+        poseHome_[0], poseHome_[1], poseHome_[2]);
+  }
 }
