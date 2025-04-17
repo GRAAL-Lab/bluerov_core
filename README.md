@@ -15,9 +15,6 @@ Run the example:
 Move the robot with:
    ```shell 
    ros2 launch stonefish_utils bluerovTeleop.py <-record>
-   ```
-and teleop keyboard:
-   ```shell 
    ros2 run teleop_twist_keyboard teleop_twist_keyboard
    ```
 ## Dependencies
