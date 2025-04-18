@@ -34,46 +34,14 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options)
   initMavlinkConnection();
 
   // 2) Setup ROS pubs/subs
-  pose_actual_pub_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(
-      "/auv/pose_actual", 
-      10
-  );
+  poseActualPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual, 10);
+  velocityActualPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_actual, 10);
+  waypointReachedPublisher_ = this->create_publisher<std_msgs::msg::Bool>("/auv/waypoint_reached",10);
 
-  velocity_actual_pub_ = this->create_publisher<geometry_msgs::msg::Twist>(
-      "/auv/velocity_actual", 
-      10
-  );
-
-  // Publisher for waypoint reached notification
-  waypoint_reached_pub_ = this->create_publisher<std_msgs::msg::Bool>(
-      "/auv/waypoint_reached",
-      10
-  );
-
-  velocity_sub_ = this->create_subscription<geometry_msgs::msg::Twist>(
-      "/auv/velocity_desired",
-      10,
-      std::bind(&BlueROVBridge::velocityCallback, this, std::placeholders::_1)
-  );
-
-  kcl_state_sub_ = this->create_subscription<std_msgs::msg::String>(
-      "/auv/kcl_state",
-      10,
-      std::bind(&BlueROVBridge::kclStateCallback, this, std::placeholders::_1)
-  );
-
-  // Subscribe to waypoint and path topics
-  waypoint_sub_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
-      "/auv/waypoint",
-      10,
-      std::bind(&BlueROVBridge::waypointCallback, this, std::placeholders::_1)
-  );
-
-  path_sub_ = this->create_subscription<nav_msgs::msg::Path>(
-      "/auv/path",
-      10,
-      std::bind(&BlueROVBridge::pathCallback, this, std::placeholders::_1)
-  );
+  velocityDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired,10,std::bind(&BlueROVBridge::velocityDesiredCallback, this, std::placeholders::_1));
+  kclStateSubscription_ = this->create_subscription<std_msgs::msg::String>(auv_core_helper::topicnames::kcl_state,10,std::bind(&BlueROVBridge::kclStateCallback, this, std::placeholders::_1));
+  waypointSubscription_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/auv/waypoint",10,std::bind(&BlueROVBridge::waypointCallback, this, std::placeholders::_1));
+  pathSubscription_ = this->create_subscription<nav_msgs::msg::Path>("/auv/path",10,std::bind(&BlueROVBridge::pathCallback, this, std::placeholders::_1));
 
   // 3) Timers
   data_timer_ = this->create_wall_timer(
@@ -575,9 +543,9 @@ void BlueROVBridge::setMessageInterval(uint16_t message_id, float frequency_hz)
 }
 
 //=============================================================================
-// velocityCallback
+// velocityDesiredCallback
 //=============================================================================
-void BlueROVBridge::velocityCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
+void BlueROVBridge::velocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
   // Store the desired velocity
   velocityDesired_[0] = msg->linear.x;
@@ -633,7 +601,7 @@ void BlueROVBridge::kclStateCallback(const std_msgs::msg::String::SharedPtr msg)
     );
 
     // Switch to GUIDED mode for path following
-    setGuidedMode();
+    setFlightMode("GUIDED");
     
     RCLCPP_INFO(this->get_logger(), 
         "PATH_FOLLOWING activated: Using GUIDED mode for waypoint navigation");
@@ -649,7 +617,7 @@ void BlueROVBridge::kclStateCallback(const std_msgs::msg::String::SharedPtr msg)
     );
     
     // Switch to GUIDED mode for waypoint navigation (without changing arm state)
-    setGuidedMode();
+    setFlightMode("GUIDED");
     
     // Process any waypoints in the queue
     if (!waypoint_queue_.empty() && !waypoint_navigation_active_) {
@@ -683,7 +651,7 @@ void BlueROVBridge::kclStateCallback(const std_msgs::msg::String::SharedPtr msg)
     position_hold_waypoint_ = current_pose;
     
     // Switch to POSHOLD mode (without changing arm state)
-    setPosHoldMode();
+    setFlightMode("POSHOLD");
     
     RCLCPP_INFO(this->get_logger(), "Manually entered POSITION_HOLD mode at current position");
   }
@@ -901,7 +869,7 @@ void BlueROVBridge::controlLoop()
   pose_msg.pitch = pitch;
   pose_msg.yaw   = yaw;
 
-  pose_actual_pub_->publish(pose_msg);
+  poseActualPublisher_->publish(pose_msg);
 
   //--------------------------------------------------------------------------
   // VELOCITY: Transform from NED -> ENU and publish
@@ -929,7 +897,7 @@ void BlueROVBridge::controlLoop()
   velocity_msg.angular.z = velocityActual_[5];
 
   // Publish it
-  velocity_actual_pub_->publish(velocity_msg);
+  velocityActualPublisher_->publish(velocity_msg);
 
   //--------------------------------------------------------------------------
   // CONTROL: Send RC overrides based on velocityDesired_
@@ -1125,7 +1093,7 @@ void BlueROVBridge::waypointCallback(const geometry_msgs::msg::PoseStamped::Shar
   if (!guided_mode_active_ && !mode_change_requested_) {
     RCLCPP_WARN(this->get_logger(), 
         "Vehicle not in GUIDED mode. Setting GUIDED mode before accepting waypoint.");
-    setGuidedMode();
+    setFlightMode("GUIDED");
     
     // Store the waypoint and process it once mode change is confirmed
     pending_waypoint_ = *msg;
@@ -1204,7 +1172,7 @@ void BlueROVBridge::pathCallback(const nav_msgs::msg::Path::SharedPtr msg)
   if (!guided_mode_active_ && !mode_change_requested_) {
     RCLCPP_WARN(this->get_logger(), 
         "Vehicle not in GUIDED mode. Setting GUIDED mode before accepting path.");
-    setGuidedMode();
+    setFlightMode("GUIDED");
     
     // Store the path and process it once mode change is confirmed
     pending_path_ = *msg;
@@ -1303,7 +1271,7 @@ void BlueROVBridge::waypointNavigationTimer()
     
     RCLCPP_WARN(this->get_logger(), 
         "Waypoint navigation active but not in GUIDED mode. Attempting to set GUIDED mode...");
-    setGuidedMode();
+    setFlightMode("GUIDED");
     return;
   }
 
@@ -1317,7 +1285,7 @@ void BlueROVBridge::waypointNavigationTimer()
     // Publish waypoint reached notification
     std_msgs::msg::Bool reached_msg;
     reached_msg.data = true;
-    waypoint_reached_pub_->publish(reached_msg);
+    waypointReachedPublisher_->publish(reached_msg);
     
     // Reset the flag
     waypoint_reached_ = false;
@@ -1335,12 +1303,12 @@ void BlueROVBridge::waypointNavigationTimer()
       position_hold_waypoint_ = current_waypoint_;
       
       // Switch to POSHOLD mode to maintain position at the last waypoint
-      setPosHoldMode();
+      setFlightMode("POSHOLD");
       
       // Additional notification that the complete path has been followed
       std_msgs::msg::Bool path_complete_msg;
       path_complete_msg.data = true;
-      waypoint_reached_pub_->publish(path_complete_msg);
+      waypointReachedPublisher_->publish(path_complete_msg);
     }
   }
 }
@@ -1407,7 +1375,7 @@ void BlueROVBridge::processNextWaypoint()
 
   // Ensure we're in GUIDED mode (but don't repeatedly try if already trying)
   if (!guided_mode_active_ && (!mode_change_requested_ || requested_mode_ != "GUIDED")) {
-    setGuidedMode();
+    setFlightMode("GUIDED");
     
     // We'll wait for the mode change to complete in the next timer cycle
     return;
@@ -1424,60 +1392,6 @@ void BlueROVBridge::processNextWaypoint()
   position_hold_active_ = false;
 }
 
-//=============================================================================
-// setGuidedMode
-// Switches ArduPilot to GUIDED mode for waypoint navigation
-//=============================================================================
-void BlueROVBridge::setGuidedMode()
-{
-  if (!got_heartbeat_) {
-    RCLCPP_WARN(this->get_logger(), 
-        "Cannot set GUIDED mode yet; no autopilot heartbeat discovered!");
-    return;
-  }
-
-  RCLCPP_INFO(this->get_logger(),
-      "Setting GUIDED mode (sys=%d, comp=%d)...",
-      target_system_, target_component_);
-
-  setFlightMode("GUIDED");
-}
-
-//=============================================================================
-// setPosHoldMode
-// Switches ArduPilot to POSHOLD mode to hold position
-//=============================================================================
-/**
- * @brief Switch ArduPilot to POSHOLD mode to hold position
- * 
- * This method:
- * 1. Sends the SET_MODE command to ArduSub with custom_mode=16 (POSHOLD)
- * 2. Updates the internal state to reflect position hold is active
- * 3. Disables waypoint navigation and guided mode
- * 4. Stores the current position for reference
- * 
- * Position hold mode is used after completing waypoints to maintain position.
- */
-void BlueROVBridge::setPosHoldMode() {
-  if (!got_heartbeat_) {
-    RCLCPP_WARN(this->get_logger(), 
-        "Cannot set POSHOLD mode; no autopilot heartbeat!");
-    return;
-  }
-
-  RCLCPP_INFO(this->get_logger(), "Engaging POSHOLD mode at current position.");
-  setFlightMode("POSHOLD");
-  
-  // Save current position as the position hold waypoint
-  if (home_pose_set_) {
-    position_hold_waypoint_ = current_waypoint_;
-    RCLCPP_INFO(this->get_logger(), 
-        "Storing position hold at: (%.2f, %.2f, %.2f)",
-        position_hold_waypoint_.pose.position.x,
-        position_hold_waypoint_.pose.position.y,
-        position_hold_waypoint_.pose.position.z);
-  }
-}
 
 //=============================================================================
 // sendConditionYaw
@@ -1658,7 +1572,7 @@ void BlueROVBridge::sendGlobalWaypoint(int32_t lat_int, int32_t lon_int, float a
   if (!guided_mode_active_ && !mode_change_requested_) {
     RCLCPP_WARN(this->get_logger(), 
         "Vehicle not in GUIDED mode. Setting GUIDED mode before sending global waypoint.");
-    setGuidedMode();
+    setFlightMode("GUIDED");
     return;
   }
   

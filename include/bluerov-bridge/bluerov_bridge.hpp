@@ -10,6 +10,9 @@
 #include "nav_msgs/msg/path.hpp"                     // For path of waypoints
 #include "std_msgs/msg/bool.hpp"                     // For waypoint reached notification
 
+// AUV-specific topic names
+#include "auv_msgs_ros2/topicnames.hpp"
+
 // We will use Eigen for the NED->ENU transform
 #include <Eigen/Dense>
 
@@ -50,14 +53,14 @@ private:
     //--------------------------------------------------------------------------
     // ROS Publishers & Subscribers
     //--------------------------------------------------------------------------
-    rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr pose_actual_pub_;
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocity_actual_pub_;
-    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr waypoint_reached_pub_;
+    rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr poseActualPublisher_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocityActualPublisher_;
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr waypointReachedPublisher_;
 
-    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr velocity_sub_;
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr kcl_state_sub_;
-    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr waypoint_sub_;
-    rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
+    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr velocityDesiredSubscription_;
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr kclStateSubscription_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr waypointSubscription_;
+    rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr pathSubscription_;
 
     //--------------------------------------------------------------------------
     // Timers
@@ -172,7 +175,7 @@ private:
     /**
      * @brief Process velocity commands from ROS
      */
-    void velocityCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
+    void velocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
     
     /**
      * @brief Process state change requests
@@ -211,11 +214,6 @@ private:
     bool isArmed();
     
     /**
-     * @brief Set ArduSub to GUIDED mode for waypoint navigation
-     */
-    void setGuidedMode();
-    
-    /**
      * @brief Send waypoint to ArduSub in NED coordinates
      */
     void sendWaypointToArdupilot(const geometry_msgs::msg::PoseStamped& waypoint);
@@ -225,19 +223,6 @@ private:
      */
     void convertENUtoNED(const geometry_msgs::msg::PoseStamped& enu, mavlink_set_position_target_local_ned_t& ned);
 
-    /**
-     * @brief Set ArduSub to POSHOLD mode for position maintenance
-     * 
-     * This method:
-     * 1. Sends the SET_MODE command to ArduSub with custom_mode=16 (POSHOLD)
-     * 2. Updates the internal state to reflect position hold is active
-     * 3. Disables waypoint navigation and guided mode
-     * 4. Stores the current position for reference
-     * 
-     * Position hold mode is used after completing waypoints to maintain position.
-     */
-    void setPosHoldMode();
-    
     /**
      * @brief Set flight mode without changing arm state
      * 
