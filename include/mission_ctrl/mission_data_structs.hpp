@@ -1,0 +1,325 @@
+#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <libconfig.h++>
+
+#include "ctrl_toolbox/HelperFunctions.h"
+#include "rclcpp/rclcpp.hpp"
+
+namespace rami {
+
+enum BuoyAction {
+    ClockWiseRotation = 0,
+    CounterClockWiseRotation = 1,
+    GoUp = 2,
+    GoDown = 3
+};
+inline std::string BuoyActionToString(BuoyAction action)
+{
+    switch (action) {
+    case ClockWiseRotation:
+        return "ClockWiseRotation";
+    case CounterClockWiseRotation:
+        return "CounterClockWiseRotation";
+    case GoUp:
+        return "GoUp";
+    case GoDown:
+        return "GoDown";
+    default:
+        return "Unknown";
+    }
+}
+enum BuoyColor {
+    White = 0,
+    Yellow = 1,
+    Red = 2,
+    Black = 3
+};
+inline std::string BuoyColorToString(BuoyColor color)
+{
+    switch (color) {
+    case White:
+        return "White";
+    case Yellow:
+        return "Yellow";
+    case Red:
+        return "Red";
+    case Black:
+        return "Black";
+    default:
+        return "Unknown";
+    }
+}
+struct BuoysArea {
+    bool enabled = false;
+    ctb::LatLong centroid;
+    std::vector<double> size;
+    double orientation;
+
+    friend std::ostream& operator<<(std::ostream& os, BuoysArea const& area)
+    {
+        os << "BuoysArea {\n";
+        os << "  enabled: " << std::boolalpha << area.enabled << "\n";
+        os << "  centroid: (" << area.centroid.latitude << ", " << area.centroid.longitude << ")\n";
+        os << "  size: [";
+        for (size_t i = 0; i < area.size.size(); ++i) {
+            os << area.size[i];
+            if (i != area.size.size() - 1)
+                os << ", ";
+        }
+        os << "]\n";
+        os << "  orientation: " << area.orientation << "\n";
+        os << "}\n";
+        return os;
+    }
+};
+
+struct PipelinePipe {
+    uint number;
+    double angleWithNorth;
+    ctb::LatLong position;
+
+    friend std::ostream& operator<<(std::ostream& os, const PipelinePipe& pipe)
+    {
+        os << "PipelinePipe {\n";
+        os << "  number: " << pipe.number << "\n";
+        os << "  angleWithNorth: " << pipe.angleWithNorth << "\n";
+        os << "  position: (" << pipe.position.latitude << ", " << pipe.position.longitude << ")\n";
+        os << "}\n";
+        return os;
+    }
+};
+struct PipelineStructure {
+    uint id;
+    ctb::LatLong centroid;
+
+    friend std::ostream& operator<<(std::ostream& os, const PipelineStructure& structure)
+    {
+        os << "PipelineStructure {\n";
+        os << "  id: " << structure.id << "\n";
+        os << "  centroid: (" << structure.centroid.latitude << ", " << structure.centroid.longitude << ")\n";
+        os << "}\n";
+        return os;
+    }
+};
+
+struct TaskBenchMarkSettings {
+    std::vector<PipelineStructure> pipelineStructures;
+    uint selectedPipelineStructureId;
+    BuoysArea buoysArea;
+
+    TaskBenchMarkSettings() = default;
+
+    virtual bool ConfigureFromFile(libconfig::Config& confObj)
+    {
+        const libconfig::Setting& root = confObj.getRoot();
+        const libconfig::Setting& pipelineStructuresSetting = root["pipelineStructures"];
+        for (int i = 0; i < pipelineStructuresSetting.getLength(); ++i) {
+            const libconfig::Setting& pipelineStructure = pipelineStructuresSetting[i];
+            PipelineStructure pStruct;
+            pStruct.id = static_cast<uint>(i + 1);
+            if (!LatLongFromConfig(pipelineStructure, pStruct.centroid, "centroid")) {
+                std::cerr << "Failed to load centroid from file" << std::endl;
+                return false;
+            };
+            pipelineStructures.push_back(pStruct);
+        }
+        if (!ctb::GetParam(confObj, selectedPipelineStructureId, "selectedPipelineStructureId"))
+            return false;
+
+        if (!ctb::GetParam(confObj, buoysArea.enabled, "enableBuoysArea"))
+            return false;
+        if (buoysArea.enabled) {
+            if (!LatLongFromConfig(root, buoysArea.centroid, "buoysAreaCentroid"))
+                return false;
+            Eigen::VectorXd sizeTmp;
+            if (!ctb::GetParamVector(confObj, sizeTmp, "buoysAreaSize"))
+                return false;
+            buoysArea.size.push_back(sizeTmp[0]);
+            buoysArea.size.push_back(sizeTmp[1]);
+            if (!ctb::GetParam(root, buoysArea.orientation, "buoysAreaOrientation"))
+                return false;
+        }
+
+        return true;
+    }
+
+    bool LatLongFromConfig(const libconfig::Setting& confObj, ctb::LatLong& latLong, const std::string& paramName)
+    {
+        Eigen::VectorXd latLongTmp;
+        if (!ctb::GetParamVector(confObj, latLongTmp, paramName))
+            return false;
+        latLong.latitude = latLongTmp[0];
+        latLong.longitude = latLongTmp[1];
+        return true;
+    }
+
+    bool GetPipelinePipesFromFile(libconfig::Config& confObj, std::vector<PipelinePipe>& pipelinePipes)
+    {
+        const libconfig::Setting& root = confObj.getRoot();
+        const libconfig::Setting& pipelinePipesSetting = root["pipelinePipes"];
+        for (int i = 0; i < pipelinePipesSetting.getLength(); ++i) {
+            const libconfig::Setting& pipelinePipeSetting = pipelinePipesSetting[i];
+            PipelinePipe pipe;
+            if (!ctb::GetParam(pipelinePipeSetting, pipe.number, "number"))
+                return false;
+            if (!ctb::GetParam(pipelinePipeSetting, pipe.angleWithNorth, "angleWithNorth"))
+                return false;
+            if (!LatLongFromConfig(pipelinePipeSetting, pipe.position, "centroid"))
+                return false;
+            pipelinePipes.push_back(pipe);
+        }
+        return true;
+    }
+
+    bool GetBuoysActionsFromFile(libconfig::Config& confObj, std::map<BuoyAction, BuoyColor>& buoysActionsMap)
+    {
+        const libconfig::Setting& root = confObj.getRoot();
+        const libconfig::Setting& buoysActions = root["buoysActions"];
+        uint color;
+        if (!ctb::GetParam(buoysActions, color, "clockWiseRotation"))
+            return false;
+        buoysActionsMap.emplace(ClockWiseRotation, static_cast<BuoyColor>(color));
+        if (!ctb::GetParam(buoysActions, color, "counterClockWiseRotation"))
+            return false;
+        buoysActionsMap.emplace(CounterClockWiseRotation, static_cast<BuoyColor>(color));
+        if (!ctb::GetParam(buoysActions, color, "goUp"))
+            return false;
+        buoysActionsMap.emplace(GoUp, static_cast<BuoyColor>(color));
+        if (!ctb::GetParam(buoysActions, color, "goDown"))
+            return false;
+        buoysActionsMap.emplace(GoDown, static_cast<BuoyColor>(color));
+        return true;
+    }
+
+    virtual void dump(std::ostream& os) const
+    {
+        os << "==== TaskBenchMarkSettings ====\n";
+        os << "PipelineStructures:\n";
+        for (auto const& ps : pipelineStructures)
+            os << ps;
+        os << "SelectedPipelineStructureId: " << selectedPipelineStructureId << "\n";
+        os << "BuoysArea:\n"
+           << buoysArea;
+    }
+
+    // 2) Make operator<< non‐overload, always dispatch via dump()
+    friend std::ostream& operator<<(std::ostream& os, TaskBenchMarkSettings const& s)
+    {
+        s.dump(os);
+        return os;
+    }
+};
+
+struct Inspection : public TaskBenchMarkSettings {
+    uint numberOfBuoys;
+    std::map<BuoyAction, BuoyColor> buoysActions;
+    std::vector<PipelinePipe> pipelinePipes;
+
+    Inspection() = default;
+
+    bool ConfigureFromFile(libconfig::Config& confObj) override
+    {
+        if (!TaskBenchMarkSettings::ConfigureFromFile(confObj))
+            return false; // Call the base class code first!
+        if (!ctb::GetParam(confObj, numberOfBuoys, "numberOfBuoys"))
+            return false;
+        if (!GetBuoysActionsFromFile(confObj, buoysActions))
+            return false;
+        if (!GetPipelinePipesFromFile(confObj, pipelinePipes))
+            return false;
+        return true;
+    }
+
+    void dump(std::ostream& os) const override
+    {
+        TaskBenchMarkSettings::dump(os);
+        os << "======= Inspection =======\n";
+        os << "NumberOfBuoys: " << numberOfBuoys << "\n";
+        os << "BuoysActions:\n";
+        for (auto const& a : buoysActions)
+            os << "  " << BuoyActionToString(a.first)
+               << " -> " << BuoyColorToString(a.second) << "\n";
+        os << "PipelinePipes:\n";
+        for (auto const& p : pipelinePipes)
+            os << p;
+        os << "===========================\n";
+    }
+};
+
+struct Intervention : public TaskBenchMarkSettings {
+    uint numberOfMainPipeDamageMarkers;
+    PipelinePipe damagedPipeOnPipeline;
+
+    Intervention() = default;
+
+    bool ConfigureFromFile(libconfig::Config& confObj) override
+    {
+        if (!TaskBenchMarkSettings::ConfigureFromFile(confObj))
+            return false; // Call the base class code first!
+        if (!ctb::GetParam(confObj, numberOfMainPipeDamageMarkers, "numberOfMainPipeDamageMarkers"))
+            return false;
+
+        const libconfig::Setting& root = confObj.getRoot();
+        const libconfig::Setting& pipelinePipeSetting = root["damagedPipeOnPipeline"];
+        if (!ctb::GetParam(pipelinePipeSetting, damagedPipeOnPipeline.number, "number"))
+            return false;
+        if (!ctb::GetParam(pipelinePipeSetting, damagedPipeOnPipeline.angleWithNorth, "angleWithNorth"))
+            return false;
+        if (!LatLongFromConfig(pipelinePipeSetting, damagedPipeOnPipeline.position, "centroid"))
+            return false;
+
+        return true;
+    }
+
+    void dump(std::ostream& os) const override
+    {
+        TaskBenchMarkSettings::dump(os);
+        os << "======= Intervention =======\n";
+        os << "NumberOfMainPipeDamageMarkers: " << numberOfMainPipeDamageMarkers << "\n";
+        os << "DamagedPipeOnPipeline:\n"
+           << damagedPipeOnPipeline;
+        os << "=============================\n";
+    }
+};
+
+struct InspectionAndIntervention : public TaskBenchMarkSettings {
+    uint numberOfMainPipeDamageMarkers;
+    uint numberOfBuoys;
+    std::map<BuoyAction, BuoyColor> buoysActions;
+    std::vector<PipelinePipe> pipelinePipes;
+
+    InspectionAndIntervention() = default;
+
+    bool ConfigureFromFile(libconfig::Config& confObj) override
+    {
+        if (!TaskBenchMarkSettings::ConfigureFromFile(confObj))
+            return false; // Call the base class code first!
+        if (!ctb::GetParam(confObj, numberOfMainPipeDamageMarkers, "numberOfMainPipeDamageMarkers"))
+            return false;
+        if (!ctb::GetParam(confObj, numberOfBuoys, "numberOfBuoys"))
+            return false;
+        if (!GetBuoysActionsFromFile(confObj, buoysActions))
+            return false;
+        if (!GetPipelinePipesFromFile(confObj, pipelinePipes))
+            return false;
+        return true;
+    }
+    void dump(std::ostream& os) const override
+    {
+        TaskBenchMarkSettings::dump(os);
+        os << "======= InspectionAndIntervention =======\n";
+        os << "NumberOfMainPipeDamageMarkers: " << numberOfMainPipeDamageMarkers << "\n";
+        os << "NumberOfBuoys: " << numberOfBuoys << "\n";
+        os << "BuoysActions:\n";
+        for (const auto& action : buoysActions) {
+            os << "  Action: " << BuoyActionToString(action.first)
+               << " -> Color: " << BuoyColorToString(action.second) << "\n";
+        }
+        os << "PipelinePipes:\n";
+        for (const auto& pipe : pipelinePipes) {
+            os << pipe;
+        }
+        os << "==========================================\n";
+    }
+};
+
+}
