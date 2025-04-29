@@ -7,6 +7,9 @@ namespace auv_core_helper {
 
 namespace topicnames {
 
+// PERCEPTION
+const std::string obstacles = "/auv/perception/obstacles";
+
 // CTRL
 const std::string pose_desired = "/auv/pose_desired";
 const std::string velocity_desired = "/auv/velocity_desired";
