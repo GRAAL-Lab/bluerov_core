@@ -1,10 +1,22 @@
+#ifndef MISSION_CTRL_DATA_STRUCTS_HPP
+#define MISSION_CTRL_DATA_STRUCTS_HPP
+
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <libconfig.h++>
+#include <queue>
 
 #include "ctrl_toolbox/HelperFunctions.h"
+#include "mission_ctrl/mission_ctrl_defines.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-namespace rami {
+namespace mission {
+
+    
+struct ControlData {
+    ctb::LatLong inertialF_linearPosition;
+    double depth;
+    rml::EulerRPY bodyF_angularPosition;
+};
 
 enum BuoyAction {
     ClockWiseRotation = 0,
@@ -101,12 +113,15 @@ struct PipelineStructure {
     }
 };
 
-struct TaskBenchMarkSettings {
+struct TaskBenchmarkSettings {
+    std::string taskType;
+    std::queue<std::pair<std::string, std::string>> taskPhases;
+
     std::vector<PipelineStructure> pipelineStructures;
     uint selectedPipelineStructureId;
     BuoysArea buoysArea;
 
-    TaskBenchMarkSettings() = default;
+    TaskBenchmarkSettings() = default;
 
     virtual bool ConfigureFromFile(libconfig::Config& confObj)
     {
@@ -141,6 +156,8 @@ struct TaskBenchMarkSettings {
 
         return true;
     }
+
+    protected:
 
     bool LatLongFromConfig(const libconfig::Setting& confObj, ctb::LatLong& latLong, const std::string& paramName)
     {
@@ -192,7 +209,6 @@ struct TaskBenchMarkSettings {
 
     virtual void dump(std::ostream& os) const
     {
-        os << "==== TaskBenchMarkSettings ====\n";
         os << "PipelineStructures:\n";
         for (auto const& ps : pipelineStructures)
             os << ps;
@@ -202,24 +218,31 @@ struct TaskBenchMarkSettings {
     }
 
     // 2) Make operator<< non‐overload, always dispatch via dump()
-    friend std::ostream& operator<<(std::ostream& os, TaskBenchMarkSettings const& s)
+    friend std::ostream& operator<<(std::ostream& os, TaskBenchmarkSettings const& s)
     {
         s.dump(os);
         return os;
     }
 };
 
-struct Inspection : public TaskBenchMarkSettings {
+struct Inspection : public TaskBenchmarkSettings {
+    ctb::LatLong uavWaypoint;
     uint numberOfBuoys;
     std::map<BuoyAction, BuoyColor> buoysActions;
     std::vector<PipelinePipe> pipelinePipes;
 
-    Inspection() = default;
+    Inspection()
+    {
+        taskType = taskBenchmarks::INSPECTION;
+    }
 
     bool ConfigureFromFile(libconfig::Config& confObj) override
     {
-        if (!TaskBenchMarkSettings::ConfigureFromFile(confObj))
+        if (!TaskBenchmarkSettings::ConfigureFromFile(confObj))
             return false; // Call the base class code first!
+        const libconfig::Setting& root = confObj.getRoot();
+        if (!LatLongFromConfig(root, uavWaypoint, "uavWaypoint"))
+            return false;
         if (!ctb::GetParam(confObj, numberOfBuoys, "numberOfBuoys"))
             return false;
         if (!GetBuoysActionsFromFile(confObj, buoysActions))
@@ -231,8 +254,9 @@ struct Inspection : public TaskBenchMarkSettings {
 
     void dump(std::ostream& os) const override
     {
-        TaskBenchMarkSettings::dump(os);
-        os << "======= Inspection =======\n";
+        TaskBenchmarkSettings::dump(os);
+        os << "\n";
+        os << "UavWaypoint: (" << uavWaypoint.latitude << ", " << uavWaypoint.longitude << ")\n";
         os << "NumberOfBuoys: " << numberOfBuoys << "\n";
         os << "BuoysActions:\n";
         for (auto const& a : buoysActions)
@@ -245,15 +269,18 @@ struct Inspection : public TaskBenchMarkSettings {
     }
 };
 
-struct Intervention : public TaskBenchMarkSettings {
+struct Intervention : public TaskBenchmarkSettings {
     uint numberOfMainPipeDamageMarkers;
     PipelinePipe damagedPipeOnPipeline;
 
-    Intervention() = default;
+    Intervention()
+    {
+        taskType = taskBenchmarks::INTERVENTION;
+    }
 
     bool ConfigureFromFile(libconfig::Config& confObj) override
     {
-        if (!TaskBenchMarkSettings::ConfigureFromFile(confObj))
+        if (!TaskBenchmarkSettings::ConfigureFromFile(confObj))
             return false; // Call the base class code first!
         if (!ctb::GetParam(confObj, numberOfMainPipeDamageMarkers, "numberOfMainPipeDamageMarkers"))
             return false;
@@ -272,8 +299,8 @@ struct Intervention : public TaskBenchMarkSettings {
 
     void dump(std::ostream& os) const override
     {
-        TaskBenchMarkSettings::dump(os);
-        os << "======= Intervention =======\n";
+        TaskBenchmarkSettings::dump(os);
+        os << "\n";
         os << "NumberOfMainPipeDamageMarkers: " << numberOfMainPipeDamageMarkers << "\n";
         os << "DamagedPipeOnPipeline:\n"
            << damagedPipeOnPipeline;
@@ -281,17 +308,20 @@ struct Intervention : public TaskBenchMarkSettings {
     }
 };
 
-struct InspectionAndIntervention : public TaskBenchMarkSettings {
+struct InspectionAndIntervention : public TaskBenchmarkSettings {
     uint numberOfMainPipeDamageMarkers;
     uint numberOfBuoys;
     std::map<BuoyAction, BuoyColor> buoysActions;
     std::vector<PipelinePipe> pipelinePipes;
 
-    InspectionAndIntervention() = default;
+    InspectionAndIntervention()
+    {
+        taskType = taskBenchmarks::INSPECTION_AND_INTERVENTION;
+    }
 
     bool ConfigureFromFile(libconfig::Config& confObj) override
     {
-        if (!TaskBenchMarkSettings::ConfigureFromFile(confObj))
+        if (!TaskBenchmarkSettings::ConfigureFromFile(confObj))
             return false; // Call the base class code first!
         if (!ctb::GetParam(confObj, numberOfMainPipeDamageMarkers, "numberOfMainPipeDamageMarkers"))
             return false;
@@ -305,8 +335,8 @@ struct InspectionAndIntervention : public TaskBenchMarkSettings {
     }
     void dump(std::ostream& os) const override
     {
-        TaskBenchMarkSettings::dump(os);
-        os << "======= InspectionAndIntervention =======\n";
+        TaskBenchmarkSettings::dump(os);
+        os << "\n";
         os << "NumberOfMainPipeDamageMarkers: " << numberOfMainPipeDamageMarkers << "\n";
         os << "NumberOfBuoys: " << numberOfBuoys << "\n";
         os << "BuoysActions:\n";
@@ -323,3 +353,5 @@ struct InspectionAndIntervention : public TaskBenchMarkSettings {
 };
 
 }
+
+#endif // MISSION_CTRL_DATA_STRUCTS_HPP

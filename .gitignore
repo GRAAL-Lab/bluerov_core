@@ -214,6 +214,3 @@ qtcreator-*
 # ROS custom files
 CATKIN_IGNORE
 COLCON_IGNORE
-
-ulisse_ctrl/cmake-build-debug/*
-Experiments/*
