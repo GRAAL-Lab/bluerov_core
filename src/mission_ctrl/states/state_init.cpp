@@ -17,8 +17,8 @@ namespace states {
         while(!taskData_->taskPhases.empty()) taskData_->taskPhases.pop();
         if(taskData_->taskType == taskBenchmarks::INSPECTION) {
             taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, opis::uavWaypoint));
-            // taskData_->taskPhases.push_back(std::make_pair(states::ID::searchForObject, opis::gate));
-            // taskData_->taskPhases.push_back(std::make_pair(states::ID::crossGate, ""));
+            taskData_->taskPhases.push(std::make_pair(states::ID::searchForObject, opis::gate));
+            taskData_->taskPhases.push(std::make_pair(states::ID::crossGate, ""));
             // taskData_->taskPhases.push_back(std::make_pair(states::ID::searchBuoyArea, ""));
             // taskData_->taskPhases.push_back(std::make_pair(states::ID::moveToWp, opis::pipelineStructure));
             // taskData_->taskPhases.push_back(std::make_pair(states::ID::inspectPipes, ""));

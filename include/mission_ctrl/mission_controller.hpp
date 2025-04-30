@@ -7,6 +7,8 @@
 #include "mission_ctrl/states/state_init.hpp"
 #include "mission_ctrl/states/state_latlong.hpp"
 #include "mission_ctrl/states/state_homing.hpp"
+#include "mission_ctrl/states/state_search_object.hpp"
+#include "mission_ctrl/states/state_cross_gate.hpp"
 
 #include "auv_core_helper/msg/obstacle_list.hpp"
 #include "auv_core_helper/topicnames.hpp"
@@ -26,6 +28,8 @@ class MissionController : public rclcpp::Node {
 
     std::shared_ptr<states::StateInit> stateInit_;
     std::shared_ptr<states::StateLatLong> stateLatLong_;
+    std::shared_ptr<states::StateSearchObject> stateSearchObject_;
+    std::shared_ptr<states::StateCrossGate> stateCrossGate_;
     std::shared_ptr<states::StateHoming> stateHoming_;
     std::unordered_map<std::string, std::shared_ptr<states::StateBase>> statesMap_;
 

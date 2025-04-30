@@ -11,7 +11,6 @@
 
 namespace mission {
 
-    
 struct ControlData {
     ctb::LatLong inertialF_linearPosition;
     double depth;
@@ -43,7 +42,8 @@ enum BuoyColor {
     White = 0,
     Yellow = 1,
     Red = 2,
-    Black = 3
+    Black = 3,
+    Orange = 4
 };
 inline std::string BuoyColorToString(BuoyColor color)
 {
@@ -56,10 +56,51 @@ inline std::string BuoyColorToString(BuoyColor color)
         return "Red";
     case Black:
         return "Black";
+    case Orange:
+        return "Orange";
     default:
         return "Unknown";
     }
 }
+
+struct Buoy {
+    ctb::LatLong position;
+    double radius;
+    BuoyColor color;
+};
+
+struct GateBuoy : public Buoy {
+    GateBuoy(ctb::LatLong pos)
+        : Buoy { pos, 0.1, BuoyColor::Orange }
+    {
+    }
+};
+
+struct DtcBuoy : public Buoy {
+    DtcBuoy(ctb::LatLong pos, BuoyColor color)
+        : Buoy { pos, 0.1, color }
+    {
+    }
+};
+
+struct Gate {
+    GateBuoy buoy1;
+    GateBuoy buoy2;
+    double distanceTolerance = 0.5;
+    double expectedDistance = 2.0;
+
+    Gate(GateBuoy& b1, GateBuoy& b2)
+        : buoy1(b1)
+        , buoy2(b2)
+    {
+        Eigen::Vector3d distanceVector;
+        ctb::LatLong2LocalNED(b1.position, 0, b2.position, distanceVector);
+        if (distanceVector.norm() > expectedDistance + distanceTolerance || distanceVector.norm() < expectedDistance - distanceTolerance) {
+            throw std::runtime_error("Gate buoys are too far apart!");
+        }
+    }
+};
+
 struct BuoysArea {
     bool enabled = false;
     ctb::LatLong centroid;
@@ -157,8 +198,7 @@ struct TaskBenchmarkSettings {
         return true;
     }
 
-    protected:
-
+protected:
     bool LatLongFromConfig(const libconfig::Setting& confObj, ctb::LatLong& latLong, const std::string& paramName)
     {
         Eigen::VectorXd latLongTmp;

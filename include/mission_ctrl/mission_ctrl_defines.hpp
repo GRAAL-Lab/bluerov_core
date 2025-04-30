@@ -9,16 +9,13 @@ namespace taskBenchmarks {
     const std::string INSPECTION = "INSPECTION";
     const std::string INTERVENTION = "INTERVENTION";
     const std::string INSPECTION_AND_INTERVENTION = "INSPECTION & INTERVENTION";
-
 }
 
 namespace states {
-
     namespace ID {
-
         const std::string init = "Init";
-        const std::string moveToWp = "MoveToWp"; 
-        const std::string searchForObject = "SearchForObject"; //gate, main pipe, manipulation console
+        const std::string moveToWp = "MoveToWp";
+        const std::string searchForObject = "SearchForObject"; // gate, main pipe, manipulation console
         const std::string crossGate = "CrossGate";
         const std::string searchBuoyArea = "SearchBuoyArea";
         const std::string inspectBuoy = "InspectBuoy";
@@ -37,16 +34,7 @@ namespace opis {
     const std::string mainPipe = "MainPipe";
     const std::string manipulationConsole = "ManipulationConsole";
     const std::string pipelineStructure = "PipelineStructure";
-    
 }
-
-// namespace events {
-    
-//     namespace ID {
-//         const std::string rcvWp = "ReceivedWp";
-//     }
-// }
-
 
 }
 
