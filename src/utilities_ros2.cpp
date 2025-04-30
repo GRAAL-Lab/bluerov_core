@@ -145,65 +145,6 @@ void UtilitiesROS2::PublishPose(const rclcpp::Publisher<geometry_msgs::msg::Pose
     pub->publish(msg);
 }
 
-void UtilitiesROS2::PublishPyramids(const rclcpp::Publisher<obstacle_tracking_msg::msg::PyramidArray>::SharedPtr pub, const rclcpp::Time t, std::map<int, odtc::Pyramid> &pyrs, std::map<size_t, std::vector<size_t>> &obstacleId2PyramidId) {
-    
-    obstacle_tracking_msg::msg::PyramidArray msg;
-    msg.header.stamp = t;
-    
-    for (const auto &c : pyrs) {
-        auto p = c.second;
-        auto box = *p.Box();
-        msg.sensor_names.emplace_back(p.SensorId());
-        
-        obstacle_tracking_msg::msg::Pyramid pMsg;
-        pMsg.header.stamp = t;
-        pMsg.id = box.Id();
-        auto planes = p.Planes();
-
-        auto planeBottom = planes[p.BOTTOM];
-        auto planeTop = planes[p.TOP];
-        auto planeLeft = planes[p.LEFT];
-        auto planeRight = planes[p.RIGHT];
-
-        pMsg.plane_bottom = { planeBottom[0], planeBottom[1], planeBottom[2], planeBottom[3] };
-        pMsg.plane_top = { planeTop[0], planeTop[1], planeTop[2], planeTop[3] };
-        pMsg.plane_left = { planeLeft[0], planeLeft[1], planeLeft[2], planeLeft[3] };
-        pMsg.plane_right = { planeRight[0], planeRight[1], planeRight[2], planeRight[3] };
-
-        pMsg.box = GetBox2DMsg(t, box);
-
-        for (const auto &obstaclePyramidsPair : obstacleId2PyramidId) {
-            auto ov = obstaclePyramidsPair.second;
-            if (std::find(ov.begin(), ov.end(), p.Id()) != ov.end()) {
-                //std::cerr << "[Pub Pyr!!!!??!] obstacle id = " << obstaclePyramidsPair.first << ", pyr id is " << p.Id() << " with sensor " << p.SensorId() << std::endl;
-                pMsg.tracks_id.emplace_back(obstaclePyramidsPair.first);
-            }
-        }
-
-        /*if (pMsg.tracks_id.size() > 0) {
-            std::cerr << "Pyr " << p.Id() << " -> obstacle tracks are ";
-            for (auto c : pMsg.tracks_id) std::cerr << c << " ";
-            std::cerr << std::endl;
-        }*/
-
-        msg.pyramids.emplace_back(pMsg);
-    }
-    pub->publish(msg);
-}
-
-void UtilitiesROS2::PublishSensorFoV(const rclcpp::Publisher<obstacle_tracking_msg::msg::SliceAngles>::SharedPtr pub, const rclcpp::Time t, const std::map<std::string, std::pair<double,double>> &data) {
-    obstacle_tracking_msg::msg::SliceAngles msg;
-    msg.header.stamp = t;
-
-    for (const auto &p : data) {
-        msg.slice_names.emplace_back(p.first);
-        msg.slice_frames.emplace_back("Vehicle");
-        msg.yaw_max.emplace_back(p.second.second);
-        msg.yaw_min.emplace_back(p.second.first);
-    }
-    pub->publish(msg);
-}
-
 bool UtilitiesROS2::ReadImageFromCache(const message_filters::Cache<sensor_msgs::msg::Image> &imgCache, const rclcpp::Time stamp, sensor_msgs::msg::Image::ConstPtr &imageMsgPtr, const double maxTimeLag_s) {
     imageMsgPtr = imgCache.getElemBeforeTime(stamp);
     //std::cerr << "imageMsgPtr is null?" << (imageMsgPtr == nullptr) << std::endl;
@@ -605,19 +546,7 @@ std::vector<odtc::Obstacle<2>> UtilitiesROS2::GetObstaclesFromROSMsg(const obsta
             result.emplace_back(obstacle);
         }
     }
-
-    if (msg.reg.size() > 0) {
-        for (const auto &r : msg.reg) {
-            Eigen::Map<const Eigen::Matrix<double, 4, 4>> Ttemp(r.transf_registr.data.data());
-            Eigen::TransformationMatrix T = Ttemp;
-            Eigen::MatrixXd reg_cov;
-            reg_cov.resize(6,6);
-            reg_cov.diagonal().setConstant(0.1); // TODO replace
-            odtc::RegistrationData rd(T, reg_cov, r.dt);
-            trackId2WorldFRegData_.insert({r.id, rd});
-        }
-    }
-
+    
     geoCentroid[0] = msg.geo_centroid.position.latitude;
     geoCentroid[1] = msg.geo_centroid.position.longitude;
     geoCentroid[2] = msg.geo_centroid.position.altitude;

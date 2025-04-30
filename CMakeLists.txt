@@ -18,6 +18,7 @@ find_package(ctrl_toolbox REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(obstacle_tracking_msg REQUIRED)
+find_package(image_pipeline_msgs REQUIRED)
 find_package(detav_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(rclpy REQUIRED)
@@ -45,33 +46,34 @@ include_directories(
   ${pcl_conversions_INCLUDE_DIRS}
   ${obstacle_tracking_msg_INCLUDE_DIRS}
   ${detav_msgs_INCLUDE_DIRS}
+  ${image_pipeline_msgs_INCLUDE_DIRS}
   ${ulisse_msgs_INCLUDE_DIRS}
   ${GeographicLib_INCLUDE_DIRS}
 )
 
 add_executable(marine_detector_node src/marine_detector_node.cpp src/marine_detector.cpp src/marine_detector_ros2.cpp src/offline_detection_utils.cpp src/utilities_ros2.cpp)
-ament_target_dependencies(marine_detector_node rclcpp message_filters std_msgs nav_msgs sensor_msgs PCL obstacle_tracking_msg detav_msgs geographic_msgs)
+ament_target_dependencies(marine_detector_node rclcpp message_filters std_msgs nav_msgs sensor_msgs PCL obstacle_tracking_msg image_pipeline_msgs detav_msgs geographic_msgs)
 install(TARGETS
   marine_detector_node
   DESTINATION lib/${PROJECT_NAME})
-target_include_directories(marine_detector_node PRIVATE include ${CMAKE_BINARY_DIR}/rosidl_generated_include ${detav_msgs_INCLUDE_DIRS} ${GeographicLib_INCLUDE_DIRS} ${pcl_conversions_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${std_msgs_INCLUDE_DIRS} ${geographic_msgs_INCLUDE_DIRS})
+target_include_directories(marine_detector_node PRIVATE include ${CMAKE_BINARY_DIR}/rosidl_generated_include ${image_pipeline_msgs_INCLUDE_DIRS} ${detav_msgs_INCLUDE_DIRS} ${GeographicLib_INCLUDE_DIRS} ${pcl_conversions_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${std_msgs_INCLUDE_DIRS} ${geographic_msgs_INCLUDE_DIRS})
 target_link_libraries(marine_detector_node ${ament_index_cpp_LIBRARIES} ${ODTC_LIBRARY} ${RML_LIBRARY} ${GEOGRAPHIC_LIBRARY} ${pcl_conversions_LIBRARIES} ${PCL_LIBRARY} ${LIBCONFIG_LIBRARY} ${OpenCV_LIBS})
 
 add_executable(marine_tracking_node src/marine_tracking_node.cpp src/marine_tracking_ros2.cpp src/offline_detection_utils.cpp src/utilities_ros2.cpp)
-ament_target_dependencies(marine_tracking_node rclcpp message_filters std_msgs nav_msgs sensor_msgs PCL obstacle_tracking_msg detav_msgs geographic_msgs)
+ament_target_dependencies(marine_tracking_node rclcpp message_filters std_msgs nav_msgs sensor_msgs PCL obstacle_tracking_msg image_pipeline_msgs detav_msgs geographic_msgs)
 install(TARGETS
 marine_tracking_node
   DESTINATION lib/${PROJECT_NAME})
-target_include_directories(marine_tracking_node PRIVATE include ${CMAKE_BINARY_DIR}/rosidl_generated_include ${detav_msgs_INCLUDE_DIRS} ${GeographicLib_INCLUDE_DIRS} ${pcl_conversions_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${std_msgs_INCLUDE_DIRS})
+target_include_directories(marine_tracking_node PRIVATE include ${CMAKE_BINARY_DIR}/rosidl_generated_include ${image_pipeline_msgs_INCLUDE_DIRS} ${detav_msgs_INCLUDE_DIRS} ${GeographicLib_INCLUDE_DIRS} ${pcl_conversions_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${std_msgs_INCLUDE_DIRS})
 target_link_libraries(marine_tracking_node ${ament_index_cpp_LIBRARIES} ${ODTC_LIBRARY} ${RML_LIBRARY} ${GEOGRAPHIC_LIBRARY} ${pcl_conversions_LIBRARIES} ${PCL_LIBRARY} ${LIBCONFIG_LIBRARY} ${OpenCV_LIBS})
 
 
 add_executable(test_tmp src/test_pub.cpp)
-ament_target_dependencies(test_tmp rclcpp message_filters std_msgs nav_msgs sensor_msgs PCL obstacle_tracking_msg detav_msgs geographic_msgs)
+ament_target_dependencies(test_tmp rclcpp message_filters std_msgs nav_msgs sensor_msgs PCL obstacle_tracking_msg image_pipeline_msgs detav_msgs geographic_msgs)
 install(TARGETS
 test_tmp
   DESTINATION lib/${PROJECT_NAME})
-target_include_directories(test_tmp PRIVATE include ${CMAKE_BINARY_DIR}/rosidl_generated_include ${detav_msgs_INCLUDE_DIRS} ${GeographicLib_INCLUDE_DIRS} ${pcl_conversions_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${std_msgs_INCLUDE_DIRS})
+target_include_directories(test_tmp PRIVATE include ${CMAKE_BINARY_DIR}/rosidl_generated_include ${image_pipeline_msgs_INCLUDE_DIRS} ${detav_msgs_INCLUDE_DIRS} ${GeographicLib_INCLUDE_DIRS} ${pcl_conversions_INCLUDE_DIRS} ${PCL_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${std_msgs_INCLUDE_DIRS})
 target_link_libraries(test_tmp ${ament_index_cpp_LIBRARIES} ${ODTC_LIBRARY} ${RML_LIBRARY} ${GEOGRAPHIC_LIBRARY} ${pcl_conversions_LIBRARIES} ${PCL_LIBRARY} ${LIBCONFIG_LIBRARY} ${OpenCV_LIBS})
 
 

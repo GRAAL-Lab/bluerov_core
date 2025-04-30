@@ -14,7 +14,6 @@ from obstacle_tracking_msg.msg import BoundingBox2DArray, BoundingBox2D
 
 import time
 
-
 class YOLOImageNode(Node):
     def __init__(self):
         super().__init__('img_detect_node')
@@ -33,7 +32,6 @@ class YOLOImageNode(Node):
         # Load YOLO model (can be a custom model path or "yolov8n.pt" for a small default model)
         self.get_logger().info('Loading YOLO model...')
         self.model = YOLO('/home/lucas/models/rami2.pt') # You can specify a custom model path here
-        #self.model = YOLO('/home/graal/graal_ws/obstacle_detection_analysis_tools/models/yolov8n.pt') # You can specify a custom model path here
         self.get_logger().info('YOLO model loaded successfully!')
         self.br = CvBridge()
 
@@ -145,8 +143,8 @@ class YOLOImageNode(Node):
                 cnt = cnt + 1
 
         # Save the image with bounding boxes to the given path
-        tempYoloSaveDir = "/home/graal/exp_results/rami/"
-        tempYoloSaveDirIMG = "/home/graal/exp_results/ramiIMG/"
+        tempYoloSaveDir = "/home/lucas/exp_results/rami/"
+        tempYoloSaveDirIMG = "/home/lucas/exp_results/ramiIMG/"
         tempYoloSavePath = tempYoloSaveDir + "sim_dtc_" +  str( time.time()) + ".png"
         tempYoloSavePathIMG = tempYoloSaveDirIMG + "sim_" +  str( time.time()) + ".png"
         try:

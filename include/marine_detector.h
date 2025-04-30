@@ -126,12 +126,6 @@ class MarineDetector {
 
     // Flow.
     double ts_ = -1;
-    virtual bool SetWorldF_VehiclePosition() = 0;
-    virtual bool SetWorldF_VehicleOrientation() = 0;
-    virtual bool SetWorldF_VehicleTwist() = 0;
-    virtual bool SetFGRegions() = 0;
-    virtual bool SetPrevTrackInfo() = 0;
-    virtual bool SetAnnotations(std::string camId) = 0;
 
     bool firstRun_;
     bool firstGNSSReceived_;

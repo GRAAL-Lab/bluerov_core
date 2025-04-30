@@ -17,6 +17,8 @@
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
 
+#include <image_pipeline_msgs/msg/pipe_direction.hpp>
+
 #include <geometry_msgs/msg/twist_stamped.hpp>
 #include <geometry_msgs/msg/pose.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
@@ -27,18 +29,17 @@
 #include <detav_msgs/msg/size.hpp>
 #include <detav_msgs/msg/size_with_covariance.hpp>
 
+#include <obstacle_tracking_msg/msg/buoy.hpp>
+#include <obstacle_tracking_msg/msg/marker.hpp>
+#include <obstacle_tracking_msg/msg/pipe.hpp>
+#include <obstacle_tracking_msg/msg/number.hpp>
+#include <obstacle_tracking_msg/msg/obstacles.hpp>
 #include <obstacle_tracking_msg/msg/bounding_box2_d.hpp>
 #include <obstacle_tracking_msg/msg/bounding_box2_d_array.hpp>
-#include <obstacle_tracking_msg/msg/cloud_array.hpp>
 #include <obstacle_tracking_msg/msg/obstacle.hpp>
 #include <obstacle_tracking_msg/msg/obstacle_array.hpp>
-#include <obstacle_tracking_msg/msg/obstacle_array_map.hpp>
 #include <obstacle_tracking_msg/msg/obst_detection_settings.hpp>
 #include <obstacle_tracking_msg/msg/obst_detection_stats.hpp>
-#include <obstacle_tracking_msg/msg/pyramid.hpp>
-#include <obstacle_tracking_msg/msg/pyramid_array.hpp>
-#include <obstacle_tracking_msg/msg/slice_angles.hpp>
-#include <obstacle_tracking_msg/msg/registration_data.hpp>
 
 #include <pcl_conversions/pcl_conversions.h>
 
@@ -79,8 +80,6 @@ class UtilitiesROS2 {
                                             const Eigen::TransformationMatrix T, std::string frames);
     static void PublishStats(const rclcpp::Publisher<obstacle_tracking_msg::msg::ObstDetectionStats>::SharedPtr pub, const rclcpp::Time t,
                                             std::map<std::string, odtc::ClusteringStats> &stats);
-    static void PublishPyramids(const rclcpp::Publisher<obstacle_tracking_msg::msg::PyramidArray>::SharedPtr pub, const rclcpp::Time t, std::map<int, odtc::Pyramid> &pyrs, std::map<size_t, std::vector<size_t>> &obstacleId2PyramidId);
-    static void PublishSensorFoV(const rclcpp::Publisher<obstacle_tracking_msg::msg::SliceAngles>::SharedPtr pub, const rclcpp::Time t, const std::map<std::string, std::pair<double,double>> &data);
 
     // Read from cache
     static bool ReadImageFromCache(const message_filters::Cache<sensor_msgs::msg::Image> &imgCache, const rclcpp::Time stamp, sensor_msgs::msg::Image::ConstPtr &imageMsgPtr, const double maxTimeLag_s);
@@ -101,41 +100,6 @@ class UtilitiesROS2 {
 
     static bool ReadROSObstacleArray(const message_filters::Cache<obstacle_tracking_msg::msg::ObstacleArray> &cache, const rclcpp::Time t,
       obstacle_tracking_msg::msg::ObstacleArray::ConstPtr &obstacles, const double maxTimeLag_s);
-    
-    // Cloud
-    template <unsigned int N>
-    static std::shared_ptr<sensor_msgs::msg::PointCloud2> CloudToCloudMsg(const odtc::PointCloudHandler<N>& cloud) {
-      auto cloudMsg = std::make_shared<sensor_msgs::msg::PointCloud2>();
-      auto pcl = cloud.Cloud();
-      pcl::toROSMsg(pcl, *cloudMsg);
-      return cloudMsg;
-    }
-
-    template <unsigned int N>
-    static void PublishCloud(const rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub, const rclcpp::Time t, const odtc::PointCloudHandler<N>& cloud) {
-      auto cloudMsg = CloudToCloudMsg(cloud);
-      cloudMsg->header.stamp = t;
-      cloudMsg->header.frame_id = cloud.FrameId();
-      pub->publish(*cloudMsg);
-    }
-
-    template <unsigned int N>
-    static void PublishCloudVector(const rclcpp::Publisher<obstacle_tracking_msg::msg::CloudArray>::SharedPtr pub, const rclcpp::Time t, const std::vector<odtc::PointCloudHandler<N>>& clouds) {
-      obstacle_tracking_msg::msg::CloudArray msg;
-    
-      msg.header.stamp = t;
-
-      for (const auto &cloud : clouds) {
-          auto cloudMsg = CloudToCloudMsg(cloud);
-          cloudMsg->header.stamp = t;
-          cloudMsg->header.frame_id = cloud.FrameId();
-          msg.clouds.emplace_back(*cloudMsg);
-      }
-
-      pub->publish(msg);
-
-    }
-
 };
 
 #endif

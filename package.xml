@@ -20,6 +20,7 @@
   <depend>geographic_msgs</depend>
   <depend>nav_msgs</depend>
   <depend>obstacle_tracking_msg</depend>
+  <depend>image_pipeline_msgs</depend>
   <depend>pcl_conversions</depend>
   <depend>detav_msgs</depend>
 
