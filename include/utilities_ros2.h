@@ -50,6 +50,39 @@
 #include <ctrl_toolbox_internal/Futils.h>
 
 
+struct Buoy {
+  size_t id;
+  Eigen::TransformationMatrix wF_pose;
+  std::string color;
+  double radius;
+  std::string notes;
+};
+
+struct Number {
+  size_t id;
+  Eigen::TransformationMatrix wF_pose;
+  std::string bgColor;
+  int number;
+  std::string notes;
+};
+
+struct Marker {
+  size_t id;
+  Eigen::TransformationMatrix wF_pose;
+  std::string color;
+  std::string notes;
+};
+
+struct Pipe {
+  size_t id;
+  Eigen::TransformationMatrix wF_pose;
+  Eigen::TransformationMatrix wF_startPose;
+  Eigen::TransformationMatrix wF_endPose;
+  std::vector<Number> numbers;
+  std::vector<Marker> markers;
+  std::string notes;
+};
+
 enum class TrackType { ENU, IMG };
 
 class UtilitiesROS2 {
@@ -95,11 +128,21 @@ class UtilitiesROS2 {
     static std::vector<odtc::Obstacle<2>> GetObstaclesFromROSMsg(const obstacle_tracking_msg::msg::ObstacleArray &msg, Eigen::Vector3d &geoCentroid);
     static std::vector<odtc::Obstacle<2>> GetObstaclesFromROSMsg(const obstacle_tracking_msg::msg::ObstacleArray &msg, Eigen::Vector3d &geoCentroid, std::map<odtc::TrackId, odtc::RegistrationData>& trackId2WorldFRegData_);
     static std::vector<odtc::Obstacle<2>> GetTracksFromROSMsg(const obstacle_tracking_msg::msg::ObstacleArray &msg);
-    static detav_msgs::msg::ObstacleList FillDetavObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &trck, const Eigen::Vector3d &llhCentroid);
-    static detav_msgs::msg::Obstacle FillDetavObstacleMsg(const odtc::TrackData &tr, const Eigen::Vector3d &llhCentroid);
 
     static bool ReadROSObstacleArray(const message_filters::Cache<obstacle_tracking_msg::msg::ObstacleArray> &cache, const rclcpp::Time t,
       obstacle_tracking_msg::msg::ObstacleArray::ConstPtr &obstacles, const double maxTimeLag_s);
+    static obstacle_tracking_msg::msg::Obstacles FillObstaclesMsg(rclcpp::Time t, const std::vector<Buoy> &b,
+                                                                  const std::vector<Marker> &m, const std::vector<Number> &n,
+                                                                  const std::vector<Pipe> &p);
+
+  static geometry_msgs::msg::PoseWithCovariance EigenToPoseWithCovariance(const Eigen::TransformationMatrix& eigen_pose);
+  static obstacle_tracking_msg::msg::Buoy BuoyToBuoyMsg(const Buoy& buoy);
+  static obstacle_tracking_msg::msg::Number NumberToNumberMsg(const Number& number);
+  static obstacle_tracking_msg::msg::Marker MarkerToMarkerMsg(const Marker& marker);
+  static obstacle_tracking_msg::msg::Pipe PipeToPipeMsg(const Pipe& pipe);
+
+  static bool ReadBoxArray2DFromCache(const message_filters::Cache<obstacle_tracking_msg::msg::BoundingBox2DArray> &cache,
+    const rclcpp::Time stamp, obstacle_tracking_msg::msg::BoundingBox2DArray::ConstPtr &msgPtr, const double maxTimeLag_s);
 };
 
 #endif

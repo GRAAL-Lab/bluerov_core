@@ -35,13 +35,8 @@ def generate_launch_description():
         ExecuteProcess(
             cmd=[
                 'ros2', 'bag', 'record', 
-                '/dtc/imu_data', '/dtc/no_cam_slice_angles', '/dtc/worldF_cumulCloud',
-                '/dtc/worldF_cumulCloud2D', '/dtc/worldF_noCamCloud', '/dtc/worldF_noCamCloud2D',
-                '/dtc/nocam/worldF_boxes',
-                '/dtc/cams/worldF_boxes',
-                '/dtc/stats', '/dtc/worldF_vehiclePose', '/dtc/sensorFoV', '/dtc/pyramids',
-                '/dtc/pyramids_unfilt', '/dtc/tracks', '/dtc/predictedTracks', '/dtc/detection_settings',
-                '/trk/tracks', '/dtc/img_tracks', '/trk/collision_regions',
+                '/dtc/stats', '/dtc/obstacles', '/dtc/detection_settings',
+                '/trk/tracks'
                 '-o', '/home/lucas/.ros/bags/rami/rami_results'
             ],
             output='screen'

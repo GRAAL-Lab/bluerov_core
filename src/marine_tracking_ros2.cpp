@@ -3,7 +3,6 @@
 
 MarineTrackingROS2::MarineTrackingROS2(const std::string& bagPath, const bool isSim) : Node("marine_detector") {
     filtersPub_ = this->create_publisher<obstacle_tracking_msg::msg::ObstacleArray>("/trk/tracks", 10);
-    detavObstaclesPub_ = this->create_publisher<detav_msgs::msg::ObstacleList>("/trk/obstacle_list", 10);
     likelyCollisionRegionsPub_ = this->create_publisher<obstacle_tracking_msg::msg::BoundingBox2DArray>("/trk/collision_regions", 10);
     std::map<std::string, odtc::IDAssocParams> assocParams;
     odtc::TrackingParams trackingParams;
@@ -93,9 +92,6 @@ void MarineTrackingROS2::FiltersCallback(const obstacle_tracking_msg::msg::Obsta
     auto t2_fu2= std::chrono::steady_clock::now();;
     auto dt_fu2_ms = std::chrono::duration_cast<std::chrono::microseconds>(t2_fu2-t1_fu2).count()/1000.0;
     std::cerr << "[FiltersCallback] Filter update dt = " << dt_fu2_ms << "ms @" << tracker_.Filters().size() << " filters." << std::endl;
-
-    auto tracksDetavMsg = UtilitiesROS2::FillDetavObstacleArrayMsg(tsROS_, tracker_, llh_vehiclePos_t0_);
-    detavObstaclesPub_->publish(tracksDetavMsg);
 
     for (const auto &o : obstaclesRevised) {
         //std::cerr << "[TRKK] Obstacle revised: id is " << o.Box()->Id() << ", label is " << o.Box()->Description() << std::endl;

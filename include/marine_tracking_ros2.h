@@ -69,7 +69,6 @@ class MarineTrackingROS2 : public rclcpp::Node {
 
     message_filters::Cache<obstacle_tracking_msg::msg::ObstacleArray> cacheDetections_;
     std::shared_ptr<message_filters::Subscriber<obstacle_tracking_msg::msg::ObstacleArray>> detectionsSub_;
-    rclcpp::Publisher<detav_msgs::msg::ObstacleList>::SharedPtr detavObstaclesPub_;
     rclcpp::Publisher<obstacle_tracking_msg::msg::BoundingBox2DArray>::SharedPtr likelyCollisionRegionsPub_;
 
     rclcpp::Time tsROS_;

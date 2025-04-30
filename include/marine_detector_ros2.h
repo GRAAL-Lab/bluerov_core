@@ -38,9 +38,6 @@ public:
 
 private:
     void Init(const std::string& bagPath, bool isSim);
-    void ObstacleDetectionCallbackBuoys(
-        const obstacle_tracking_msg::msg::BoundingBox2DArray::ConstSharedPtr& ann_msg
-    );
 
     rclcpp::Subscription<obstacle_tracking_msg::msg::BoundingBox2DArray>::SharedPtr cameraObstaclesSub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr geoPoseStampedSub_;
@@ -71,11 +68,14 @@ private:
     void GetPipe(const image_pipeline_msgs::msg::PipeDirection::SharedPtr msg);
 
     // Subscribers
-    rclcpp::Subscription<image_pipeline_msgs::msg::PipeDirection>::SharedPtr pipeSub_;
+    message_filters::Cache<image_pipeline_msgs::msg::PipeDirection> pipeCache_;
+    message_filters::Cache<obstacle_tracking_msg::msg::BoundingBox2DArray> imgAnnCache_;
     std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Imu>> imuSub_;
     std::map<std::string, std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>>> imgSub_;
-    std::map<std::string, std::shared_ptr<message_filters::Subscriber<obstacle_tracking_msg::msg::BoundingBox2DArray>>> imgAnnSub_;
     std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::NavSatFix>> gnssSub_;
+    std::shared_ptr<message_filters::Subscriber<image_pipeline_msgs::msg::PipeDirection>> pipeSub_;
+    std::shared_ptr<message_filters::Subscriber<obstacle_tracking_msg::msg::BoundingBox2DArray>> imgAnnSub_;
+
 
     // Caches
     std::map<std::string, std::shared_ptr<message_filters::Cache<sensor_msgs::msg::Image>>> cacheImg_;
@@ -87,7 +87,7 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imuDataPub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr worldF_vehiclePosePub_;
     rclcpp::Publisher<obstacle_tracking_msg::msg::ObstDetectionStats>::SharedPtr statsPub_;
-    rclcpp::Publisher<obstacle_tracking_msg::msg::ObstacleArray>::SharedPtr obstaclesPub_;
+    rclcpp::Publisher<obstacle_tracking_msg::msg::Obstacles>::SharedPtr obstaclesPub_;
     std::map<std::string, sensorTopics> sensorsPub_;
 
     rclcpp::Time tsRos_;
