@@ -12,13 +12,7 @@
  * @file bluerov_bridge.cpp
  * @brief Implementation of the BlueROVBridge class that connects ROS2 to ArduSub via MAVLink
  * 
- * This bridge enables:
- * 1. Manual control by passing velocity commands to ArduSub
- * 2. Waypoint navigation in GUIDED mode (single waypoint or path)
- * 3. Position holding at the last waypoint
- * 
  * Communication is via MAVLink over UDP, using the standard ArduSub protocol.
- * Coordinate transformations between NED (ArduSub) and ENU (ROS) are handled.
  */
 
 //=============================================================================
@@ -34,37 +28,25 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options)
   initMavlinkConnection();
 
   // 2) Setup ROS pubs/subs
-  poseActualPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual, 10);
-  velocityActualPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_actual, 10);
-  waypointReachedPublisher_ = this->create_publisher<std_msgs::msg::Bool>("/auv/waypoint_reached",10);
+  localPositionActualPublisher_ = this->create_publisher<auv_core_helper::msg::Position>(auv_core_helper::topicnames::local_position_actual,10);
+  globalPositionActualPublisher_ = this->create_publisher<auv_core_helper::msg::Position>(auv_core_helper::topicnames::global_position_actual,10);
+  attitudeActualPublisher_ = this->create_publisher<auv_core_helper::msg::Attitude>(auv_core_helper::topicnames::attitude_actual,10);
+  dvlDistancePublisher_ = this->create_publisher<std_msgs::msg::Float64>(auv_core_helper::topicnames::dvl_distance_actual,10);
 
+  armedPublisher_ = this->create_publisher<std_msgs::msg::Int8>(auv_core_helper::topicnames::armed,10);
+  flightModePublisher_ = this->create_publisher<std_msgs::msg::Int32>(auv_core_helper::topicnames::flight_mode,10);
+
+  poseDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(auv_core_helper::topicnames::pose_desired,10,std::bind(&BlueROVBridge::poseDesiredCallback, this, std::placeholders::_1));
   velocityDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired,10,std::bind(&BlueROVBridge::velocityDesiredCallback, this, std::placeholders::_1));
+  accelerationDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::Accel>(auv_core_helper::topicnames::acceleration_desired,10,std::bind(&BlueROVBridge::accelerationDesiredCallback, this, std::placeholders::_1));
+  yawRateDesiredSubscription_ = this->create_subscription<std_msgs::msg::Float64>(auv_core_helper::topicnames::yaw_rate_desired,10,std::bind(&BlueROVBridge::yawRateDesiredCallback, this, std::placeholders::_1));
   kclStateSubscription_ = this->create_subscription<std_msgs::msg::String>(auv_core_helper::topicnames::kcl_state,10,std::bind(&BlueROVBridge::kclStateCallback, this, std::placeholders::_1));
-  waypointSubscription_ = this->create_subscription<geometry_msgs::msg::PoseStamped>("/auv/waypoint",10,std::bind(&BlueROVBridge::waypointCallback, this, std::placeholders::_1));
-  pathSubscription_ = this->create_subscription<nav_msgs::msg::Path>("/auv/path",10,std::bind(&BlueROVBridge::pathCallback, this, std::placeholders::_1));
 
   // 3) Timers
   data_timer_ = this->create_wall_timer(
       std::chrono::milliseconds(125), // ~8Hz
       std::bind(&BlueROVBridge::receiveData, this)
   );
-
-  control_loop_timer_ = this->create_wall_timer(
-      std::chrono::milliseconds(125), // ~8Hz
-      std::bind(&BlueROVBridge::controlLoop, this)
-  );
-
-  // Waypoint navigation timer (check progress at 8Hz)
-  waypoint_timer_ = this->create_wall_timer(
-      std::chrono::milliseconds(125), // 8Hz
-      std::bind(&BlueROVBridge::waypointNavigationTimer, this)
-  );
-
-  // 4) Initialize parameters
-  waypoint_acceptance_radius_ = this->declare_parameter<double>("waypoint_acceptance_radius", 0.1);
-  
-  RCLCPP_INFO(this->get_logger(), "Waypoint navigation configured with acceptance radius: %.2f meters", 
-              waypoint_acceptance_radius_);
 }
 
 //=============================================================================
@@ -138,7 +120,6 @@ void BlueROVBridge::initMavlinkConnection()
   got_heartbeat_   = false;
 }
 
-
 //=============================================================================
 // receiveData()
 //   Non-blocking read; parse MAVLink. Once we see autopilot's heartbeat, store
@@ -173,312 +154,204 @@ void BlueROVBridge::receiveData()
     // Parse all bytes in the received packet
     for (ssize_t i = 0; i < recsize; ++i) {
       if (mavlink_parse_char(MAVLINK_COMM_0, buffer[i], &msg, &status)) {
+        // Route message to appropriate handler based on msg.msgid
         switch (msg.msgid) {
-
-        case MAVLINK_MSG_ID_HEARTBEAT:
-        {
-          // Ignore if it's our own GCS heartbeat
-          if (msg.sysid == system_id_ && msg.compid == component_id_) {
-            RCLCPP_INFO(this->get_logger(),
-               "Ignoring GCS heartbeat (sys=%d, comp=%d).", msg.sysid, msg.compid);
+          case MAVLINK_MSG_ID_HEARTBEAT:
+            handleHeartbeat(msg, sender_addr);
             break;
-          }
-
-          // Extract the heartbeat info
-          mavlink_heartbeat_t hb;
-          mavlink_msg_heartbeat_decode(&msg, &hb);
-
-          // If we haven't yet received the autopilot heartbeat, handle it:
-          if (!got_heartbeat_) {
-            target_system_    = msg.sysid;
-            target_component_ = msg.compid;
-            got_heartbeat_    = true;
-
-            // Overwrite remote_addr_ with the sender's IP:port
-            remote_addr_ = sender_addr;
-
-            char ip_str[INET_ADDRSTRLEN];
-            inet_ntop(AF_INET, &(sender_addr.sin_addr), ip_str, sizeof(ip_str));
-            uint16_t sender_port = ntohs(sender_addr.sin_port);
-
-            RCLCPP_INFO(this->get_logger(),
-                "Got AUTOPILOT heartbeat from sys=%d, comp=%d at %s:%d => storing remote_addr_",
-                target_system_, target_component_, ip_str, sender_port);
-
-            // Request data streams only once
-            requestDataStreams();
-          }
-          
-          // Update armed state and log when it changes
-          bool previous_armed_state = is_armed_;
-          is_armed_ = (hb.base_mode & MAV_MODE_FLAG_SAFETY_ARMED) != 0;
-          
-          // Log arming state changes
-          if (is_armed_ != previous_armed_state) {
-            RCLCPP_INFO(this->get_logger(), 
-                "Vehicle arm state changed: %s (base_mode=0x%02X)", 
-                is_armed_ ? "ARMED" : "DISARMED", hb.base_mode);
-          }
-          
-          // Always log the armed state at debug level for troubleshooting
-          RCLCPP_DEBUG(this->get_logger(), 
-              "Current vehicle state: %s (base_mode=0x%02X, custom_mode=%u)", 
-              is_armed_ ? "ARMED" : "DISARMED", hb.base_mode, hb.custom_mode);
-          
-          // Check the current vehicle mode
-          // For ArduSub, customMode contains the mode number
-          uint32_t current_mode = hb.custom_mode;
-          
-          // Log the current mode value when it changes (helps with debugging)
-          static uint32_t last_mode = UINT32_MAX;
-          if (current_mode != last_mode) {
-            RCLCPP_INFO(this->get_logger(), "Vehicle mode changed: %u", current_mode);
-            last_mode = current_mode;
-          }
-          
-          // ArduSub mode values (may vary by firmware version)
-          // Typical values are:
-          // STABILIZE = 0, MANUAL = 19, ALT_HOLD = 2, GUIDED = 4, POSHOLD = 16
-          
-          // Track mode changes
-          // GUIDED mode is 4 in ArduSub
-          bool is_in_guided_mode = (current_mode == 4);
-          
-          // POSHOLD mode is 16 in ArduSub
-          bool is_in_poshold_mode = (current_mode == 16);
-          
-          // Check if we have a pending mode change request
-          if (mode_change_requested_) {
-            // Check if the current mode matches what we requested
-            bool mode_change_succeeded = false;
             
-            if (requested_mode_ == "GUIDED" && is_in_guided_mode) {
-              mode_change_succeeded = true;
-            } else if (requested_mode_ == "POSHOLD" && is_in_poshold_mode) {
-              mode_change_succeeded = true;
-            } else if (requested_mode_ == "MANUAL" && current_mode == 19) {
-              mode_change_succeeded = true;
-            } else if (requested_mode_ == "STABILIZE" && current_mode == 0) {
-              mode_change_succeeded = true;
-            } else if (requested_mode_ == "ALT_HOLD" && current_mode == 2) {
-              mode_change_succeeded = true;
-            }
+          case MAVLINK_MSG_ID_ATTITUDE:
+            handleAttitude(msg);
+            break;
             
-            // If mode change succeeded or we've been waiting too long, clear the request
-            rclcpp::Duration timeout(3, 0); // 3 seconds timeout
-            bool timed_out = (this->now() - mode_change_request_time_) > timeout;
+          case MAVLINK_MSG_ID_LOCAL_POSITION_NED:
+            handleLocalPositionNed(msg);
+            break;
+
+          case MAVLINK_MSG_ID_GLOBAL_POSITION_INT:
+            handleGlobalPositionInt(msg);
+            break;  
+          
+          case MAVLINK_MSG_ID_DISTANCE_SENSOR:  
+            handleDvlDistance(msg);
+            break;
             
-            if (mode_change_succeeded) {
-              RCLCPP_INFO(this->get_logger(), "Mode change to %s confirmed!", requested_mode_.c_str());
-              mode_change_requested_ = false;
-              mode_change_attempts_ = 0;
-              
-              // Update the state flags based on the confirmed mode
-              if (requested_mode_ == "GUIDED") {
-                guided_mode_active_ = true;
-                position_hold_active_ = false;
-                
-                // Process any pending waypoint or path that was waiting for GUIDED mode
-                if (has_pending_waypoint_) {
-                  RCLCPP_INFO(this->get_logger(), "Processing pending waypoint now that GUIDED mode is active");
-                  
-                  // Clear any existing waypoints
-                  std::queue<geometry_msgs::msg::PoseStamped> empty;
-                  std::swap(waypoint_queue_, empty);
-                  
-                  // Add the pending waypoint to the queue
-                  waypoint_queue_.push(pending_waypoint_);
-                  
-                  // Start processing the waypoint
-                  if (!waypoint_navigation_active_) {
-                    processNextWaypoint();
-                  }
-                  
-                  has_pending_waypoint_ = false;
-                }
-                else if (has_pending_path_) {
-                  RCLCPP_INFO(this->get_logger(), "Processing pending path with %zu waypoints now that GUIDED mode is active",
-                              pending_path_.poses.size());
-                  
-                  // Clear any existing waypoints
-                  std::queue<geometry_msgs::msg::PoseStamped> empty;
-                  std::swap(waypoint_queue_, empty);
-                  
-                  // Add all waypoints from the path to the queue
-                  for (const auto& pose : pending_path_.poses) {
-                    waypoint_queue_.push(pose);
-                  }
-                  
-                  // Start processing the path
-                  if (!waypoint_navigation_active_) {
-                    processNextWaypoint();
-                  }
-                  
-                  has_pending_path_ = false;
-                }
-              } else if (requested_mode_ == "POSHOLD") {
-                position_hold_active_ = true;
-                guided_mode_active_ = false;
-              } else {
-                guided_mode_active_ = false;
-                position_hold_active_ = false;
-              }
-            } else if (timed_out) {
-              RCLCPP_WARN(this->get_logger(), 
-                  "Mode change to %s timed out after %d attempts!", 
-                  requested_mode_.c_str(), mode_change_attempts_);
-              mode_change_requested_ = false;
-              
-              // Clear any pending waypoints as mode change failed
-              has_pending_waypoint_ = false;
-              has_pending_path_ = false;
-              
-              // Don't reset mode_change_attempts_ here to limit future attempts
-            }
-          }
-          
-          // If we think we're in GUIDED but the vehicle isn't, or vice versa
-          if (guided_mode_active_ != is_in_guided_mode) {
-            if (is_in_guided_mode) {
-              RCLCPP_INFO(this->get_logger(), "Vehicle is now in GUIDED mode!");
-              guided_mode_active_ = true;
-              position_hold_active_ = false;
-              mode_change_attempts_ = 0;
-            } else if (guided_mode_active_ && !is_in_guided_mode && !mode_change_requested_) {
-              // Only log this if we're actively trying to change modes and there's no pending request
-              RCLCPP_WARN(this->get_logger(), 
-                  "Vehicle is not in GUIDED mode (current mode: %u)", current_mode);
-            }
-          }
-          
-          // Check if in POSHOLD mode
-          if (position_hold_active_ != is_in_poshold_mode) {
-            if (is_in_poshold_mode) {
-              RCLCPP_INFO(this->get_logger(), "Vehicle is now in POSHOLD mode!");
-              position_hold_active_ = true;
-              guided_mode_active_ = false;
-              mode_change_attempts_ = 0;
-            } else if (position_hold_active_ && !is_in_poshold_mode && !mode_change_requested_) {
-              // Only log this if there's no pending mode change request
-              RCLCPP_WARN(this->get_logger(), 
-                  "Vehicle is not in POSHOLD mode (current mode: %u)", current_mode);
-            }
-          }
-          
-          break;
+          case MAVLINK_MSG_ID_COMMAND_ACK:
+            handleCommandAck(msg);
+            break;
+            
+          default:
+            break;
         }
-
-        case MAVLINK_MSG_ID_ATTITUDE:
-        {
-          mavlink_attitude_t attitude;
-          mavlink_msg_attitude_decode(&msg, &attitude);
-
-          // Store orientation (roll, pitch, yaw)
-          poseActual_[3] = attitude.roll;
-          poseActual_[4] = attitude.pitch;
-          poseActual_[5] = attitude.yaw;
-
-          // Store angular velocity (rollspeed, pitchspeed, yawspeed)
-          velocityActual_[3] = attitude.rollspeed;
-          velocityActual_[4] = attitude.pitchspeed;
-          velocityActual_[5] = attitude.yawspeed;
-
-          if (!home_pose_set_) {
-            poseHome_[3] = poseActual_[3];
-            poseHome_[4] = poseActual_[4];
-            poseHome_[5] = poseActual_[5];
-          }
-          break;
-        }
-
-        case MAVLINK_MSG_ID_LOCAL_POSITION_NED:
-        {
-          mavlink_local_position_ned_t pos_ned;
-          mavlink_msg_local_position_ned_decode(&msg, &pos_ned);
-
-          // Position in NED
-          poseActual_[0] = pos_ned.x;
-          poseActual_[1] = pos_ned.y;
-          poseActual_[2] = pos_ned.z;
-
-          // Velocity in NED
-          velocityActual_[0] = pos_ned.vx;
-          velocityActual_[1] = pos_ned.vy;
-          velocityActual_[2] = pos_ned.vz;
-
-          if (!home_pose_set_) {
-            poseHome_[0] = poseActual_[0];
-            poseHome_[1] = poseActual_[1];
-            poseHome_[2] = poseActual_[2];
-            home_pose_set_ = true;
-          }
-          break;
-        }
-
-        case MAVLINK_MSG_ID_COMMAND_ACK:
-        {
-          mavlink_command_ack_t ack;
-          mavlink_msg_command_ack_decode(&msg, &ack);
-          
-          // Log ACK messages regardless of the command type
-          if (ack.command == MAV_CMD_DO_SET_MODE) {
-            if (ack.result == MAV_RESULT_ACCEPTED) {
-              RCLCPP_INFO(this->get_logger(), "Mode change accepted by ArduSub");
-            } else {
-              // Log the specific error code for better diagnostics
-              const char* error_str = "Unknown";
-              switch (ack.result) {
-                case MAV_RESULT_DENIED: error_str = "DENIED"; break;
-                case MAV_RESULT_UNSUPPORTED: error_str = "UNSUPPORTED"; break;
-                case MAV_RESULT_FAILED: error_str = "FAILED"; break;
-                case MAV_RESULT_TEMPORARILY_REJECTED: error_str = "TEMPORARILY_REJECTED"; break;
-                default: error_str = "UNKNOWN"; break;
-              }
-              
-              RCLCPP_WARN(this->get_logger(), 
-                  "Mode change REJECTED by ArduSub (result=%s).", error_str);
-            }
-          } else {
-            // Only log non-mode change ACKs at DEBUG level to reduce noise
-            RCLCPP_DEBUG(this->get_logger(),
-                "CMD_ACK received: command=%u, result=%u",
-                ack.command, ack.result);
-          }
-          break;
-        }
-
-        default:
-          // Ignore other message types
-          break;
-        } // end switch
-      }   // end if (mavlink_parse_char)
-    }     // end for (recsize)
-  }       // end while(true)
+      }
+    }
+  }
 }
 
 
-/****************************************************************************
- * requestDataStreams
- *   Called once after we get the first heartbeat. Instead of calling
- *   request_data_stream_send(), we use MAV_CMD_SET_MESSAGE_INTERVAL
- *   for each message ID we care about (e.g. ATTITUDE, LOCAL_POSITION_NED).
- ***************************************************************************/
-void BlueROVBridge::requestDataStreams()
+//=============================================================================
+// Message handler functions
+//=============================================================================
+
+void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr_in& sender_addr)
 {
-  if (!got_heartbeat_) {
-    RCLCPP_WARN(this->get_logger(),
-        "requestDataStreams() called but no autopilot heartbeat yet!");
+  // Ignore if it's our own GCS heartbeat
+  if (msg.sysid == system_id_ && msg.compid == component_id_) {
+    RCLCPP_INFO(this->get_logger(),
+       "Ignoring GCS heartbeat (sys=%d, comp=%d).", msg.sysid, msg.compid);
     return;
   }
 
-  // Example: we want 8 Hz for attitude (#30) and local position (#32).
-  setMessageInterval(MAVLINK_MSG_ID_ATTITUDE,           8.0f); // #30
-  setMessageInterval(MAVLINK_MSG_ID_LOCAL_POSITION_NED, 8.0f); // #32
+  // Extract the heartbeat info
+  mavlink_heartbeat_t hb;
+  mavlink_msg_heartbeat_decode(&msg, &hb);
 
-  RCLCPP_INFO(this->get_logger(),
-      "Configured message intervals for ATTITUDE(#30) and LOCAL_POSITION_NED(#32) at 8 Hz.");
+  // If we haven't yet received the autopilot heartbeat, handle it:
+  if (!got_heartbeat_) {
+    target_system_    = msg.sysid;
+    target_component_ = msg.compid;
+    got_heartbeat_    = true;
+
+    // Overwrite remote_addr_ with the sender's IP:port
+    remote_addr_ = sender_addr;
+
+    char ip_str[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(sender_addr.sin_addr), ip_str, sizeof(ip_str));
+    uint16_t sender_port = ntohs(sender_addr.sin_port);
+
+    RCLCPP_INFO(this->get_logger(),
+        "Got AUTOPILOT heartbeat from sys=%d, comp=%d at %s:%d => storing remote_addr_",
+        target_system_, target_component_, ip_str, sender_port);
+
+    // Configure data streams directly (merged from requestDataStreams)
+    setMessageInterval(MAVLINK_MSG_ID_ATTITUDE, 8.0f); // #30
+    setMessageInterval(MAVLINK_MSG_ID_LOCAL_POSITION_NED, 8.0f); // #32
+
+    RCLCPP_INFO(this->get_logger(),
+        "Configured message intervals for ATTITUDE(#30) and LOCAL_POSITION_NED(#32) at 8 Hz.");
+  }
 }
 
+//=============================================================================
+// Postion and Velocity in NED
+//=============================================================================
+void BlueROVBridge::handleLocalPositionNed(const mavlink_message_t& msg)
+{
+  mavlink_local_position_ned_t pos_ned;
+  mavlink_msg_local_position_ned_decode(&msg, &pos_ned);
+
+  auto local_position_msg = std::make_unique<auv_core_helper::msg::Position>();
+  local_position_msg->timestamp = pos_ned.time_boot_ms;
+  local_position_msg->x = pos_ned.x;
+  local_position_msg->y = pos_ned.y;
+  local_position_msg->z = pos_ned.z;
+  local_position_msg->vx = pos_ned.vx;
+  local_position_msg->vy = pos_ned.vy;
+  local_position_msg->vz = pos_ned.vz;
+
+  localPositionActualPublisher_->publish(std::move(local_position_msg));
+
+  if (!home_pose_set_) {
+    poseHome_[0] = poseActual_[0];
+    poseHome_[1] = poseActual_[1];
+    poseHome_[2] = poseActual_[2];
+    home_pose_set_ = true;
+  }
+}
+
+//=============================================================================
+// Global Position
+//=============================================================================
+void BlueROVBridge::handleGlobalPositionInt(const mavlink_message_t& msg)
+{
+  mavlink_global_position_int_t pos_int;
+  mavlink_msg_global_position_int_decode(&msg, &pos_int);
+
+  auto global_position_msg = std::make_unique<auv_core_helper::msg::Position>();
+  global_position_msg->timestamp = pos_int.time_boot_ms;
+  global_position_msg->x = pos_int.lat / 1.0e7;
+  global_position_msg->y = pos_int.lon / 1.0e7;
+  global_position_msg->z = -pos_int.alt / 1.0e3;
+  global_position_msg->vx = pos_int.vx;
+  global_position_msg->vy = pos_int.vy;
+  global_position_msg->vz = pos_int.vz;
+
+  globalPositionActualPublisher_->publish(std::move(global_position_msg));
+}
+
+//=============================================================================
+// Attitude
+//=============================================================================
+void BlueROVBridge::handleAttitude(const mavlink_message_t& msg)
+{
+  mavlink_attitude_t attitude;
+  mavlink_msg_attitude_decode(&msg, &attitude);
+
+  auto attitude_msg = std::make_unique<auv_core_helper::msg::Attitude>();
+  attitude_msg->timestamp = attitude.time_boot_ms;
+  attitude_msg->roll = attitude.roll;
+  attitude_msg->pitch = attitude.pitch;
+  attitude_msg->yaw = attitude.yaw;
+  attitude_msg->rollrate = attitude.rollspeed;
+  attitude_msg->pitchrate = attitude.pitchspeed;
+  attitude_msg->yawrate = attitude.yawspeed;
+  
+  if (!home_pose_set_) {
+    poseHome_[3] = poseActual_[3];
+    poseHome_[4] = poseActual_[4];
+    poseHome_[5] = poseActual_[5];
+  }
+  
+  attitudeActualPublisher_->publish(*attitude_msg);
+}
+
+//=============================================================================
+// DVL Distance
+//=============================================================================
+void BlueROVBridge::handleDvlDistance(const mavlink_message_t& msg)
+{
+  mavlink_distance_sensor_t distance_sensor;
+  mavlink_msg_distance_sensor_decode(&msg, &distance_sensor);
+
+  auto dvl_distance_msg = std::make_unique<std_msgs::msg::Float64>();
+  dvl_distance_msg->data = distance_sensor.current_distance;
+
+  dvlDistancePublisher_->publish(*dvl_distance_msg);
+}
+
+//=============================================================================
+// Command ACK
+//=============================================================================
+void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg)
+{
+  mavlink_command_ack_t ack;
+  mavlink_msg_command_ack_decode(&msg, &ack);
+  
+  // Log ACK messages regardless of the command type
+  if (ack.command == MAV_CMD_DO_SET_MODE) {
+    if (ack.result == MAV_RESULT_ACCEPTED) {
+      RCLCPP_INFO(this->get_logger(), "Mode change accepted by ArduSub");
+    } else {
+      // Log the specific error code for better diagnostics
+      const char* error_str = "Unknown";
+      switch (ack.result) {
+        case MAV_RESULT_DENIED: error_str = "DENIED"; break;
+        case MAV_RESULT_UNSUPPORTED: error_str = "UNSUPPORTED"; break;
+        case MAV_RESULT_FAILED: error_str = "FAILED"; break;
+        case MAV_RESULT_TEMPORARILY_REJECTED: error_str = "TEMPORARILY_REJECTED"; break;
+        default: error_str = "UNKNOWN"; break;
+      }
+      
+      RCLCPP_WARN(this->get_logger(), 
+          "Mode change REJECTED by ArduSub (result=%s).", error_str);
+    }
+  } else {
+    // Only log non-mode change ACKs at DEBUG level to reduce noise
+    RCLCPP_DEBUG(this->get_logger(),
+        "CMD_ACK received: command=%u, result=%u",
+        ack.command, ack.result);
+  }
+}
 
 //=============================================================================
 // sendMavlinkMessage
@@ -565,116 +438,32 @@ void BlueROVBridge::velocityDesiredCallback(const geometry_msgs::msg::Twist::Sha
 //   - If "WAYPOINT_NAVIGATION": set GUIDED mode for waypoint navigation
 //=============================================================================
 void BlueROVBridge::kclStateCallback(const std_msgs::msg::String::SharedPtr msg)
-{
-  if (msg->data == kcl_state_) {
-    return;
-  }
-
-  // Handle arming/disarming separately from mode changes
-  if (msg->data == "IDLE") {
-    disarm();
-    waypoint_navigation_active_ = false;
-    guided_mode_active_ = false;
-    position_hold_active_ = false;
-    
-    // Clear waypoint queue
-    std::queue<geometry_msgs::msg::PoseStamped> empty;
-    std::swap(waypoint_queue_, empty);
-  } else if (msg->data == "ARM") {
-    // Arm without changing mode
-    arm("CURRENT");
-  } else if (msg->data == "MANUAL" || msg->data == "STABILIZE" || 
-           msg->data == "ALT_HOLD" || msg->data == "ACRO") {
-    // Set flight mode without changing arm state
+{  
+  if (msg->data == "IDLE")
+    setArmState(false);
+  else if(msg->data == "ARM")
+    setArmState(true);
+  else
     setFlightMode(msg->data);
-  }
-
-  // Handle special states for navigation
-  if (msg->data == "PATH_FOLLOWING") {
-    poseHome_ = poseActual_;
-    home_pose_set_ = true;
-    RCLCPP_INFO(
-      this->get_logger(),
-      "Home pose set: x=%.2f, y=%.2f, z=%.2f, roll=%.2f, pitch=%.2f, yaw=%.2f",
-      poseHome_[0], poseHome_[1], poseHome_[2],
-      poseHome_[3], poseHome_[4], poseHome_[5]
-    );
-
-    // Switch to GUIDED mode for path following
-    setFlightMode("GUIDED");
-    
-    RCLCPP_INFO(this->get_logger(), 
-        "PATH_FOLLOWING activated: Using GUIDED mode for waypoint navigation");
-  } else if (msg->data == "WAYPOINT_NAVIGATION") {
-    // Set home pose if not already set
-    poseHome_.setZero();
-    home_pose_set_ = true;
-    RCLCPP_INFO(
-      this->get_logger(),
-      "Home pose set for waypoint navigation: x=%.2f, y=%.2f, z=%.2f, roll=%.2f, pitch=%.2f, yaw=%.2f",
-      poseHome_[0], poseHome_[1], poseHome_[2],
-      poseHome_[3], poseHome_[4], poseHome_[5]
-    );
-    
-    // Switch to GUIDED mode for waypoint navigation (without changing arm state)
-    setFlightMode("GUIDED");
-    
-    // Process any waypoints in the queue
-    if (!waypoint_queue_.empty() && !waypoint_navigation_active_) {
-      processNextWaypoint();
-    }
-  } else if (msg->data == "POSITION_HOLD") {
-    // Set home pose if not already set
-    if (!home_pose_set_) {
-      poseHome_ = poseActual_;
-      home_pose_set_ = true;
-      RCLCPP_INFO(
-        this->get_logger(),
-        "Home pose set for position hold: x=%.2f, y=%.2f, z=%.2f, roll=%.2f, pitch=%.2f, yaw=%.2f",
-        poseHome_[0], poseHome_[1], poseHome_[2],
-        poseHome_[3], poseHome_[4], poseHome_[5]
-      );
-    }
-    
-    // Use current position as hold position
-    geometry_msgs::msg::PoseStamped current_pose;
-    current_pose.header.stamp = this->now();
-    current_pose.header.frame_id = "world";
-    
-    // Store the current position in ENU for position hold
-    // We won't need to use these directly as POSHOLD mode will handle position maintenance
-    current_pose.pose.position.x = 0.0;  // Use relative position at current location
-    current_pose.pose.position.y = 0.0;
-    current_pose.pose.position.z = 0.0;
-    
-    // Set as the position to hold
-    position_hold_waypoint_ = current_pose;
-    
-    // Switch to POSHOLD mode (without changing arm state)
-    setFlightMode("POSHOLD");
-    
-    RCLCPP_INFO(this->get_logger(), "Manually entered POSITION_HOLD mode at current position");
-  }
-
-  kcl_state_ = msg->data;
 }
 
 //=============================================================================
-// arm
+// setArmState
+// Arms or disarms the vehicle and optionally sets the mode after arming.
 //=============================================================================
-void BlueROVBridge::arm(const std::string& mode)
+void BlueROVBridge::setArmState(bool arm_vehicle)
 {
   if (!got_heartbeat_) {
     RCLCPP_WARN(this->get_logger(), 
-        "Cannot arm yet; no autopilot heartbeat discovered!");
+        "Cannot %s yet; no autopilot heartbeat discovered!", arm_vehicle ? "arm" : "disarm");
     return;
   }
 
   RCLCPP_INFO(this->get_logger(),
-      "Arming vehicle (sys=%d, comp=%d)...",
+      "%s vehicle (sys=%d, comp=%d)...",
+      arm_vehicle ? "Arming" : "Disarming",
       target_system_, target_component_);
 
-  // MAV_CMD_COMPONENT_ARM_DISARM
   mavlink_message_t msg;
   mavlink_msg_command_long_pack(
       system_id_,
@@ -683,17 +472,13 @@ void BlueROVBridge::arm(const std::string& mode)
       target_system_,
       target_component_,
       MAV_CMD_COMPONENT_ARM_DISARM,
-      0,
-      1.0, // param1=1 => arm
-      0,0,0,0,0,0
+      0,                            // Confirmation
+      arm_vehicle ? 1.0f : 0.0f,    // param1: 1 to arm, 0 to disarm
+      0.0f,                         // param2: Force arm/disarm (0=normal)
+      0,0,0,0,0                     // Unused parameters
   );
   sendMavlinkMessage(msg);
-  RCLCPP_INFO(this->get_logger(), "Arm command sent.");
-  
-  // If a mode is specified, set it
-  if (!mode.empty() && mode != "CURRENT") {
-    setFlightMode(mode);
-  }
+  RCLCPP_INFO(this->get_logger(), "%s command sent.", arm_vehicle ? "Arm" : "Disarm");
 }
 
 //=============================================================================
@@ -713,18 +498,23 @@ void BlueROVBridge::setFlightMode(const std::string& mode)
       mode.c_str(), target_system_, target_component_);
 
   // Map mode string to ArduSub custom mode number
-  int32_t custom_mode = 19; // Default to MANUAL=19
-  if (mode == "MANUAL") {
+  int32_t custom_mode = 19;         // Default to MANUAL=19
+  if (mode == "MANUAL") {           // Pass-through input with no stabilization
     custom_mode = 19;
-  } else if (mode == "STABILIZE") {
+  } else if (mode == "STABILIZE") { // manual angle with manual depth/throttle
     custom_mode = 0;
-  } else if (mode == "ALT_HOLD") {
+  } else if (mode == "ALT_HOLD") {  // manual body-frame angular rate with manual depth/throttle
     custom_mode = 2;
-  } else if (mode == "GUIDED") {
-    custom_mode = 4;  // GUIDED mode
-  } else if (mode == "POSHOLD") {
-    custom_mode = 16; // POSHOLD mode
-  } else {
+  } else if (mode == "GUIDED") {    // fully automatic fly to coordinate or fly at velocity/direction using GCS immediate commands
+    custom_mode = 4; 
+  } else if (mode == "POSHOLD") {   // automatic position hold with manual override, with automatic throttle
+    custom_mode = 16;
+  } else if (mode == "SURFACE") {   // automatically return to surface, pilot maintains horizontal control
+    custom_mode = 9;
+  } else if (mode == "SURFTRAK") {  // Track distance above seafloor (hold range)
+    custom_mode = 21 ;
+  }
+  else {
     RCLCPP_WARN(this->get_logger(), 
         "Unknown mode '%s', defaulting to MANUAL", mode.c_str());
   }
@@ -742,7 +532,7 @@ void BlueROVBridge::setFlightMode(const std::string& mode)
       1,  // param1: Mode, as defined by MAV_MODE enum (1 = MODE_GUIDED)
       static_cast<float>(custom_mode),  // param2: Custom mode - ArduSub mode
       0,  // param3: Custom sub-mode - not used for ArduSub
-      0, 0, 0, 0  // param4-7 unused
+      0, 0, 0, 0 // param4-7 unused
   );
   
   // Send multiple times for reliability (UDP is unreliable)
@@ -769,225 +559,6 @@ void BlueROVBridge::setFlightMode(const std::string& mode)
   if (mode_change_attempts_ > 1) {
     RCLCPP_INFO(this->get_logger(), "Mode change attempt #%d", mode_change_attempts_);
   }
-}
-
-//=============================================================================
-// disarm
-//=============================================================================
-void BlueROVBridge::disarm()
-{
-  if (!got_heartbeat_) {
-    RCLCPP_WARN(this->get_logger(), 
-        "Cannot disarm yet; no autopilot heartbeat discovered!");
-    return;
-  }
-
-  RCLCPP_INFO(this->get_logger(),
-      "Disarming vehicle (sys=%d, comp=%d)...",
-      target_system_, target_component_);
-
-  mavlink_message_t msg;
-  mavlink_msg_command_long_pack(
-      system_id_,
-      component_id_,
-      &msg,
-      target_system_,
-      target_component_,
-      MAV_CMD_COMPONENT_ARM_DISARM,
-      0,
-      0.0, // param1=0 => disarm
-      0,0,0,0,0,0
-  );
-  sendMavlinkMessage(msg);
-}
-
-//=============================================================================
-// controlLoop()
-//=============================================================================
-void BlueROVBridge::controlLoop()
-{
-  if (guided_mode_active_) {
-    return;   // Skip control loop if guided mode is active
-  }
-
-  // 1) Check for valid home position
-  if (std::isnan(poseHome_[0]) || std::isnan(poseHome_[1]) || std::isnan(poseHome_[2])) {
-    RCLCPP_WARN(this->get_logger(), "Home position not set yet. Skipping pose calculation.");
-    return;
-  }
-  if (!got_heartbeat_ /* or !home_pose_set_, etc. */) {
-    RCLCPP_WARN_ONCE(this->get_logger(), 
-        "No heartbeat/position data yet; skipping control loop...");
-    return;  
-  }
-
-  // Print PWM values
-  //RCLCPP_INFO(this->get_logger(), "PWM Values: [%f, %f, %f, %f, %f, %f]",
-  //  velocityDesiredPwm_[0], velocityDesiredPwm_[1], velocityDesiredPwm_[2],
-  //  velocityDesiredPwm_[3], velocityDesiredPwm_[4], velocityDesiredPwm_[5]);
-
-  //--------------------------------------------------------------------------
-  // POSE: Transform from NED -> ENU
-  //--------------------------------------------------------------------------
-
-  // Calculate relative position in NED
-  double relative_x_ned = poseActual_[0] - poseHome_[0];
-  double relative_y_ned = poseActual_[1] - poseHome_[1];
-  double relative_z_ned = poseActual_[2] - poseHome_[2];
-
-  // NED -> ENU rotation
-  Eigen::Matrix3d R_NED_to_ENU;
-  R_NED_to_ENU << 0,  1,  0,
-                  1,  0,  0,
-                  0,  0, -1;
-
-  // Transform position from NED to ENU
-  Eigen::Vector3d position_ned(relative_x_ned, relative_y_ned, relative_z_ned);
-  Eigen::Vector3d position_enu = R_NED_to_ENU * position_ned;
-
-
-  double transformed_x = position_enu(0);
-  double transformed_y = position_enu(1);
-  double transformed_z = position_enu(2);
-
-  double roll  = poseActual_[3];
-  double pitch = poseActual_[4];
-  double yaw   = poseActual_[5];
-
-  // Publish PoseStamped (same logic as Python version)
-  auv_core_helper::msg::PoseStamped pose_msg;
-  pose_msg.header.stamp = this->now();
-  pose_msg.header.frame_id = "world";  // matches Python's 'world'
-
-  // Note how the Python code swapped X/Y in the final output
-  pose_msg.x = transformed_x;
-  pose_msg.y = transformed_y;
-  pose_msg.z = transformed_z;
-
-  // roll, pitch, yaw 
-  pose_msg.roll  = roll;
-  pose_msg.pitch = pitch;
-  pose_msg.yaw   = yaw;
-
-  poseActualPublisher_->publish(pose_msg);
-
-  //--------------------------------------------------------------------------
-  // VELOCITY: Transform from NED -> ENU and publish
-  //--------------------------------------------------------------------------
-
-  // Linear velocity in NED
-  Eigen::Vector3d vel_ned(
-      velocityActual_[0],
-      velocityActual_[1],
-      velocityActual_[2]
-  );
-  // Transform to ENU
-  Eigen::Vector3d vel_enu = R_NED_to_ENU * vel_ned;
-
-  // Fill the Twist message
-  geometry_msgs::msg::Twist velocity_msg;
-  // Again, note the swapping to match the X/Y logic above
-  velocity_msg.linear.x = vel_enu(0);
-  velocity_msg.linear.y = vel_enu(1);
-  velocity_msg.linear.z = vel_enu(2);
-
-  // Angular velocities: we typically keep rollspeed, pitchspeed, yawspeed as-is
-  velocity_msg.angular.x = velocityActual_[3];
-  velocity_msg.angular.y = velocityActual_[4];
-  velocity_msg.angular.z = velocityActual_[5];
-
-  // Publish it
-  velocityActualPublisher_->publish(velocity_msg);
-
-  //--------------------------------------------------------------------------
-  // CONTROL: Send RC overrides based on velocityDesired_
-  //--------------------------------------------------------------------------
-
-  // int forward_pwm  = velocityToPwm(velocityDesired_[0]); // forward/back
-  // int lateral_pwm  = velocityToPwm(velocityDesired_[1]); // left/right
-  // int vertical_pwm = velocityToPwm(velocityDesired_[2]); // up/down
-  // int roll_pwm     = velocityToPwm(velocityDesired_[3]); // roll rate
-  // int pitch_pwm    = velocityToPwm(velocityDesired_[4]); // pitch rate
-  // int yaw_pwm      = velocityToPwm(velocityDesired_[5]); // yaw rate
-
-  velocityDesiredPwm_ = velocityToPwm(velocityDesired_, maxVelocities_, minVelocities_);
-  setRcChannelPwm(velocityDesiredPwm_);
-
-  // Then set the RC channels in the same order:
-  // 1=pitch, 2=roll, 3=throttle, 4=yaw, 5=forward, 6=lateral
-  // setRcChannelPwm(1, pitch_pwm);
-  // setRcChannelPwm(2, roll_pwm);
-  // setRcChannelPwm(3, vertical_pwm);
-  // setRcChannelPwm(4, yaw_pwm);
-  // setRcChannelPwm(5, forward_pwm);
-  // setRcChannelPwm(6, lateral_pwm);
-}
-
-//=============================================================================
-// velocityToPwm
-//=============================================================================
-/**
- * @brief Convert desired vehicle velocities to PWM values for ArduSub
- * 
- * This function maps the desired velocity values to the appropriate PWM range
- * for ArduSub's RC override system. It applies:
- * 1. Range clamping to ensure values don't exceed vehicle capabilities
- * 2. Non-linear scaling for better sensitivity at low speeds
- * 3. Mapping to the PWM range expected by ArduSub (1000-2000)
- *
- * @param velocities The desired velocities (x,y,z,roll,pitch,yaw)
- * @param maxVelocities Maximum allowable velocities for each axis
- * @param minVelocities Minimum allowable velocities for each axis
- * @return Eigen::VectorXd PWM values for each channel
- * @throws std::invalid_argument if input vectors have incorrect dimensions
- */
-Eigen::VectorXd BlueROVBridge::velocityToPwm(const Eigen::VectorXd& velocities, 
-                                             const Eigen::VectorXd& maxVelocities, 
-                                             const Eigen::VectorXd& minVelocities)
-{
-    // Validate input size
-    constexpr int EXPECTED_SIZE = 6;
-    if (velocities.size() != EXPECTED_SIZE || 
-        maxVelocities.size() != EXPECTED_SIZE || 
-        minVelocities.size() != EXPECTED_SIZE) {
-        throw std::invalid_argument("velocities, maxVelocities, and minVelocities must be 6x1 vectors");
-    }
-
-    Eigen::VectorXd pwmValues(EXPECTED_SIZE);
-
-    // PWM constants
-    constexpr double PWM_CENTER = 1500.0;
-    constexpr double PWM_RANGE = 500.0;
-    constexpr double PWM_MIN = 1000.0;
-    constexpr double PWM_MAX = 2000.0;
-    constexpr double NONLINEAR_FACTOR = 0.8; // Power factor for non-linear scaling (less than 1.0 gives more sensitivity)
-
-    for (int i = 0; i < EXPECTED_SIZE; ++i) {
-        // Clamp velocity to the specified range for the given index
-        double clampedVelocity = std::clamp(velocities(i), minVelocities(i), maxVelocities(i));
-
-        // Map the clamped velocity to the range [-1, 1]
-        double normalizedVelocity = 0.0;
-        double range = maxVelocities(i) - minVelocities(i);
-        if (std::abs(range) > 1e-6) { // Avoid division by zero
-            normalizedVelocity = (clampedVelocity - minVelocities(i)) / range * 2.0 - 1.0;
-        }
-
-        // Apply non-linear scaling to increase sensitivity for small velocities
-        if (normalizedVelocity > 0) {
-            normalizedVelocity = std::pow(normalizedVelocity, NONLINEAR_FACTOR);
-        } else if (normalizedVelocity < 0) {
-            normalizedVelocity = -std::pow(std::abs(normalizedVelocity), NONLINEAR_FACTOR);
-        }
-
-        // Map the normalized velocity to the PWM range
-        pwmValues(i) = PWM_CENTER + normalizedVelocity * PWM_RANGE;
-        
-        // Ensure the PWM output is within the valid range
-        pwmValues(i) = std::clamp(pwmValues(i), PWM_MIN, PWM_MAX);
-    }
-
-    return pwmValues;
 }
 
 //=============================================================================
@@ -1053,345 +624,6 @@ void BlueROVBridge::setRcChannelPwm(const Eigen::VectorXd& velocityDesiredPwm)
 
     sendMavlinkMessage(msg);
 }
-//=============================================================================
-// waypointCallback
-// Handles a single waypoint received from the /auv/waypoint topic
-//=============================================================================
-void BlueROVBridge::waypointCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
-{
-  // Add more debug information about current state
-  RCLCPP_INFO(this->get_logger(), 
-      "Waypoint request received. Current state: heartbeat=%s, armed=%s, guided=%s, mode_change_requested=%s",
-      got_heartbeat_ ? "YES" : "NO",
-      is_armed_ ? "YES" : "NO",
-      guided_mode_active_ ? "YES" : "NO",
-      mode_change_requested_ ? "YES" : "NO");
-      
-  // Check if the vehicle is armed and in GUIDED mode before accepting waypoints
-  if (!got_heartbeat_) {
-    RCLCPP_WARN(this->get_logger(), "Cannot accept waypoint - no heartbeat received yet");
-    return;
-  }
-  
-  if (!isArmed()) {
-    RCLCPP_WARN(this->get_logger(), 
-        "Cannot accept waypoint - vehicle is not armed (base_mode: 0x%02X)", 
-        poseActual_.size() >= 6 ? static_cast<int>(poseActual_[5]) : 0);
-        
-    // If we're already trying to arm, don't try again
-    if (!mode_change_requested_) {
-      RCLCPP_INFO(this->get_logger(), "Attempting to arm the vehicle before accepting waypoint");
-      arm("GUIDED");  // Arm and set to GUIDED mode in one step
-      
-      // Store the waypoint and process it once arming is confirmed
-      pending_waypoint_ = *msg;
-      has_pending_waypoint_ = true;
-    }
-    return;
-  }
-  
-  if (!guided_mode_active_ && !mode_change_requested_) {
-    RCLCPP_WARN(this->get_logger(), 
-        "Vehicle not in GUIDED mode. Setting GUIDED mode before accepting waypoint.");
-    setFlightMode("GUIDED");
-    
-    // Store the waypoint and process it once mode change is confirmed
-    pending_waypoint_ = *msg;
-    has_pending_waypoint_ = true;
-    return;
-  }
-
-  RCLCPP_INFO(this->get_logger(), 
-      "Received new waypoint: x=%.2f, y=%.2f, z=%.2f", 
-      msg->pose.position.x, msg->pose.position.y, msg->pose.position.z);
-
-  // Clear any existing waypoints
-  std::queue<geometry_msgs::msg::PoseStamped> empty;
-  std::swap(waypoint_queue_, empty);
-  
-  // Add the new waypoint to the queue
-  waypoint_queue_.push(*msg);
-  
-  // If already in position hold mode, exit it to start waypoint navigation
-  if (position_hold_active_) {
-    position_hold_active_ = false;
-    RCLCPP_INFO(this->get_logger(), "Exiting position hold mode to start waypoint navigation");
-  }
-  
-  // If not currently navigating to a waypoint, start the process
-  if (!waypoint_navigation_active_) {
-    processNextWaypoint();
-  } else {
-    RCLCPP_INFO(this->get_logger(), "Waypoint added to queue. Will navigate after current waypoint is reached.");
-  }
-}
-
-//=============================================================================
-// pathCallback
-// Handles a sequence of waypoints received as a path from the /auv/path topic
-//=============================================================================
-void BlueROVBridge::pathCallback(const nav_msgs::msg::Path::SharedPtr msg)
-{
-  if (msg->poses.empty()) {
-    RCLCPP_WARN(this->get_logger(), "Received empty path. No waypoints to follow.");
-    return;
-  }
-  
-  // Add more debug information about current state
-  RCLCPP_INFO(this->get_logger(), 
-      "Path request received with %zu waypoints. Current state: heartbeat=%s, armed=%s, guided=%s, mode_change_requested=%s",
-      msg->poses.size(),
-      got_heartbeat_ ? "YES" : "NO",
-      is_armed_ ? "YES" : "NO",
-      guided_mode_active_ ? "YES" : "NO",
-      mode_change_requested_ ? "YES" : "NO");
-  
-  // Check if the vehicle is armed and in GUIDED mode before accepting waypoints
-  if (!got_heartbeat_) {
-    RCLCPP_WARN(this->get_logger(), "Cannot accept path - no heartbeat received yet");
-    return;
-  }
-  
-  if (!isArmed()) {
-    RCLCPP_WARN(this->get_logger(), 
-        "Cannot accept path - vehicle is not armed (base_mode: 0x%02X)", 
-        poseActual_.size() >= 6 ? static_cast<int>(poseActual_[5]) : 0);
-        
-    // If we're already trying to arm, don't try again
-    if (!mode_change_requested_) {
-      RCLCPP_INFO(this->get_logger(), "Attempting to arm the vehicle before accepting path");
-      arm("GUIDED");  // Arm and set to GUIDED mode in one step
-      
-      // Store the path and process it once arming is confirmed
-      pending_path_ = *msg;
-      has_pending_path_ = true;
-    }
-    return;
-  }
-  
-  if (!guided_mode_active_ && !mode_change_requested_) {
-    RCLCPP_WARN(this->get_logger(), 
-        "Vehicle not in GUIDED mode. Setting GUIDED mode before accepting path.");
-    setFlightMode("GUIDED");
-    
-    // Store the path and process it once mode change is confirmed
-    pending_path_ = *msg;
-    has_pending_path_ = true;
-    return;
-  }
-  
-  RCLCPP_INFO(this->get_logger(), "Received path with %zu waypoints", msg->poses.size());
-  
-  // Clear existing waypoints
-  std::queue<geometry_msgs::msg::PoseStamped> empty;
-  std::swap(waypoint_queue_, empty);
-  
-  // Add all waypoints from the path to the queue
-  for (const auto& pose : msg->poses) {
-    waypoint_queue_.push(pose);
-  }
-  
-  // If already in position hold mode, exit it to start waypoint navigation
-  if (position_hold_active_) {
-    position_hold_active_ = false;
-    RCLCPP_INFO(this->get_logger(), "Exiting position hold mode to start path following");
-  }
-  
-  // If not currently navigating to a waypoint, start the process
-  if (!waypoint_navigation_active_) {
-    processNextWaypoint();
-  } else {
-    RCLCPP_INFO(this->get_logger(), 
-        "Path with %zu waypoints added to queue. Will navigate after current waypoint is reached.", 
-        msg->poses.size());
-  }
-}
-
-//=============================================================================
-// isArmed
-// Checks if the vehicle is currently armed
-//=============================================================================
-bool BlueROVBridge::isArmed() 
-{
-  if (!got_heartbeat_) {
-    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-        "No heartbeat received yet, cannot determine arm state");
-    return false;
-  }
-  
-  // Log the armed state whenever it's checked
-  RCLCPP_DEBUG(this->get_logger(), "isArmed() check: %s", 
-               is_armed_ ? "ARMED" : "DISARMED");
-               
-  // Just return the cached arm state from the last heartbeat
-  return is_armed_;
-}
-
-//=============================================================================
-// waypointNavigationTimer
-// Periodically checks if current waypoint is reached and manages waypoint queue
-//=============================================================================
-void BlueROVBridge::waypointNavigationTimer()
-{
-  if (!got_heartbeat_) {
-    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-        "Waypoint navigation active but no autopilot connection yet");
-    return;
-  }
-  
-  // Stop here if we're in position hold mode
-  if (position_hold_active_) {
-    return;  // No waypoint navigation while in position hold
-  }
-
-  if (!waypoint_navigation_active_) {
-    return;  // No active navigation, nothing to do
-  }
-  
-  // Only proceed if we're actually in GUIDED mode
-  if (!guided_mode_active_) {
-    // Check if we have already tried setting GUIDED mode too many times
-    const int MAX_MODE_CHANGE_ATTEMPTS = 5;
-    
-    if (mode_change_attempts_ >= MAX_MODE_CHANGE_ATTEMPTS) {
-      RCLCPP_ERROR(this->get_logger(), 
-          "Failed to set GUIDED mode after %d attempts. Canceling waypoint navigation.",
-          mode_change_attempts_);
-      waypoint_navigation_active_ = false;
-      return;
-    }
-    
-    // Check if we're already waiting for a mode change to complete
-    if (mode_change_requested_ && requested_mode_ == "GUIDED") {
-      RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
-          "Waiting for GUIDED mode change to complete... (attempt #%d)",
-          mode_change_attempts_);
-      return;
-    }
-    
-    RCLCPP_WARN(this->get_logger(), 
-        "Waypoint navigation active but not in GUIDED mode. Attempting to set GUIDED mode...");
-    setFlightMode("GUIDED");
-    return;
-  }
-
-  // **** Re-send the current waypoint setpoint continuously ****
-  sendWaypointToArdupilot(current_waypoint_);
-  
-  // Check if the current waypoint has been reached
-  if (isWaypointReached()) {
-    RCLCPP_INFO(this->get_logger(), "Waypoint reached!");
-    
-    // Publish waypoint reached notification
-    std_msgs::msg::Bool reached_msg;
-    reached_msg.data = true;
-    waypointReachedPublisher_->publish(reached_msg);
-    
-    // Reset the flag
-    waypoint_reached_ = false;
-    
-    // Process the next waypoint if available
-    if (!waypoint_queue_.empty()) {
-      RCLCPP_INFO(this->get_logger(), "Processing next waypoint in queue (%zu remaining)", 
-                  waypoint_queue_.size());
-      processNextWaypoint();
-    } else {
-      RCLCPP_INFO(this->get_logger(), "Path following complete - last waypoint reached");
-      waypoint_navigation_active_ = false;
-      
-      // Store the final position for position hold
-      position_hold_waypoint_ = current_waypoint_;
-      
-      // Switch to POSHOLD mode to maintain position at the last waypoint
-      setFlightMode("POSHOLD");
-      
-      // Additional notification that the complete path has been followed
-      std_msgs::msg::Bool path_complete_msg;
-      path_complete_msg.data = true;
-      waypointReachedPublisher_->publish(path_complete_msg);
-    }
-  }
-}
-
-//=============================================================================
-// isWaypointReached
-// Determines if vehicle has reached the current waypoint based on position
-//=============================================================================
-bool BlueROVBridge::isWaypointReached()
-{
-  if (!home_pose_set_) {
-    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000,
-        "Home pose not set yet. Cannot determine if waypoint is reached.");
-    return false;
-  }
-
-  // Calculate relative position in NED
-  double relative_x_ned = poseActual_[0] - poseHome_[0];
-  double relative_y_ned = poseActual_[1] - poseHome_[1];
-  double relative_z_ned = poseActual_[2] - poseHome_[2];
-
-  // Transform from NED to ENU for comparison with waypoint
-  // This is the inverse of the conversion in convertENUtoNED
-  // ENU.x = NED.y
-  // ENU.y = NED.x
-  // ENU.z = -NED.z
-  double current_x_enu = relative_y_ned;
-  double current_y_enu = relative_x_ned;
-  double current_z_enu = -relative_z_ned;
-  
-  // Calculate distance to waypoint in 3D space
-  double dx = current_x_enu - current_waypoint_.pose.position.x;
-  double dy = current_y_enu - current_waypoint_.pose.position.y;
-  double dz = current_z_enu - current_waypoint_.pose.position.z;
-  
-  double distance = std::sqrt(dx*dx + dy*dy + dz*dz);
-  
-  // Print current and waypoint positions
-  RCLCPP_INFO(this->get_logger(), 
-    "Current ENU: (%.2f, %.2f, %.2f) | Waypoint ENU: (%.2f, %.2f, %.2f)",
-    current_x_enu, current_y_enu, current_z_enu,
-    current_waypoint_.pose.position.x, 
-    current_waypoint_.pose.position.y,
-    current_waypoint_.pose.position.z);
-
-  RCLCPP_DEBUG(this->get_logger(), 
-      "Distance to waypoint: %.2f meters (acceptance radius: %.2f)",
-      distance, waypoint_acceptance_radius_);
-  
-  // Waypoint is reached if within acceptance radius
-  return (distance <= waypoint_acceptance_radius_);
-}
-
-//=============================================================================
-// processNextWaypoint
-// Takes the next waypoint from the queue and sends it to ArduPilot
-//=============================================================================
-void BlueROVBridge::processNextWaypoint()
-{
-  if (waypoint_queue_.empty()) {
-    RCLCPP_WARN(this->get_logger(), "processNextWaypoint() called with empty queue");
-    return;
-  }
-
-  // Ensure we're in GUIDED mode (but don't repeatedly try if already trying)
-  if (!guided_mode_active_ && (!mode_change_requested_ || requested_mode_ != "GUIDED")) {
-    setFlightMode("GUIDED");
-    
-    // We'll wait for the mode change to complete in the next timer cycle
-    return;
-  }
-  
-  // Send the waypoint to ArduPilot
-  current_waypoint_ = waypoint_queue_.front();  // Get the next waypoint from the queue
-  waypoint_queue_.pop();                        // Remove the waypoint from the queue
-  sendWaypointToArdupilot(current_waypoint_);   // Send the waypoint to ArduPilot
-  
-  // Update state
-  waypoint_navigation_active_ = true;
-  waypoint_reached_ = false;
-  position_hold_active_ = false;
-}
-
 
 //=============================================================================
 // sendConditionYaw
@@ -1773,4 +1005,35 @@ void BlueROVBridge::sendSetHome(float latitude, float longitude, float altitude,
         "Updated internal home pose to current position: NED=(%.2f, %.2f, %.2f)",
         poseHome_[0], poseHome_[1], poseHome_[2]);
   }
+}
+
+//=============================================================================
+// STUB: poseDesiredCallback - TODO: Implement actual logic
+//=============================================================================
+void BlueROVBridge::poseDesiredCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
+{
+  RCLCPP_WARN(this->get_logger(), "poseDesiredCallback received data but is not implemented!");
+  // Suppress unused parameter warning
+  (void)msg;
+}
+
+//=============================================================================
+// STUB: accelerationDesiredCallback - TODO: Implement actual logic
+//=============================================================================
+void BlueROVBridge::accelerationDesiredCallback(const geometry_msgs::msg::Accel::SharedPtr msg)
+{
+  RCLCPP_WARN(this->get_logger(), "accelerationDesiredCallback received data but is not implemented!");
+  // Suppress unused parameter warning
+  (void)msg;
+}
+
+//=============================================================================
+// STUB: yawRateDesiredCallback - TODO: Implement actual logic
+//=============================================================================
+void BlueROVBridge::yawRateDesiredCallback(const std_msgs::msg::Float64::SharedPtr msg)
+{
+  RCLCPP_WARN(this->get_logger(), "yawRateDesiredCallback received data (%.2f deg/s) but is not implemented!", msg->data);
+  // Suppress unused parameter warning
+  (void)msg;
+  // Example: Might use MAV_CMD_CONDITION_YAW with rate or SET_ATTITUDE_TARGET
 }

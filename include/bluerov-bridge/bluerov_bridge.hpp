@@ -6,12 +6,18 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "auv_core_helper/msg/pose_stamped.hpp"
-#include "geometry_msgs/msg/pose_stamped.hpp"         // For waypoint poses
-#include "nav_msgs/msg/path.hpp"                     // For path of waypoints
-#include "std_msgs/msg/bool.hpp"                     // For waypoint reached notification
+#include "auv_core_helper/msg/position.hpp"
+#include "auv_core_helper/msg/attitude.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"         
+#include "nav_msgs/msg/path.hpp"                     
+#include "std_msgs/msg/bool.hpp"                     
+#include "std_msgs/msg/float64.hpp"                  
+#include "std_msgs/msg/int8.hpp"                     
+#include "std_msgs/msg/int32.hpp"                    
+#include "geometry_msgs/msg/accel.hpp"               
 
 // AUV-specific topic names
-#include "auv_msgs_ros2/topicnames.hpp"
+#include "auv_core_helper/topicnames.hpp"
 
 // We will use Eigen for the NED->ENU transform
 #include <Eigen/Dense>
@@ -53,14 +59,22 @@ private:
     //--------------------------------------------------------------------------
     // ROS Publishers & Subscribers
     //--------------------------------------------------------------------------
-    rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr poseActualPublisher_;
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocityActualPublisher_;
+    rclcpp::Publisher<auv_core_helper::msg::Position>::SharedPtr localPositionActualPublisher_;
+    rclcpp::Publisher<auv_core_helper::msg::Position>::SharedPtr globalPositionActualPublisher_;
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr waypointReachedPublisher_;
+    rclcpp::Publisher<auv_core_helper::msg::Attitude>::SharedPtr attitudeActualPublisher_;
+    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr dvlDistancePublisher_;
+    rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr armedPublisher_;
+    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr flightModePublisher_;
 
-    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr velocityDesiredSubscription_;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr kclStateSubscription_;
     rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr waypointSubscription_;
     rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr pathSubscription_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr poseDesiredSubscription_;
+    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr velocityDesiredSubscription_;
+    rclcpp::Subscription<geometry_msgs::msg::Accel>::SharedPtr accelerationDesiredSubscription_;
+    rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr yawRateDesiredSubscription_;
+    
 
     //--------------------------------------------------------------------------
     // Timers
@@ -158,20 +172,47 @@ private:
     void initMavlinkConnection();
     
     /**
-     * @brief Request data streams from ArduSub
-     */
-    void requestDataStreams();
-    
-    /**
      * @brief Receive and process MAVLink data
      */
     void receiveData();
     
     /**
-     * @brief Main control loop for manual control mode
+     * @brief Handle HEARTBEAT message
+     * @param msg The received MAVLink message
+     * @param sender_addr The sender's address
      */
-    void controlLoop();
+    void handleHeartbeat(const mavlink_message_t& msg, const sockaddr_in& sender_addr);
+    
+    /**
+     * @brief Handle LOCAL_POSITION_NED message
+     * @param msg The received MAVLink message
+     */
+    void handleLocalPositionNed(const mavlink_message_t& msg);
 
+    /**
+     * @brief Handle GLOBAL_POSITION_INT message
+     * @param msg The received MAVLink message
+     */
+    void handleGlobalPositionInt(const mavlink_message_t& msg);
+
+    /**
+     * @brief Handle ATTITUDE message
+     * @param msg The received MAVLink message
+     */
+    void handleAttitude(const mavlink_message_t& msg);
+
+    /**
+    * @brief Handle DVL_DISTANCE message
+    * @param msg The received MAVLink message
+    */
+    void handleDvlDistance(const mavlink_message_t& msg);
+     
+    /**
+     * @brief Handle COMMAND_ACK message
+     * @param msg The received MAVLink message
+     */
+    void handleCommandAck(const mavlink_message_t& msg);
+    
     /**
      * @brief Process velocity commands from ROS
      */
@@ -181,31 +222,6 @@ private:
      * @brief Process state change requests
      */
     void kclStateCallback(const std_msgs::msg::String::SharedPtr msg);
-    
-    /**
-     * @brief Process single waypoint requests
-     */
-    void waypointCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
-    
-    /**
-     * @brief Process path (multiple waypoints) requests
-     */
-    void pathCallback(const nav_msgs::msg::Path::SharedPtr msg);
-    
-    /**
-     * @brief Timer callback for waypoint navigation progress
-     */
-    void waypointNavigationTimer();
-    
-    /**
-     * @brief Process the next waypoint in the queue
-     */
-    void processNextWaypoint();
-    
-    /**
-     * @brief Check if current waypoint has been reached
-     */
-    bool isWaypointReached();
     
     /**
      * @brief Check if the vehicle is armed
@@ -234,25 +250,12 @@ private:
     void setFlightMode(const std::string& mode);
     
     /**
-     * @brief Arm the vehicle in specified mode
-     * 
-     * Sends command to arm the vehicle. If mode is not empty and not "CURRENT",
-     * it will also set the vehicle to the specified mode after arming.
-     * 
-     * @param mode The desired flight mode after arming (empty or "CURRENT" to keep current mode)
+     * @brief Sends a command to arm or disarm the vehicle.
+     * @param arm_vehicle True to arm, false to disarm.
+     * @param mode Optional flight mode to set *after* arming (e.g., "GUIDED"). Ignored if disarming or empty/"CURRENT".
      */
-    void arm(const std::string& mode = "MANUAL");
-    
-    /**
-     * @brief Disarm the vehicle
-     */
-    void disarm();
+    void setArmState(bool arm_vehicle);
 
-    /**
-     * @brief Convert desired velocities to PWM values
-     */
-    Eigen::VectorXd velocityToPwm(const Eigen::VectorXd& velocities, const Eigen::VectorXd& maxVelocities, const Eigen::VectorXd& minVelocities);
-    
     /**
      * @brief Set RC channel PWM values
      */
@@ -327,5 +330,26 @@ private:
      */
     void prepareGlobalPositionTarget(int32_t lat_int, int32_t lon_int, float alt, 
                                     mavlink_set_position_target_global_int_t& global_target);
-};
 
+    /**
+     * @brief Callback for receiving desired pose
+     * @param msg The received PoseStamped message
+     */
+    void poseDesiredCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
+
+    /**
+     * @brief Callback for receiving desired acceleration
+     * @param msg The received Accel message
+     */
+    void accelerationDesiredCallback(const geometry_msgs::msg::Accel::SharedPtr msg);
+
+    /**
+     * @brief Callback for receiving desired yaw rate
+     * @param msg The received Float64 message (rate in degrees/sec)
+     */
+    void yawRateDesiredCallback(const std_msgs::msg::Float64::SharedPtr msg);
+
+    //--------------------------------------------------------------------------
+    // Internal Helper Functions
+    //--------------------------------------------------------------------------
+};
