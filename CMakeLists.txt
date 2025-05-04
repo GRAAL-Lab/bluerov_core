@@ -30,6 +30,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PoseStamped.msg"
   "msg/Obstacle.msg"
   "msg/ObstacleList.msg"
+  "msg/Attitude.msg"
+  "msg/Position.msg"
   "srv/ControlCommand.srv"
   DEPENDENCIES std_msgs geometry_msgs
 )
