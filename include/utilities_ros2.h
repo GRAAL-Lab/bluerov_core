@@ -24,22 +24,17 @@
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/quaternion_stamped.hpp>
 
-#include <detav_msgs/msg/obstacle.hpp>
-#include <detav_msgs/msg/obstacle_list.hpp>
-#include <detav_msgs/msg/size.hpp>
-#include <detav_msgs/msg/size_with_covariance.hpp>
-
-#include <obstacle_tracking_msg/msg/buoy.hpp>
-#include <obstacle_tracking_msg/msg/marker.hpp>
-#include <obstacle_tracking_msg/msg/pipe.hpp>
-#include <obstacle_tracking_msg/msg/number.hpp>
-#include <obstacle_tracking_msg/msg/obstacles.hpp>
-#include <obstacle_tracking_msg/msg/bounding_box2_d.hpp>
-#include <obstacle_tracking_msg/msg/bounding_box2_d_array.hpp>
-#include <obstacle_tracking_msg/msg/obstacle.hpp>
-#include <obstacle_tracking_msg/msg/obstacle_array.hpp>
-#include <obstacle_tracking_msg/msg/obst_detection_settings.hpp>
-#include <obstacle_tracking_msg/msg/obst_detection_stats.hpp>
+#include <image_pipeline_msgs/msg/buoy.hpp>
+#include <image_pipeline_msgs/msg/marker.hpp>
+#include <image_pipeline_msgs/msg/pipe.hpp>
+#include <image_pipeline_msgs/msg/number.hpp>
+#include <image_pipeline_msgs/msg/obstacles.hpp>
+#include <image_pipeline_msgs/msg/bounding_box2_d.hpp>
+#include <image_pipeline_msgs/msg/bounding_box2_d_array.hpp>
+#include <image_pipeline_msgs/msg/obstacle.hpp>
+#include <image_pipeline_msgs/msg/obstacle_array.hpp>
+#include <image_pipeline_msgs/msg/obst_detection_settings.hpp>
+#include <image_pipeline_msgs/msg/obst_detection_stats.hpp>
 
 #include <pcl_conversions/pcl_conversions.h>
 
@@ -101,48 +96,48 @@ class UtilitiesROS2 {
     static Eigen::Vector6d ROSTwistToTwist(const geometry_msgs::msg::TwistStamped::ConstPtr twistMsg); /*!< ROS stamped twist conversion. */
     
     // Convert ODTC to ROS
-    static obstacle_tracking_msg::msg::BoundingBox2D GetBox2DMsg(const rclcpp::Time t, const odtc::BoundingBox<2> b);
+    static image_pipeline_msgs::msg::BoundingBox2D GetBox2DMsg(const rclcpp::Time t, const odtc::BoundingBox<2> b);
     
     // Convert ROS to ODTC
-    static odtc::BoundingBox<2> GetBox2DFromMsg(const obstacle_tracking_msg::msg::BoundingBox2D &boxMsg);
+    static odtc::BoundingBox<2> GetBox2DFromMsg(const image_pipeline_msgs::msg::BoundingBox2D &boxMsg);
     
     // Publishing
-    static void PublishBoundingBoxes2D(const rclcpp::Publisher<obstacle_tracking_msg::msg::BoundingBox2DArray>::SharedPtr pub,
+    static void PublishBoundingBoxes2D(const rclcpp::Publisher<image_pipeline_msgs::msg::BoundingBox2DArray>::SharedPtr pub,
                                             const rclcpp::Time &t, const std::vector<odtc::BoundingBox<2>> &boxes);
     static void PublishPose(const rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub, const rclcpp::Time t,
                                             const Eigen::TransformationMatrix T, std::string frames);
-    static void PublishStats(const rclcpp::Publisher<obstacle_tracking_msg::msg::ObstDetectionStats>::SharedPtr pub, const rclcpp::Time t,
+    static void PublishStats(const rclcpp::Publisher<image_pipeline_msgs::msg::ObstDetectionStats>::SharedPtr pub, const rclcpp::Time t,
                                             std::map<std::string, odtc::ClusteringStats> &stats);
 
     // Read from cache
     static bool ReadImageFromCache(const message_filters::Cache<sensor_msgs::msg::Image> &imgCache, const rclcpp::Time stamp, sensor_msgs::msg::Image::ConstPtr &imageMsgPtr, const double maxTimeLag_s);
 
    
-    static obstacle_tracking_msg::msg::Obstacle FillObstacleMsg(rclcpp::Time t, std::shared_ptr<odtc::BoundingBox<2>> box,
+    static image_pipeline_msgs::msg::Obstacle FillObstacleMsg(rclcpp::Time t, std::shared_ptr<odtc::BoundingBox<2>> box,
               std::shared_ptr<odtc::TrackData> filterInfo, const std::map<std::string, odtc::IDAssocParams> &assocParams);
-    static obstacle_tracking_msg::msg::ObstacleArray FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &obstacles, const TrackType trackType, const Eigen::Vector3d &llhCentroid = Eigen::Vector3d(0,0,0),
+    static image_pipeline_msgs::msg::ObstacleArray FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &obstacles, const TrackType trackType, const Eigen::Vector3d &llhCentroid = Eigen::Vector3d(0,0,0),
         std::vector<odtc::BoundingBox<2>> boxes = {});
-    static obstacle_tracking_msg::msg::ObstacleArray FillObstacleArrayMsg(rclcpp::Time t, std::vector<odtc::Obstacle<2>> &obstacles,
+    static image_pipeline_msgs::msg::ObstacleArray FillObstacleArrayMsg(rclcpp::Time t, std::vector<odtc::Obstacle<2>> &obstacles,
       std::vector<odtc::PolarRegion> &excludedRegions, const Eigen::Vector3d &llhCentroid, const Eigen::TransformationMatrix &worldF_T_vehicleF,
       std::map<size_t,std::vector<odtc::DetectionInfo>> di = {});
-    static std::vector<odtc::Obstacle<2>> GetObstaclesFromROSMsg(const obstacle_tracking_msg::msg::ObstacleArray &msg, Eigen::Vector3d &geoCentroid);
-    static std::vector<odtc::Obstacle<2>> GetObstaclesFromROSMsg(const obstacle_tracking_msg::msg::ObstacleArray &msg, Eigen::Vector3d &geoCentroid, std::map<odtc::TrackId, odtc::RegistrationData>& trackId2WorldFRegData_);
-    static std::vector<odtc::Obstacle<2>> GetTracksFromROSMsg(const obstacle_tracking_msg::msg::ObstacleArray &msg);
+    static std::vector<odtc::Obstacle<2>> GetObstaclesFromROSMsg(const image_pipeline_msgs::msg::ObstacleArray &msg, Eigen::Vector3d &geoCentroid);
+    static std::vector<odtc::Obstacle<2>> GetObstaclesFromROSMsg(const image_pipeline_msgs::msg::ObstacleArray &msg, Eigen::Vector3d &geoCentroid, std::map<odtc::TrackId, odtc::RegistrationData>& trackId2WorldFRegData_);
+    static std::vector<odtc::Obstacle<2>> GetTracksFromROSMsg(const image_pipeline_msgs::msg::ObstacleArray &msg);
 
-    static bool ReadROSObstacleArray(const message_filters::Cache<obstacle_tracking_msg::msg::ObstacleArray> &cache, const rclcpp::Time t,
-      obstacle_tracking_msg::msg::ObstacleArray::ConstPtr &obstacles, const double maxTimeLag_s);
-    static obstacle_tracking_msg::msg::Obstacles FillObstaclesMsg(rclcpp::Time t, const std::vector<Buoy> &b,
+    static bool ReadROSObstacleArray(const message_filters::Cache<image_pipeline_msgs::msg::ObstacleArray> &cache, const rclcpp::Time t,
+      image_pipeline_msgs::msg::ObstacleArray::ConstPtr &obstacles, const double maxTimeLag_s);
+    static image_pipeline_msgs::msg::Obstacles FillObstaclesMsg(rclcpp::Time t, const std::vector<Buoy> &b,
                                                                   const std::vector<Marker> &m, const std::vector<Number> &n,
-                                                                  const std::vector<Pipe> &p);
+                                                                  const std::vector<Pipe> &p, const ctb::LatLong &centroid);
 
-  static geometry_msgs::msg::PoseWithCovariance EigenToPoseWithCovariance(const Eigen::TransformationMatrix& eigen_pose);
-  static obstacle_tracking_msg::msg::Buoy BuoyToBuoyMsg(const Buoy& buoy);
-  static obstacle_tracking_msg::msg::Number NumberToNumberMsg(const Number& number);
-  static obstacle_tracking_msg::msg::Marker MarkerToMarkerMsg(const Marker& marker);
-  static obstacle_tracking_msg::msg::Pipe PipeToPipeMsg(const Pipe& pipe);
+  static geographic_msgs::msg::GeoPoseWithCovariance EigenToGeoPoseWithCovariance(const Eigen::TransformationMatrix& eigen_pose, const ctb::LatLong &centroid);
+  static image_pipeline_msgs::msg::Buoy BuoyToBuoyMsg(const Buoy& buoy, const ctb::LatLong &centroid);
+  static image_pipeline_msgs::msg::Number NumberToNumberMsg(const Number& number, const ctb::LatLong &centroid);
+  static image_pipeline_msgs::msg::Marker MarkerToMarkerMsg(const Marker& marker, const ctb::LatLong &centroid);
+  static image_pipeline_msgs::msg::Pipe PipeToPipeMsg(const Pipe& pipe, const ctb::LatLong &centroid);
 
-  static bool ReadBoxArray2DFromCache(const message_filters::Cache<obstacle_tracking_msg::msg::BoundingBox2DArray> &cache,
-    const rclcpp::Time stamp, obstacle_tracking_msg::msg::BoundingBox2DArray::ConstPtr &msgPtr, const double maxTimeLag_s);
+  static bool ReadBoxArray2DFromCache(const message_filters::Cache<image_pipeline_msgs::msg::BoundingBox2DArray> &cache,
+    const rclcpp::Time stamp, image_pipeline_msgs::msg::BoundingBox2DArray::ConstPtr &msgPtr, const double maxTimeLag_s);
 };
 
 #endif

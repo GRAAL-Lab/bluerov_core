@@ -2,8 +2,8 @@
 #include "marine_tracking_ros2.h"
 
 MarineTrackingROS2::MarineTrackingROS2(const std::string& bagPath, const bool isSim) : Node("marine_detector") {
-    filtersPub_ = this->create_publisher<obstacle_tracking_msg::msg::ObstacleArray>("/trk/tracks", 10);
-    likelyCollisionRegionsPub_ = this->create_publisher<obstacle_tracking_msg::msg::BoundingBox2DArray>("/trk/collision_regions", 10);
+    filtersPub_ = this->create_publisher<image_pipeline_msgs::msg::ObstacleArray>("/trk/tracks", 10);
+    likelyCollisionRegionsPub_ = this->create_publisher<image_pipeline_msgs::msg::BoundingBox2DArray>("/trk/collision_regions", 10);
     std::map<std::string, odtc::IDAssocParams> assocParams;
     odtc::TrackingParams trackingParams;
 
@@ -33,14 +33,14 @@ MarineTrackingROS2::MarineTrackingROS2(const std::string& bagPath, const bool is
         std::bind(&MarineTrackingROS2::Run, this)
     );
     
-    detectionsSub_ = std::make_shared<message_filters::Subscriber<obstacle_tracking_msg::msg::ObstacleArray>>(this, "/dtc/worldF_obstacles");
+    detectionsSub_ = std::make_shared<message_filters::Subscriber<image_pipeline_msgs::msg::ObstacleArray>>(this, "/dtc/worldF_obstacles");
     cacheDetections_.setCacheSize(100);
     cacheDetections_.connectInput(*detectionsSub_);
 
     std::cerr << tc::bluL << "[MarineTracking] Created" << tc::none << std::endl;
 }
 
-void MarineTrackingROS2::FiltersCallback(const obstacle_tracking_msg::msg::ObstacleArray::ConstPtr& obstaclesMsg) {
+void MarineTrackingROS2::FiltersCallback(const image_pipeline_msgs::msg::ObstacleArray::ConstPtr& obstaclesMsg) {
     trackId2WorldFRegData_.clear();
     auto msgOk = SetTime(obstaclesMsg);
     std::cerr << tc::bluL << "[FiltersCallback] Starting, t = " << ts_ - t0_ << tc::none << std::endl;
@@ -231,7 +231,7 @@ void MarineTrackingROS2::ReadTrackingParams(odtc::TrackingParams &trackingParams
 
 void MarineTrackingROS2::Run() {
     std::cerr << tc::bluL << "[MarineTrackingROS1::Run] Start..." << tc::none << std::endl;
-    obstacle_tracking_msg::msg::ObstacleArray::ConstPtr obstaclesMsg;
+    image_pipeline_msgs::msg::ObstacleArray::ConstPtr obstaclesMsg;
     double dtLagMax = trackingDt_;
     if (isFirstMsg_) dtLagMax = std::numeric_limits<double>::max();
     std::cerr << "[Run] now = " << UtilitiesROS2::ROSTimeToTimestamp(this->get_clock()->now()) << std::endl;
@@ -242,7 +242,7 @@ void MarineTrackingROS2::Run() {
     return;
 }
 
-bool MarineTrackingROS2::SetTime(const obstacle_tracking_msg::msg::ObstacleArray::ConstPtr& obstacles) {
+bool MarineTrackingROS2::SetTime(const image_pipeline_msgs::msg::ObstacleArray::ConstPtr& obstacles) {
     bool messageIsValid;
 
     if (obstacles != nullptr) {

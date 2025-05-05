@@ -20,7 +20,7 @@ struct sensorTopics {
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr worldF_cloudPub;  // sensor-related point cloud (e.g. lidar slice or pyramid-based cluster set)
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr worldF_cloud2DPub;  // sensor-related point cloud (e.g. lidar slice or pyramid-based cluster set) in 2D
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr worldF_hullsPub;  // obstacle hulls
-    rclcpp::Publisher<obstacle_tracking_msg::msg::BoundingBox2DArray>::SharedPtr worldF_obstacleBoundingBoxesPub;  // obstacle bounding boxes
+    rclcpp::Publisher<image_pipeline_msgs::msg::BoundingBox2DArray>::SharedPtr worldF_obstacleBoundingBoxesPub;  // obstacle bounding boxes
 };
 
 class MarineDetectorROS2 : public MarineDetector,  public rclcpp::Node {
@@ -39,7 +39,7 @@ public:
 private:
     void Init(const std::string& bagPath, bool isSim);
 
-    rclcpp::Subscription<obstacle_tracking_msg::msg::BoundingBox2DArray>::SharedPtr cameraObstaclesSub_;
+    rclcpp::Subscription<image_pipeline_msgs::msg::BoundingBox2DArray>::SharedPtr cameraObstaclesSub_;
     rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr geoPoseStampedSub_;
 
     void ObstacleDetectionCallbackInternal(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pointCloudMsg, const bool worldF_pos_set, const bool worldF_orient_set);
@@ -52,7 +52,7 @@ private:
 
     // Settings
     void FillSettingsMsg() override;
-    obstacle_tracking_msg::msg::ObstDetectionSettings settingsMsg_;
+    image_pipeline_msgs::msg::ObstDetectionSettings settingsMsg_;
 
     rclcpp::TimerBase::SharedPtr runTimer_;  ///< Timer for periodic execution.
     rclcpp::CallbackGroup::SharedPtr callback_group_;  ///< Callback group.
@@ -63,31 +63,30 @@ private:
 
     odtc::FrameType frameType_;
 
-    bool SetWorldF_VehiclePose_GeoPoseStamped(const nav_msgs::msg::Odometry::ConstSharedPtr& geoPoseStamped_msg);
+    bool PerceptionCallback(const nav_msgs::msg::Odometry::ConstSharedPtr& geoPoseStamped_msg);
 
     void GetPipe(const image_pipeline_msgs::msg::PipeDirection::SharedPtr msg);
 
     // Subscribers
     message_filters::Cache<image_pipeline_msgs::msg::PipeDirection> pipeCache_;
-    message_filters::Cache<obstacle_tracking_msg::msg::BoundingBox2DArray> imgAnnCache_;
+    message_filters::Cache<image_pipeline_msgs::msg::BoundingBox2DArray> imgAnnCache_;
     std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Imu>> imuSub_;
     std::map<std::string, std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::Image>>> imgSub_;
     std::shared_ptr<message_filters::Subscriber<sensor_msgs::msg::NavSatFix>> gnssSub_;
     std::shared_ptr<message_filters::Subscriber<image_pipeline_msgs::msg::PipeDirection>> pipeSub_;
-    std::shared_ptr<message_filters::Subscriber<obstacle_tracking_msg::msg::BoundingBox2DArray>> imgAnnSub_;
+    std::shared_ptr<message_filters::Subscriber<image_pipeline_msgs::msg::BoundingBox2DArray>> imgAnnSub_;
 
 
     // Caches
     std::map<std::string, std::shared_ptr<message_filters::Cache<sensor_msgs::msg::Image>>> cacheImg_;
-    std::map<std::string, std::shared_ptr<message_filters::Cache<obstacle_tracking_msg::msg::BoundingBox2DArray>>> cacheAnnotations_;
     message_filters::Cache<sensor_msgs::msg::NavSatFix> cacheGNSS_;
 
     // Publishers
-    rclcpp::Publisher<obstacle_tracking_msg::msg::ObstDetectionSettings>::SharedPtr settingsPub_;
+    rclcpp::Publisher<image_pipeline_msgs::msg::ObstDetectionSettings>::SharedPtr settingsPub_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imuDataPub_;
     rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr worldF_vehiclePosePub_;
-    rclcpp::Publisher<obstacle_tracking_msg::msg::ObstDetectionStats>::SharedPtr statsPub_;
-    rclcpp::Publisher<obstacle_tracking_msg::msg::Obstacles>::SharedPtr obstaclesPub_;
+    rclcpp::Publisher<image_pipeline_msgs::msg::ObstDetectionStats>::SharedPtr statsPub_;
+    rclcpp::Publisher<image_pipeline_msgs::msg::Obstacles>::SharedPtr obstaclesPub_;
     std::map<std::string, sensorTopics> sensorsPub_;
 
     rclcpp::Time tsRos_;

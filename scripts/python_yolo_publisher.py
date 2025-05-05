@@ -10,9 +10,11 @@ import cv2
 import numpy as np
 from ultralytics import YOLO  # Assuming YOLOv8
 
-from obstacle_tracking_msg.msg import BoundingBox2DArray, BoundingBox2D
+from image_pipeline_msgs.msg import BoundingBox2DArray, BoundingBox2D
 
 import time
+
+confidenceThr : float = 0.35
 
 class YOLOImageNode(Node):
     def __init__(self):
@@ -31,7 +33,7 @@ class YOLOImageNode(Node):
 
         # Load YOLO model (can be a custom model path or "yolov8n.pt" for a small default model)
         self.get_logger().info('Loading YOLO model...')
-        self.model = YOLO('/home/lucas/models/rami2.pt') # You can specify a custom model path here
+        self.model = YOLO('/home/graal/models/rami3.pt') # You can specify a custom model path here
         self.get_logger().info('YOLO model loaded successfully!')
         self.br = CvBridge()
 
@@ -111,42 +113,47 @@ class YOLOImageNode(Node):
         cnt = 0
         for result in results:
             for box in result.boxes:
-                # Extract x, y, width, and height from YOLO detection
-                x1, y1, x2, y2 = box.xyxy[0]  # YOLO returns (x1, y1, x2, y2) format
-                width = x2 - x1
-                height = y2 - y1
-                x_center = x1 + width / 2
-                y_center = y1 + height / 2
+                if box.conf.item() > confidenceThr:
+                    # Extract x, y, width, and height from YOLO detection
+                    x1, y1, x2, y2 = box.xyxy[0]  # YOLO returns (x1, y1, x2, y2) format
+                    width = x2 - x1
+                    height = y2 - y1
+                    x_center = x1 + width / 2
+                    y_center = y1 + height / 2
 
-                # Draw the bounding box on the image
-                color = (0, 255, 0)  # Green color for bounding boxes
-                cv2.rectangle(cv_image, 
-                (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
-                label = f"{names[box.cls.item()]}: {box.conf.item():.2f}"
-                cv2.putText(cv_image, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 1)
-                #cv2.putText(cv_image, label, (int(x1), int(y2) + 20), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 1)
+                    # Draw the bounding box on the image
+                    color = (0, 255, 0)  # Green color for bounding boxes
+                    cv2.rectangle(cv_image, 
+                    (int(x1), int(y1)), (int(x2), int(y2)), color, 2)
+                    label = f"{names[box.cls.item()]}: {box.conf.item():.2f}"
+                    cv2.putText(cv_image, label, (int(x1), int(y1) - 10), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 1)
+                    #cv2.putText(cv_image, label, (int(x1), int(y2) + 20), cv2.FONT_HERSHEY_SIMPLEX, 1, color, 1)
 
-                # Create a BoundingBox2D message and fill it
-                bbox = BoundingBox2D()
-                bbox.center_x = float(x_center)
-                bbox.center_y = float(y_center)
-                bbox.size_x = float(width)
-                bbox.size_y = float(height)
-                bbox.id = cnt
-                bbox.conf = box.conf.item()
-                bbox.desc = names[box.cls.item()]
+                    # Create a BoundingBox2D message and fill it
+                    bbox = BoundingBox2D()
+                    bbox.center_x = float(x_center)
+                    bbox.center_y = float(y_center)
+                    bbox.size_x = float(width)
+                    bbox.size_y = float(height)
+                    bbox.id = cnt
+                    bbox.conf = box.conf.item()
+                    bbox.desc = names[box.cls.item()]
 
-                # Add bounding box to array message
-                print(f'Camera {cam_id} - {bbox}')
-                box_array_msg.boxes.append(bbox)
+                    # Add bounding box to array message
+                    print(f'Camera {cam_id} - {bbox}')
+                    box_array_msg.boxes.append(bbox)
 
-                cnt = cnt + 1
+                    cnt = cnt + 1
+
+        stamp = box_array_msg.header.stamp
+        timestamp_float = stamp.sec + stamp.nanosec * 1e-9
+        timeStr = str(np.round(timestamp_float - 1744383187.0543287,2))
 
         # Save the image with bounding boxes to the given path
-        tempYoloSaveDir = "/home/lucas/exp_results/rami/"
-        tempYoloSaveDirIMG = "/home/lucas/exp_results/ramiIMG/"
-        tempYoloSavePath = tempYoloSaveDir + "sim_dtc_" +  str( time.time()) + ".png"
-        tempYoloSavePathIMG = tempYoloSaveDirIMG + "sim_" +  str( time.time()) + ".png"
+        tempYoloSaveDir = "/home/graal/exp_results/rami/"
+        tempYoloSaveDirIMG = "/home/graal/exp_results/ramiIMG/"
+        tempYoloSavePath = tempYoloSaveDir + "sim_dtc_" +  timeStr + ".png"
+        tempYoloSavePathIMG = tempYoloSaveDirIMG + "sim_" +  timeStr + ".png"
         try:
             if not cv2.imwrite(tempYoloSavePath, cv_image):
                 raise ValueError(f"Failed to save image to {tempYoloSavePath}")

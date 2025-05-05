@@ -34,10 +34,10 @@ enablePyramidBasedDilation: 0   # 0 or 1
 minAccumDistancePcl: 40.0         # min dist for point accumulation [m]
 minDistance: 2.0                # min cluster admissible point dist from lidar [m]
 maxDistance: 1000.0             # max cluster admissible point dist from lidar [m]
-cloudAccumulationPolicy: "fixed_obstacles"
+#cloudAccumulationPolicy: "fixed_obstacles"
 #cloudAccumulationPolicy: "track_speed"
 #cloudAccumulationPolicy: "hybrid"
-#cloudAccumulationPolicy: "registration"
+cloudAccumulationPolicy: "registration"
 
 ### POINT CLOUD VOXEL-BASED REDUCTION
 enableCloudReduction: 1         # 0 or 1
@@ -97,5 +97,5 @@ numThreadsForParallelClustering: 5
 
 ### OTHER ENABLE/DISABLE
 enableRemoveWaterReturns: 0
-saveClfusters: 0
+saveClusters: 0
 enableTrackingGt: 0

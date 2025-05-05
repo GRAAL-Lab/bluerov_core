@@ -59,17 +59,17 @@ class MarineTrackingROS2 : public rclcpp::Node {
     rclcpp::executors::SingleThreadedExecutor executor_;  ///< Executor for spinning.
 
     rclcpp::Time tsRos_;
-    void FiltersCallback(const obstacle_tracking_msg::msg::ObstacleArray::ConstPtr& obstaclesMsg);
-    bool SetTime(const obstacle_tracking_msg::msg::ObstacleArray::ConstPtr& obstacles);
+    void FiltersCallback(const image_pipeline_msgs::msg::ObstacleArray::ConstPtr& obstaclesMsg);
+    bool SetTime(const image_pipeline_msgs::msg::ObstacleArray::ConstPtr& obstacles);
     void ReadConfigFile(const std::string& dataPath, libconfig::Config& confObj);
 
     // Subscribers
-    std::shared_ptr<message_filters::Subscriber<obstacle_tracking_msg::msg::ObstacleArray>> filtersSub_;
-    rclcpp::Publisher< obstacle_tracking_msg::msg::ObstacleArray>::SharedPtr filtersPub_;
+    std::shared_ptr<message_filters::Subscriber<image_pipeline_msgs::msg::ObstacleArray>> filtersSub_;
+    rclcpp::Publisher< image_pipeline_msgs::msg::ObstacleArray>::SharedPtr filtersPub_;
 
-    message_filters::Cache<obstacle_tracking_msg::msg::ObstacleArray> cacheDetections_;
-    std::shared_ptr<message_filters::Subscriber<obstacle_tracking_msg::msg::ObstacleArray>> detectionsSub_;
-    rclcpp::Publisher<obstacle_tracking_msg::msg::BoundingBox2DArray>::SharedPtr likelyCollisionRegionsPub_;
+    message_filters::Cache<image_pipeline_msgs::msg::ObstacleArray> cacheDetections_;
+    std::shared_ptr<message_filters::Subscriber<image_pipeline_msgs::msg::ObstacleArray>> detectionsSub_;
+    rclcpp::Publisher<image_pipeline_msgs::msg::BoundingBox2DArray>::SharedPtr likelyCollisionRegionsPub_;
 
     rclcpp::Time tsROS_;
     Eigen::Vector3d llh_vehiclePos_t0_;

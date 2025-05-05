@@ -37,7 +37,7 @@ Eigen::Vector6d UtilitiesROS2::ROSTwistToTwist(const geometry_msgs::msg::TwistSt
     return v;
 }
 
-odtc::BoundingBox<2> UtilitiesROS2::GetBox2DFromMsg(const obstacle_tracking_msg::msg::BoundingBox2D &boxMsg) {
+odtc::BoundingBox<2> UtilitiesROS2::GetBox2DFromMsg(const image_pipeline_msgs::msg::BoundingBox2D &boxMsg) {
     // Extract information from the BoundingBox2D message
     Eigen::Vector2d center(boxMsg.center_x, boxMsg.center_y);
     Eigen::Vector2d size(boxMsg.size_x, boxMsg.size_y);
@@ -56,9 +56,9 @@ odtc::BoundingBox<2> UtilitiesROS2::GetBox2DFromMsg(const obstacle_tracking_msg:
     return box;
 }
 
-obstacle_tracking_msg::msg::BoundingBox2D UtilitiesROS2::GetBox2DMsg(const rclcpp::Time t, const odtc::BoundingBox<2> box) {
+image_pipeline_msgs::msg::BoundingBox2D UtilitiesROS2::GetBox2DMsg(const rclcpp::Time t, const odtc::BoundingBox<2> box) {
     
-    obstacle_tracking_msg::msg::BoundingBox2D boxMsg;
+    image_pipeline_msgs::msg::BoundingBox2D boxMsg;
     boxMsg.header.stamp = t;
 
     Eigen::Vector2d center = box.ExtF_Center();
@@ -80,11 +80,11 @@ obstacle_tracking_msg::msg::BoundingBox2D UtilitiesROS2::GetBox2DMsg(const rclcp
     return boxMsg;
 }
 
-void UtilitiesROS2::PublishBoundingBoxes2D(const rclcpp::Publisher<obstacle_tracking_msg::msg::BoundingBox2DArray>::SharedPtr pub,
+void UtilitiesROS2::PublishBoundingBoxes2D(const rclcpp::Publisher<image_pipeline_msgs::msg::BoundingBox2DArray>::SharedPtr pub,
                                            const rclcpp::Time &t,
                                            const std::vector<odtc::BoundingBox<2>> &boxes) {
     // Define the message
-    obstacle_tracking_msg::msg::BoundingBox2DArray msg;
+    image_pipeline_msgs::msg::BoundingBox2DArray msg;
 
     // Set the header
     msg.header.stamp = t;
@@ -100,9 +100,9 @@ void UtilitiesROS2::PublishBoundingBoxes2D(const rclcpp::Publisher<obstacle_trac
     pub->publish(msg);
 }
 
-void UtilitiesROS2::PublishStats(const rclcpp::Publisher<obstacle_tracking_msg::msg::ObstDetectionStats>::SharedPtr pub, const rclcpp::Time t,
+void UtilitiesROS2::PublishStats(const rclcpp::Publisher<image_pipeline_msgs::msg::ObstDetectionStats>::SharedPtr pub, const rclcpp::Time t,
                                             std::map<std::string, odtc::ClusteringStats> &stats) {
-    obstacle_tracking_msg::msg::ObstDetectionStats msg;
+    image_pipeline_msgs::msg::ObstDetectionStats msg;
     msg.header.stamp = t;
 
     for (const auto &p : stats) {
@@ -145,23 +145,26 @@ void UtilitiesROS2::PublishPose(const rclcpp::Publisher<geometry_msgs::msg::Pose
     pub->publish(msg);
 }
 
-bool UtilitiesROS2::ReadBoxArray2DFromCache(const message_filters::Cache<obstacle_tracking_msg::msg::BoundingBox2DArray> &cache,
-    const rclcpp::Time stamp, obstacle_tracking_msg::msg::BoundingBox2DArray::ConstPtr &msgPtr, const double maxTimeLag_s) {
+bool UtilitiesROS2::ReadBoxArray2DFromCache(const message_filters::Cache<image_pipeline_msgs::msg::BoundingBox2DArray> &cache,
+    const rclcpp::Time stamp, image_pipeline_msgs::msg::BoundingBox2DArray::ConstPtr &msgPtr, const double maxTimeLag_s) {
     
+    std::cerr << tc::yellow << "[ReadBoxArray2DFromCache] Start..." << tc::none<<std::endl;
     msgPtr = cache.getElemBeforeTime(stamp);
-    return (msgPtr != nullptr && TimestampsAreClose(stamp, msgPtr->header.stamp, maxTimeLag_s));
+    std::cerr << tc::yellow << "[ReadBoxArray2DFromCache] Checked cache..." << tc::none<<std::endl;
+    if (msgPtr != nullptr) std::cerr << "found!" << std::endl;
+    return (msgPtr != nullptr) && (TimestampsAreClose(stamp, msgPtr->header.stamp, maxTimeLag_s));
 }
 
 bool UtilitiesROS2::ReadImageFromCache(const message_filters::Cache<sensor_msgs::msg::Image> &imgCache, const rclcpp::Time stamp, sensor_msgs::msg::Image::ConstPtr &imageMsgPtr, const double maxTimeLag_s) {
     imageMsgPtr = imgCache.getElemBeforeTime(stamp);
-    //std::cerr << "imageMsgPtr is null?" << (imageMsgPtr == nullptr) << std::endl;
-    return (imageMsgPtr != nullptr && TimestampsAreClose(stamp, imageMsgPtr->header.stamp, maxTimeLag_s));
+    std::cerr << "imageMsgPtr is null?" << (imageMsgPtr == nullptr) << std::endl;
+    return (imageMsgPtr != nullptr) && (TimestampsAreClose(stamp, imageMsgPtr->header.stamp, maxTimeLag_s));
 }
 
-obstacle_tracking_msg::msg::Obstacle UtilitiesROS2::FillObstacleMsg(rclcpp::Time t, std::shared_ptr<odtc::BoundingBox<2>> box,
+image_pipeline_msgs::msg::Obstacle UtilitiesROS2::FillObstacleMsg(rclcpp::Time t, std::shared_ptr<odtc::BoundingBox<2>> box,
               std::shared_ptr<odtc::TrackData> filterInfo, const std::map<std::string, odtc::IDAssocParams> &assocParams) {
     
-    obstacle_tracking_msg::msg::Obstacle msg;
+    image_pipeline_msgs::msg::Obstacle msg;
     msg.header.stamp = t;
 
     if (filterInfo != nullptr) {
@@ -211,12 +214,12 @@ obstacle_tracking_msg::msg::Obstacle UtilitiesROS2::FillObstacleMsg(rclcpp::Time
     return msg;
 }
 
-obstacle_tracking_msg::msg::ObstacleArray UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t, std::vector<odtc::Obstacle<2>> &obstacles,
+image_pipeline_msgs::msg::ObstacleArray UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t, std::vector<odtc::Obstacle<2>> &obstacles,
     std::vector<odtc::PolarRegion> &excludedRegions, const Eigen::Vector3d &llhCentroid, const Eigen::TransformationMatrix &worldF_T_vehicleF,
     std::map<size_t,std::vector<odtc::DetectionInfo>> di) {
 
  // std::cerr << "[FillObstacleArrayMsg] Start..." << std::endl;
-    obstacle_tracking_msg::msg::ObstacleArray msg;
+    image_pipeline_msgs::msg::ObstacleArray msg;
     msg.header.stamp = t;
     for (int i = 0; i < obstacles.size(); i++) {
         //obstacles[i].SetBoundingBox(odtc::Cloud2BoxAlgorithm::HULL);
@@ -313,58 +316,69 @@ Eigen::TransformationMatrix UtilitiesROS2::ROSPoseToTransformMatrix(const geomet
     return T;
 }
 
-obstacle_tracking_msg::msg::Obstacles UtilitiesROS2::FillObstaclesMsg(rclcpp::Time t, const std::vector<Buoy> &buoys,
+image_pipeline_msgs::msg::Obstacles UtilitiesROS2::FillObstaclesMsg(rclcpp::Time t, const std::vector<Buoy> &buoys,
                                                                   const std::vector<Marker> &markers, const std::vector<Number> &numbers,
-                                                                  const std::vector<Pipe> &pipes) {
-    obstacle_tracking_msg::msg::Obstacles res;
+                                                                  const std::vector<Pipe> &pipes, const ctb::LatLong &centroid) {
+    image_pipeline_msgs::msg::Obstacles res;
     res.header.stamp = t;
 
     for (const auto &b : buoys) {
-        res.buoys.emplace_back(BuoyToBuoyMsg(b));
+        res.buoys.emplace_back(BuoyToBuoyMsg(b, centroid));
     }
 
     for (const auto &m : markers) {
-        res.markers.emplace_back(MarkerToMarkerMsg(m));
+        res.markers.emplace_back(MarkerToMarkerMsg(m, centroid));
     }
 
     for (const auto &p : pipes) {
-        res.pipes.emplace_back(PipeToPipeMsg(p));
+        res.pipes.emplace_back(PipeToPipeMsg(p, centroid));
     }
 
     for (const auto &n : numbers) {
-        res.numbers.emplace_back(NumberToNumberMsg(n));
+        res.numbers.emplace_back(NumberToNumberMsg(n, centroid));
     }
 
     return res;
 }
+#include <geographic_msgs/msg/geo_pose_with_covariance.hpp>
+#include <geometry_msgs/msg/pose_with_covariance.hpp>
+#include <Eigen/Dense>
 
-geometry_msgs::msg::PoseWithCovariance UtilitiesROS2::EigenToPoseWithCovariance(const Eigen::TransformationMatrix& eigen_pose) {
-    geometry_msgs::msg::PoseWithCovariance pose_msg;
-    // Assuming eigen_pose provides access to translation and rotation
-    pose_msg.pose.position.x = eigen_pose.TranslationVector().x();
-    pose_msg.pose.position.y = eigen_pose.TranslationVector().y();
-    pose_msg.pose.position.z = eigen_pose.TranslationVector().z();
+// Assume Eigen::TransformationMatrix and Eigen::Vector3d are defined appropriately
 
+geographic_msgs::msg::GeoPoseWithCovariance UtilitiesROS2::EigenToGeoPoseWithCovariance(const Eigen::TransformationMatrix& eigen_pose, const ctb::LatLong &centroid) {
+    geographic_msgs::msg::GeoPoseWithCovariance geo_pose_msg;
+
+    // Extract position from eigen_pose and apply the NED centroid offset
+    Eigen::Vector3d position = eigen_pose.TranslationVector();
+    ctb::LatLong mapPoint;
+    double altitude;
+    ctb::LocalNED2LatLong(position, centroid, mapPoint, altitude);
+    geo_pose_msg.pose.position.latitude = mapPoint.latitude; // Assuming x -> latitude (N)
+    geo_pose_msg.pose.position.longitude = mapPoint.longitude; // Assuming y -> longitude (E)
+    geo_pose_msg.pose.position.altitude = altitude; // Assuming z -> altitude (D)
+
+    // Extract rotation from eigen_pose and convert to quaternion
     Eigen::Quaterniond quaternion(eigen_pose.RotationMatrix());
-    pose_msg.pose.orientation.x = quaternion.x();
-    pose_msg.pose.orientation.y = quaternion.y();
-    pose_msg.pose.orientation.z = quaternion.z();
-    pose_msg.pose.orientation.w = quaternion.w();
+    geo_pose_msg.pose.orientation.x = quaternion.x();
+    geo_pose_msg.pose.orientation.y = quaternion.y();
+    geo_pose_msg.pose.orientation.z = quaternion.z();
+    geo_pose_msg.pose.orientation.w = quaternion.w();
 
-    // Covariance matrix is application-specific. Initialize to identity for simplicity.
-    pose_msg.covariance.fill(0.0);
+    // Covariance matrix setup
+    geo_pose_msg.covariance.fill(0.0);
     for (int i = 0; i < 6; ++i) {
-        pose_msg.covariance[i * 6 + i] = 1.0;  // Identity covariance
+        geo_pose_msg.covariance[i * 6 + i] = 1.0;  // Identity covariance for simplicity
     }
 
-    return pose_msg;
+    return geo_pose_msg;
 }
 
-obstacle_tracking_msg::msg::Buoy UtilitiesROS2::BuoyToBuoyMsg(const Buoy& buoy) {
-    obstacle_tracking_msg::msg::Buoy msg;
+
+image_pipeline_msgs::msg::Buoy UtilitiesROS2::BuoyToBuoyMsg(const Buoy& buoy, const ctb::LatLong &centroid) {
+    image_pipeline_msgs::msg::Buoy msg;
     msg.id = static_cast<int64_t>(buoy.id);
-    msg.pose_in_world_frame = EigenToPoseWithCovariance(buoy.wF_pose);
-    msg.pose_in_vehicle_frame = EigenToPoseWithCovariance(buoy.wF_pose);  // Assuming same pose for now
+    msg.pose = EigenToGeoPoseWithCovariance(buoy.wF_pose, centroid);
     msg.color = buoy.color;
     msg.radius = buoy.radius;
     msg.notes = buoy.notes;
@@ -372,10 +386,10 @@ obstacle_tracking_msg::msg::Buoy UtilitiesROS2::BuoyToBuoyMsg(const Buoy& buoy) 
 }
 
 // Number -> NumberMsg
-obstacle_tracking_msg::msg::Number UtilitiesROS2::NumberToNumberMsg(const Number& number) {
-    obstacle_tracking_msg::msg::Number msg;
+image_pipeline_msgs::msg::Number UtilitiesROS2::NumberToNumberMsg(const Number& number, const ctb::LatLong &centroid) {
+    image_pipeline_msgs::msg::Number msg;
     msg.id = static_cast<int64_t>(number.id);
-    msg.pose = EigenToPoseWithCovariance(number.wF_pose);
+    msg.pose = EigenToGeoPoseWithCovariance(number.wF_pose, centroid);
     msg.number = number.number;
     msg.bg_color = number.bgColor;
     msg.notes = number.notes;
@@ -383,20 +397,20 @@ obstacle_tracking_msg::msg::Number UtilitiesROS2::NumberToNumberMsg(const Number
 }
 
 // Marker -> MarkerMsg
-obstacle_tracking_msg::msg::Marker UtilitiesROS2::MarkerToMarkerMsg(const Marker& marker) {
-    obstacle_tracking_msg::msg::Marker msg;
+image_pipeline_msgs::msg::Marker UtilitiesROS2::MarkerToMarkerMsg(const Marker& marker, const ctb::LatLong &centroid) {
+    image_pipeline_msgs::msg::Marker msg;
     msg.id = static_cast<int64_t>(marker.id);
-    msg.pose = EigenToPoseWithCovariance(marker.wF_pose);
+    msg.pose = EigenToGeoPoseWithCovariance(marker.wF_pose, centroid);
     msg.color = marker.color;
     msg.notes = marker.notes;
     return msg;
 }
 
-obstacle_tracking_msg::msg::Pipe UtilitiesROS2::PipeToPipeMsg(const Pipe& pipe) {
-    obstacle_tracking_msg::msg::Pipe msg;
+image_pipeline_msgs::msg::Pipe UtilitiesROS2::PipeToPipeMsg(const Pipe& pipe, const ctb::LatLong &centroid) {
+    image_pipeline_msgs::msg::Pipe msg;
     msg.id = static_cast<int64_t>(pipe.id);
-    msg.start_pose = EigenToPoseWithCovariance(pipe.wF_startPose);
-    msg.end_pose = EigenToPoseWithCovariance(pipe.wF_endPose);
+    msg.start_pose = EigenToGeoPoseWithCovariance(pipe.wF_startPose, centroid);
+    msg.end_pose = EigenToGeoPoseWithCovariance(pipe.wF_endPose, centroid);
     msg.pose.position.x = pipe.wF_pose.TranslationVector()[0];
     msg.pose.position.y = pipe.wF_pose.TranslationVector()[1];
     msg.pose.position.z = pipe.wF_pose.TranslationVector()[2];
@@ -406,21 +420,21 @@ obstacle_tracking_msg::msg::Pipe UtilitiesROS2::PipeToPipeMsg(const Pipe& pipe) 
 
     // Convert markers
     for (const auto& marker : pipe.markers) {
-        msg.markers.push_back(MarkerToMarkerMsg(marker));
+        msg.markers.push_back(MarkerToMarkerMsg(marker, centroid));
     }
 
     // Convert numbers
     for (const auto& number : pipe.numbers) {
-        msg.numbers.push_back(NumberToNumberMsg(number));
+        msg.numbers.push_back(NumberToNumberMsg(number, centroid));
     }
 
     msg.notes = pipe.notes;
     return msg;
 }
 
-obstacle_tracking_msg::msg::ObstacleArray UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &trck, const TrackType trackType, const Eigen::Vector3d &llhCentroid, std::vector<odtc::BoundingBox<2>> boxes) {
+image_pipeline_msgs::msg::ObstacleArray UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &trck, const TrackType trackType, const Eigen::Vector3d &llhCentroid, std::vector<odtc::BoundingBox<2>> boxes) {
 
-    obstacle_tracking_msg::msg::ObstacleArray msg;
+    image_pipeline_msgs::msg::ObstacleArray msg;
     msg.header.stamp = t;
     auto measObstacles = trck.ObstacleMeasurements();
     auto filters = trck.Filters();
@@ -493,15 +507,15 @@ obstacle_tracking_msg::msg::ObstacleArray UtilitiesROS2::FillObstacleArrayMsg(rc
     return msg;
 }
 
-bool UtilitiesROS2::ReadROSObstacleArray(const message_filters::Cache<obstacle_tracking_msg::msg::ObstacleArray> &cache, const rclcpp::Time t,
-    obstacle_tracking_msg::msg::ObstacleArray::ConstPtr &obstacles, const double maxTimeLag_s) {
+bool UtilitiesROS2::ReadROSObstacleArray(const message_filters::Cache<image_pipeline_msgs::msg::ObstacleArray> &cache, const rclcpp::Time t,
+    image_pipeline_msgs::msg::ObstacleArray::ConstPtr &obstacles, const double maxTimeLag_s) {
         
     obstacles = cache.getElemBeforeTime(t);
 
-    return (obstacles != nullptr) && (abs(UtilitiesROS2::ROSTimeToTimestamp(t) - UtilitiesROS2::ROSTimeToTimestamp(obstacles->header.stamp)) <= maxTimeLag_s);
+    return (obstacles != nullptr) && (TimestampsAreClose(t, obstacles->header.stamp, maxTimeLag_s));
 }
 
-std::vector<odtc::Obstacle<2>> UtilitiesROS2::GetTracksFromROSMsg(const obstacle_tracking_msg::msg::ObstacleArray &msg) {
+std::vector<odtc::Obstacle<2>> UtilitiesROS2::GetTracksFromROSMsg(const image_pipeline_msgs::msg::ObstacleArray &msg) {
     std::vector<odtc::Obstacle<2>> result;
     auto obstacles = msg.obstacles;
     obstacles.reserve(obstacles.size());
@@ -531,12 +545,12 @@ std::vector<odtc::Obstacle<2>> UtilitiesROS2::GetTracksFromROSMsg(const obstacle
     return result;
 }
 
-std::vector<odtc::Obstacle<2>> UtilitiesROS2::GetObstaclesFromROSMsg(const obstacle_tracking_msg::msg::ObstacleArray &msg, Eigen::Vector3d &geoCentroid) {
+std::vector<odtc::Obstacle<2>> UtilitiesROS2::GetObstaclesFromROSMsg(const image_pipeline_msgs::msg::ObstacleArray &msg, Eigen::Vector3d &geoCentroid) {
     std::map<odtc::TrackId, odtc::RegistrationData> unused;
     return GetObstaclesFromROSMsg(msg, geoCentroid, unused);
 }
 
-std::vector<odtc::Obstacle<2>> UtilitiesROS2::GetObstaclesFromROSMsg(const obstacle_tracking_msg::msg::ObstacleArray &msg, Eigen::Vector3d &geoCentroid, std::map<odtc::TrackId, odtc::RegistrationData>& trackId2WorldFRegData_) {
+std::vector<odtc::Obstacle<2>> UtilitiesROS2::GetObstaclesFromROSMsg(const image_pipeline_msgs::msg::ObstacleArray &msg, Eigen::Vector3d &geoCentroid, std::map<odtc::TrackId, odtc::RegistrationData>& trackId2WorldFRegData_) {
     std::vector<odtc::Obstacle<2>> result;
     auto obstacles = msg.obstacles;
     obstacles.reserve(obstacles.size());

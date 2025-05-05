@@ -27,8 +27,6 @@
 
 #include <offline_detection_utils.h>
 
-#include <detav_msgs/topicnames.hpp>
-
 typedef pcl::PointCloud<pcl::PointXYZ> PointCloudHost;
 
 /**

@@ -8,7 +8,7 @@ def generate_launch_description():
     return LaunchDescription([
 
         ExecuteProcess(
-            cmd=['rm', '-rf', '/home/lucas/.ros/bags/rami/rami_results'],
+            cmd=['rm', '-rf', '/home/graal/.ros/bags/rami/rami_results'],
             output='screen'
         ),
         
@@ -27,7 +27,17 @@ def generate_launch_description():
             executable='marine_detector_node',
             name='marine_detector',
             output='screen',
-            arguments=['--settings', '/home/lucas/ros2_ws_rami/src/obstacle_tracking_rami/data/rami.cfg'],
+            arguments=['--settings', '/home/graal/ros2_ws_rami/src/obstacle_tracking_rami/data/rami.cfg'],
+            parameters=[{'use_sim_time': True}]
+        ),
+                   
+        # Marine tracking node
+        Node(
+            package='image_pipeline_obstacle_tracking',
+            executable='marine_tracking_node',
+            name='marine_detector',
+            output='screen',
+            arguments=['--settings', '/home/graal/ros2_ws_rami/src/obstacle_tracking_rami/data/rami.cfg'],
             parameters=[{'use_sim_time': True}]
         ),
         
@@ -36,15 +46,15 @@ def generate_launch_description():
             cmd=[
                 'ros2', 'bag', 'record', 
                 '/dtc/stats', '/dtc/obstacles', '/dtc/detection_settings',
-                '/trk/tracks'
-                '-o', '/home/lucas/.ros/bags/rami/rami_results'
+                '/trk/tracks',
+                '-o', '/home/graal/.ros/bags/rami/rami_results'
             ],
             output='screen'
         ),
 
         # Play bag process
         ExecuteProcess(
-            cmd=['ros2', 'bag', 'play', '/home/lucas/rami/rami/rami.db3', '--clock', '--start-offset', '0'],
+            cmd=['ros2', 'bag', 'play', '/media/graal/evodata1/datasets/stonefish_rami/rami/rami.db3', '--clock', '--start-offset', '35'],
             output='screen'
         )
     ])
