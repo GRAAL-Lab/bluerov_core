@@ -34,6 +34,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DtcArea.msg"
   "msg/LatLong.msg"
   "msg/PipelinePipe.msg"
+  "msg/Position.msg"
+  "msg/Attitude.msg"
 
   "srv/MissionCommand.srv"
   "srv/ControlCommand.srv"
