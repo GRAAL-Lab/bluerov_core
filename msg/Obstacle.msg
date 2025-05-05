@@ -1,2 +1,1 @@
-float64 latitude
-float64 longitude
+LatLong position
