@@ -8,7 +8,7 @@ def generate_launch_description():
     return LaunchDescription([
 
         ExecuteProcess(
-            cmd=['rm', '-rf', '/home/graal/.ros/bags/rami/rami_results'],
+            cmd=['rm', '-rf', '/home/graal/.ros/stonefish_rami_results'],
             output='screen'
         ),
         
@@ -46,8 +46,8 @@ def generate_launch_description():
             cmd=[
                 'ros2', 'bag', 'record', 
                 '/dtc/stats', '/dtc/obstacles', '/dtc/detection_settings',
-                '/trk/tracks',
-                '-o', '/home/graal/.ros/bags/rami/rami_results'
+                '/trk/tracks', '/dtc/worldF_vehiclePose', '/dtc/sensorFoV',
+                '-o', '/home/graal/.ros/stonefish_rami_results'
             ],
             output='screen'
         ),

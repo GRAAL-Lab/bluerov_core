@@ -78,6 +78,14 @@ struct Pipe {
   std::string notes;
 };
 
+struct ObstaclesData {
+  std::vector<Buoy> buoys;
+  std::vector<Marker> markers;
+  std::vector<Number> numbers;
+  std::vector<Pipe> pipes;
+  ctb::LatLong centroid;
+};
+
 enum class TrackType { ENU, IMG };
 
 class UtilitiesROS2 {
@@ -124,17 +132,28 @@ class UtilitiesROS2 {
     static std::vector<odtc::Obstacle<2>> GetObstaclesFromROSMsg(const image_pipeline_msgs::msg::ObstacleArray &msg, Eigen::Vector3d &geoCentroid, std::map<odtc::TrackId, odtc::RegistrationData>& trackId2WorldFRegData_);
     static std::vector<odtc::Obstacle<2>> GetTracksFromROSMsg(const image_pipeline_msgs::msg::ObstacleArray &msg);
 
-    static bool ReadROSObstacleArray(const message_filters::Cache<image_pipeline_msgs::msg::ObstacleArray> &cache, const rclcpp::Time t,
-      image_pipeline_msgs::msg::ObstacleArray::ConstPtr &obstacles, const double maxTimeLag_s);
+    static bool ReadROSObstacleArray(const message_filters::Cache<image_pipeline_msgs::msg::Obstacles> &cache, const rclcpp::Time t,
+      image_pipeline_msgs::msg::Obstacles::ConstPtr &obstacles, const double maxTimeLag_s);
     static image_pipeline_msgs::msg::Obstacles FillObstaclesMsg(rclcpp::Time t, const std::vector<Buoy> &b,
                                                                   const std::vector<Marker> &m, const std::vector<Number> &n,
-                                                                  const std::vector<Pipe> &p, const ctb::LatLong &centroid);
+                                                                  const std::vector<Pipe> &p, const ctb::LatLong &centroid,
+                                                                  const Eigen::TransformationMatrix &worldF_T_vehicleF);
 
   static geographic_msgs::msg::GeoPoseWithCovariance EigenToGeoPoseWithCovariance(const Eigen::TransformationMatrix& eigen_pose, const ctb::LatLong &centroid);
   static image_pipeline_msgs::msg::Buoy BuoyToBuoyMsg(const Buoy& buoy, const ctb::LatLong &centroid);
   static image_pipeline_msgs::msg::Number NumberToNumberMsg(const Number& number, const ctb::LatLong &centroid);
   static image_pipeline_msgs::msg::Marker MarkerToMarkerMsg(const Marker& marker, const ctb::LatLong &centroid);
   static image_pipeline_msgs::msg::Pipe PipeToPipeMsg(const Pipe& pipe, const ctb::LatLong &centroid);
+
+  static ObstaclesData ObstaclesMsgToObstacles(const image_pipeline_msgs::msg::Obstacles &msg);
+  static Eigen::TransformationMatrix GeoPoseWithCovarianceToEigen(const geographic_msgs::msg::GeoPoseWithCovariance &geo_pose_msg, const ctb::LatLong &centroid);
+
+  static Buoy BuoyMsgToBuoy(const image_pipeline_msgs::msg::Buoy &msg, const ctb::LatLong &centroid);
+  static Marker MarkerMsgToMarker(const image_pipeline_msgs::msg::Marker &msg, const ctb::LatLong &centroid);
+  static Number NumberMsgToNumber(const image_pipeline_msgs::msg::Number &msg, const ctb::LatLong &centroid);
+  static Pipe PipeMsgToPipe(const image_pipeline_msgs::msg::Pipe &msg, const ctb::LatLong &centroid);
+
+  static std::vector<odtc::Obstacle<2>> ObstacleDataToObstacleVector(const ObstaclesData &obstacleData);
 
   static bool ReadBoxArray2DFromCache(const message_filters::Cache<image_pipeline_msgs::msg::BoundingBox2DArray> &cache,
     const rclcpp::Time stamp, image_pipeline_msgs::msg::BoundingBox2DArray::ConstPtr &msgPtr, const double maxTimeLag_s);

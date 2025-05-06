@@ -3,7 +3,6 @@
 
 MarineTrackingROS2::MarineTrackingROS2(const std::string& bagPath, const bool isSim) : Node("marine_detector") {
     filtersPub_ = this->create_publisher<image_pipeline_msgs::msg::ObstacleArray>("/trk/tracks", 10);
-    likelyCollisionRegionsPub_ = this->create_publisher<image_pipeline_msgs::msg::BoundingBox2DArray>("/trk/collision_regions", 10);
     std::map<std::string, odtc::IDAssocParams> assocParams;
     odtc::TrackingParams trackingParams;
 
@@ -26,30 +25,32 @@ MarineTrackingROS2::MarineTrackingROS2(const std::string& bagPath, const bool is
 
     tracker_ = odtc::Tracking(trackingParams,assocParams);
     tracker_.Meas2Track().Print();
-    tracker_.enableTrackPointChange = true;
-    tracker_.enableFGR = true;
+    tracker_.enableTrackPointChange = false;
+    tracker_.enableFGR = false;
+    tracker_.enableEnforcePoints = false;
+    tracker_.enableAdvTrackingPrint = false;
     runTimer_ = this->create_wall_timer(
         std::chrono::duration<double>(trackingDt_),
         std::bind(&MarineTrackingROS2::Run, this)
     );
     
-    detectionsSub_ = std::make_shared<message_filters::Subscriber<image_pipeline_msgs::msg::ObstacleArray>>(this, "/dtc/worldF_obstacles");
+    detectionsSub_ = std::make_shared<message_filters::Subscriber<image_pipeline_msgs::msg::Obstacles>>(this, "/dtc/obstacles");
     cacheDetections_.setCacheSize(100);
     cacheDetections_.connectInput(*detectionsSub_);
 
     std::cerr << tc::bluL << "[MarineTracking] Created" << tc::none << std::endl;
 }
 
-void MarineTrackingROS2::FiltersCallback(const image_pipeline_msgs::msg::ObstacleArray::ConstPtr& obstaclesMsg) {
+void MarineTrackingROS2::FiltersCallback(const image_pipeline_msgs::msg::Obstacles::ConstPtr& obstaclesMsg) {
     trackId2WorldFRegData_.clear();
     auto msgOk = SetTime(obstaclesMsg);
     std::cerr << tc::bluL << "[FiltersCallback] Starting, t = " << ts_ - t0_ << tc::none << std::endl;
 
     auto t1_trk = std::chrono::steady_clock::now();
     auto t1_rcv = std::chrono::steady_clock::now();
-    std::vector<odtc::Obstacle<2>> obstacles;
+    ObstaclesData obstacleData;
     if (msgOk) {
-        obstacles = UtilitiesROS2::GetObstaclesFromROSMsg(*obstaclesMsg, llh_vehiclePos_t0_, trackId2WorldFRegData_);
+        obstacleData = UtilitiesROS2::ObstaclesMsgToObstacles(*obstaclesMsg);
     }
     if (trackId2WorldFRegData_.size() > 0) {
         for (const auto &r : trackId2WorldFRegData_) {
@@ -61,65 +62,32 @@ void MarineTrackingROS2::FiltersCallback(const image_pipeline_msgs::msg::Obstacl
     std::cerr << std::endl;
     auto t2_rcv = std::chrono::steady_clock::now();;
     auto dt_rcv_ms = std::chrono::duration_cast<std::chrono::microseconds>(t2_rcv-t1_rcv).count()/1000.0;
-    std::cerr << "[FiltersCallback] Msg rcv dt = " << dt_rcv_ms << "ms @" << obstacles.size() << " detections." << std::endl;
+    std::cerr << "[FiltersCallback] Msg rcv dt = " << dt_rcv_ms << "ms @" << obstacleData.buoys.size() << " buoys detectied." << std::endl;
+
+    auto obstacles = UtilitiesROS2::ObstacleDataToObstacleVector(obstacleData);
 
     auto t1_da = std::chrono::steady_clock::now();
     if (msgOk) tracker_.egoPose = UtilitiesROS2::ROSPoseToTransformMatrix(obstaclesMsg->worldf_pose_vehiclef);
-    auto trackerCopy = tracker_;
-    trackerCopy.UpdateMeasurements(obstacles);
+    tracker_.UpdateMeasurements(obstacles);
     auto t2_da = std::chrono::steady_clock::now();
     auto dt_da_ms = std::chrono::duration_cast<std::chrono::microseconds>(t2_da-t1_da).count()/1000.0;
-    std::cerr << "[FiltersCallback] Data assoc dt = " << dt_da_ms << "ms @" << trackerCopy.ObstacleMeasurements().size() << " detections, " << trackerCopy.Filters().size() << " filters." << std::endl;
+    std::cerr << "[FiltersCallback] Data assoc dt = " << dt_da_ms << "ms @" << tracker_.ObstacleMeasurements().size() << " detections, " << tracker_.Filters().size() << " filters." << std::endl;
 
     auto t1_fu = std::chrono::steady_clock::now();
-    trackerCopy.UpdateFilters(odtc::FilteringStrategy::EKF, trackingDt_);
+    tracker_.UpdateFilters(odtc::FilteringStrategy::EKF, trackingDt_);
     auto t2_fu = std::chrono::steady_clock::now();;
     auto dt_fu_ms = std::chrono::duration_cast<std::chrono::microseconds>(t2_fu-t1_fu).count()/1000.0;
-    std::cerr << "[FiltersCallback] Filter update dt = " << dt_fu_ms << "ms @" << trackerCopy.Filters().size() << " filters." << std::endl;
+    std::cerr << "[FiltersCallback] Filter update dt = " << dt_fu_ms << "ms @" << tracker_.Filters().size() << " filters." << std::endl;
 
-    auto obstaclesRevised = trackerCopy.ReviseMeasurements(obstacles); // TODO revise
-    std::cerr << "enableDetectionRevision_ = "<< enableDetectionRevision_ << std::endl;
-    if (!enableDetectionRevision_) obstaclesRevised = obstacles;
-
-    auto t1_da2 = std::chrono::steady_clock::now();
-    tracker_.UpdateMeasurements(obstaclesRevised);
-    auto t2_da2 = std::chrono::steady_clock::now();
-    auto dt_da2_ms = std::chrono::duration_cast<std::chrono::microseconds>(t2_da2-t1_da2).count()/1000.0;
-    std::cerr << "[FiltersCallback] Data assoc dt = " << dt_da2_ms << "ms @" << tracker_.ObstacleMeasurements().size() << " detections 2, " << tracker_.Filters().size() << " filters." << std::endl;
-
-    auto t1_fu2 = std::chrono::steady_clock::now();
-    tracker_.UpdateFilters(odtc::FilteringStrategy::EKF, trackingDt_);
-    auto t2_fu2= std::chrono::steady_clock::now();;
-    auto dt_fu2_ms = std::chrono::duration_cast<std::chrono::microseconds>(t2_fu2-t1_fu2).count()/1000.0;
-    std::cerr << "[FiltersCallback] Filter update dt = " << dt_fu2_ms << "ms @" << tracker_.Filters().size() << " filters." << std::endl;
-
-    for (const auto &o : obstaclesRevised) {
-        //std::cerr << "[TRKK] Obstacle revised: id is " << o.Box()->Id() << ", label is " << o.Box()->Description() << std::endl;
-    }
-    if (obstaclesRevised.size() != obstacles.size()) {
-        std::cerr << tc::bluL << "[FiltersCallback] !!!! Obstacle size: " <<  obstacles.size() << " --> " << obstaclesRevised.size()  << tc::none << std::endl;
-    }
-    std::vector<odtc::BoundingBox<2>> boxesRevised;
-    for (auto i = 0; i  < obstaclesRevised.size(); i++) {
-        auto o = obstaclesRevised[i];
-        auto bx = *o.Box();
-        bx.Id(i);
-        boxesRevised.emplace_back(bx);
-    }
-    auto tracksMsg = UtilitiesROS2::FillObstacleArrayMsg(tsROS_, tracker_, TrackType::ENU, llh_vehiclePos_t0_, boxesRevised);
-    filtersPub_->publish(tracksMsg);
-
-    std::vector<odtc::BoundingBox<2>> fgrBoxes;
-    for (const auto &r : tracker_.likelyCollisionRegions_) fgrBoxes.emplace_back(r.c);
-    UtilitiesROS2::PublishBoundingBoxes2D(likelyCollisionRegionsPub_, tsROS_, fgrBoxes);
-
-    firstRun_ = false;
     auto t2_trk = std::chrono::steady_clock::now();
     auto dt_trk_ms = std::chrono::duration_cast<std::chrono::microseconds>(t2_trk-t1_trk).count()/1000.0;
     std::cerr << "[MarineTrackingROS2::Callback] Callback dt = " << dt_trk_ms << "ms" << std::endl;
     std::cerr << tc::bluL << "[MarineTrackingROS2::Callback] Finished!" << tc::none << std::endl;
 
+    auto tracksMsg = UtilitiesROS2::FillObstacleArrayMsg(tsROS_, tracker_, TrackType::ENU, llh_vehiclePos_t0_);
+    filtersPub_->publish(tracksMsg);
 }
+
 void MarineTrackingROS2::ReadTrackingParams(odtc::TrackingParams &trackingParams, std::map<std::string, odtc::IDAssocParams> &assocParams,
     libconfig::Setting &rootParams) {
 
@@ -231,7 +199,7 @@ void MarineTrackingROS2::ReadTrackingParams(odtc::TrackingParams &trackingParams
 
 void MarineTrackingROS2::Run() {
     std::cerr << tc::bluL << "[MarineTrackingROS1::Run] Start..." << tc::none << std::endl;
-    image_pipeline_msgs::msg::ObstacleArray::ConstPtr obstaclesMsg;
+    image_pipeline_msgs::msg::Obstacles::ConstPtr obstaclesMsg;
     double dtLagMax = trackingDt_;
     if (isFirstMsg_) dtLagMax = std::numeric_limits<double>::max();
     std::cerr << "[Run] now = " << UtilitiesROS2::ROSTimeToTimestamp(this->get_clock()->now()) << std::endl;
@@ -242,7 +210,7 @@ void MarineTrackingROS2::Run() {
     return;
 }
 
-bool MarineTrackingROS2::SetTime(const image_pipeline_msgs::msg::ObstacleArray::ConstPtr& obstacles) {
+bool MarineTrackingROS2::SetTime(const image_pipeline_msgs::msg::Obstacles::ConstPtr& obstacles) {
     bool messageIsValid;
 
     if (obstacles != nullptr) {
