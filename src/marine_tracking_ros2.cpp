@@ -33,6 +33,12 @@ MarineTrackingROS2::MarineTrackingROS2(const std::string& bagPath, const bool is
         std::chrono::duration<double>(trackingDt_),
         std::bind(&MarineTrackingROS2::Run, this)
     );
+
+    goodLabelMappings.insert( {objectNames::BUOY_NAME, objectNames::BUOY_NAME} );
+    goodLabelMappings.insert( {objectNames::MAINPIPE_NAME, objectNames::MAINPIPE_NAME} );
+    goodLabelMappings.insert( {objectNames::PIPESTRUCT_NAME, objectNames::PIPESTRUCT_NAME} );
+    goodLabelMappings.insert( {objectNames::MARKER_NAME, objectNames::MARKER_NAME} );
+    goodLabelMappings.insert( {objectNames::NUMBER_NAME, objectNames::NUMBER_NAME} );
     
     detectionsSub_ = std::make_shared<message_filters::Subscriber<image_pipeline_msgs::msg::Obstacles>>(this, "/dtc/obstacles");
     cacheDetections_.setCacheSize(100);
@@ -52,13 +58,6 @@ void MarineTrackingROS2::FiltersCallback(const image_pipeline_msgs::msg::Obstacl
     if (msgOk) {
         obstacleData = UtilitiesROS2::ObstaclesMsgToObstacles(*obstaclesMsg);
     }
-    if (trackId2WorldFRegData_.size() > 0) {
-        for (const auto &r : trackId2WorldFRegData_) {
-            double dHeading = r.second.T.RotationMatrix().ToEulerRPY().Yaw();
-            std::cerr << tc::yellow << "[FiltersCallback] trackId2WorldFRegData_ --> ID " << r.first << ", dt is " << r.second.dt << ", angle change is " << dHeading << tc::none << std::endl; // DEBUG, TODO REMOVE
-        }
-        tracker_.id2regData_ = trackId2WorldFRegData_;
-    } // TODO reorganize
     std::cerr << std::endl;
     auto t2_rcv = std::chrono::steady_clock::now();;
     auto dt_rcv_ms = std::chrono::duration_cast<std::chrono::microseconds>(t2_rcv-t1_rcv).count()/1000.0;
@@ -68,7 +67,7 @@ void MarineTrackingROS2::FiltersCallback(const image_pipeline_msgs::msg::Obstacl
 
     auto t1_da = std::chrono::steady_clock::now();
     if (msgOk) tracker_.egoPose = UtilitiesROS2::ROSPoseToTransformMatrix(obstaclesMsg->worldf_pose_vehiclef);
-    tracker_.UpdateMeasurements(obstacles);
+    tracker_.UpdateMeasurements(obstacles, goodLabelMappings);
     auto t2_da = std::chrono::steady_clock::now();
     auto dt_da_ms = std::chrono::duration_cast<std::chrono::microseconds>(t2_da-t1_da).count()/1000.0;
     std::cerr << "[FiltersCallback] Data assoc dt = " << dt_da_ms << "ms @" << tracker_.ObstacleMeasurements().size() << " detections, " << tracker_.Filters().size() << " filters." << std::endl;

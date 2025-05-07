@@ -73,6 +73,7 @@ class MarineTrackingROS2 : public rclcpp::Node {
     Eigen::Vector3d llh_vehiclePos_t0_;
 
     bool enableDetectionRevision_ = true;
+    std::map<std::string, std::string> goodLabelMappings;
 
     std::map<odtc::TrackId, odtc::RegistrationData> trackId2WorldFRegData_;
 };

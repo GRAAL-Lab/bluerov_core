@@ -1,5 +1,5 @@
-#ifndef UTILITIES_ROS2_H
-#define UTILITIES_ROS2_H
+#ifndef UTILITIES_RAMI_ROS2_H
+#define UTILITIES_RAMI_ROS2_H
 
 #include <rclcpp/rclcpp.hpp>
 #include <message_filters/synchronizer.h>
@@ -44,6 +44,13 @@
 #include <ctrl_toolbox/HelperFunctions.h>
 #include <ctrl_toolbox_internal/Futils.h>
 
+namespace objectNames {
+  const std::string BUOY_NAME = "Buoy";
+  const std::string MAINPIPE_NAME = "MainPipe";
+  const std::string PIPESTRUCT_NAME = "PipeStruct";
+  const std::string MARKER_NAME = "Marker";
+  const std::string NUMBER_NAME = "Number";
+}
 
 struct Buoy {
   size_t id;
@@ -69,6 +76,7 @@ struct Marker {
 };
 
 struct Pipe {
+  double ts_;
   size_t id;
   Eigen::TransformationMatrix wF_pose;
   Eigen::TransformationMatrix wF_startPose;
@@ -91,6 +99,8 @@ enum class TrackType { ENU, IMG };
 class UtilitiesROS2 {
 
   public:
+
+    static double BuoyColorToDiameter(std::string);
 
     // Time
     static double ROSTimeToTimestamp(const rclcpp::Time stamp); /*!< ROS time conversion. */
@@ -157,6 +167,9 @@ class UtilitiesROS2 {
 
   static bool ReadBoxArray2DFromCache(const message_filters::Cache<image_pipeline_msgs::msg::BoundingBox2DArray> &cache,
     const rclcpp::Time stamp, image_pipeline_msgs::msg::BoundingBox2DArray::ConstPtr &msgPtr, const double maxTimeLag_s);
+  
+  static bool ReadPipeDirectionFromCache(const message_filters::Cache<image_pipeline_msgs::msg::PipeDirection> &cache,
+    const rclcpp::Time stamp, image_pipeline_msgs::msg::PipeDirection::ConstPtr &msgPtr, const double maxTimeLag_s);
 };
 
 #endif

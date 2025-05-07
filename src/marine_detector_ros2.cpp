@@ -47,9 +47,17 @@ MarineDetectorROS2::MarineDetectorROS2 (
 }
 
 
-void MarineDetectorROS2::GetPipe(const image_pipeline_msgs::msg::PipeDirection::SharedPtr msg) {
+Pipe MarineDetectorROS2::GetPipeInfo(const image_pipeline_msgs::msg::PipeDirection::ConstPtr msg) {
     // Process the PipeDirection message
     RCLCPP_INFO(this->get_logger(), "Received pipe direction!");
+    Pipe p;
+    p.wF_pose = Eigen::Matrix4d::Identity();
+    p.wF_pose.TranslationVector(Eigen::Vector3d(msg->position.x, msg->position.y, msg->position.z));
+    Eigen::Vector3d pipeDirection(msg->direction.x,msg->direction.y,msg->direction.z);
+    pipeDirection.normalize();
+    auto yaw = rml::ReducedVersorLemma(Eigen::Vector3d(1,0,0), pipeDirection)[2];
+    p.wF_pose.RotationMatrix(rml::EulerRPY(0,0,yaw).ToRotationMatrix());
+    return p;
 }
 
 
@@ -109,9 +117,17 @@ bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::Const
         image_pipeline_msgs::msg::BoundingBox2DArray::ConstPtr ann_msg;
         auto yoloDetectionsReceived = UtilitiesROS2::ReadBoxArray2DFromCache(imgAnnCache_, odometry_msg->header.stamp, ann_msg, 0.1); // TODO parameterize
         std::cerr << tc::cyanL << "[ObstacleDetectionCallbackRAMI] yoloDetectionsReceived = " << yoloDetectionsReceived << tc::none << std::endl;
+        image_pipeline_msgs::msg::PipeDirection::ConstPtr mainPipe_msg;
+        auto mainPipeInfoReceived = UtilitiesROS2::ReadPipeDirectionFromCache(pipeCache_, odometry_msg->header.stamp, mainPipe_msg, 0.1); // TODO parameterize
+        std::cerr << tc::cyanL << "[ObstacleDetectionCallbackRAMI] mainPipeInfoReceived = " << mainPipeInfoReceived << tc::none << std::endl;
 
-        // and other topics
-        if (!yoloDetectionsReceived) return false;
+        bool pipesInfoReceived = false;
+
+        auto lookForBuoys = (state == PerceptionState::ALL) || (state == PerceptionState::BUOYS);
+        auto lookForMainPipe = (state == PerceptionState::ALL) || (state == PerceptionState::PIPES);
+        auto lookForPipes = (state == PerceptionState::ALL) || (state == PerceptionState::MAIN_PIPE);
+
+        if ((lookForBuoys && !yoloDetectionsReceived) && (lookForPipes && !pipesInfoReceived) && (lookForMainPipe && !mainPipeInfoReceived)) return false;
 
         // Extract pose from Odometry message
         auto pose = odometry_msg->pose.pose;
@@ -154,7 +170,7 @@ bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::Const
         std::vector<Marker> markers;
         std::vector<Number> numbers;
         std::vector<Pipe> pipes;
-        if (yoloDetectionsReceived) {
+        if (lookForBuoys && yoloDetectionsReceived) {
             std::cerr << tc::none << "[ObstacleDetectionCallbackRAMI] New vehicle Geopose with fix = " << llh_vehiclePos_.transpose() << tc::none << std::endl;
             std::vector<odtc::BoundingBox<2>> imgBoxes_;
             size_t buoyId = 0;
@@ -163,17 +179,18 @@ bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::Const
                 imgBoxes_.emplace_back(b);
                 if (b.Description().find("buoy") != std::string::npos) {
                     for (const auto &cam : dsc_.cams) {
-                        double buoyRadius = 0.6; // TODO will depend on color
+                        std::string color = "red"; // TODO put color detection logic here
+                        double buoyDiameter = UtilitiesROS2::BuoyColorToDiameter(color);
                         odtc::Pyramid pyr(b, worldF_T_vehicleF * cam.second.ExtF_TP_imgPlaneF(), Eigen::Vector2d(0,0));
-                        auto wF_sphereCenter = pyr.Get3DSphereCentroid(0.3, false);
+                        auto wF_sphereCenter = pyr.Get3DSphereCentroid(buoyDiameter, false);
                         std::cerr << tc::cyanL << "[ObstacleDetectionCallbackRAMI] Box label is " << b.Description() << " with confidence " << b.Confidence() << ", 3D pos is " <<
                             wF_sphereCenter.transpose() << std::endl;
                         Eigen::TransformationMatrix wF_buoyPose;
                         wF_buoyPose.TranslationVector(wF_sphereCenter);
                         Buoy b;
-                        b.color = "red"; // TODO fill correctly
+                        b.color = color;
                         b.id = buoyId++;
-                        b.radius = buoyRadius;
+                        b.radius = buoyDiameter * 0.5;
                         b.wF_pose = wF_buoyPose;
                         b.notes = "";
                         buoys.emplace_back(b);
@@ -181,6 +198,14 @@ bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::Const
                     }
                 }
             }
+        }
+        if (lookForPipes && !pipesInfoReceived) {
+            // TODO put the multiple pipes repackaging logic here (Mahmoud & Mamo's algorithm)
+        }
+        if (lookForMainPipe && !mainPipeInfoReceived) { 
+            auto p = GetPipeInfo(mainPipe_msg);
+            p.notes = objectNames::MAINPIPE_NAME;
+            pipes.emplace_back(p);
         }
 
         firstGNSSReceived_ = true;

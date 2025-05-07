@@ -13,7 +13,7 @@
 #include <marine_detector.h>
 
 enum PerceptionState {
-    STANDARD, BUOYS, PIPES, MAIN_PIPE, ALL
+    IDLE, STANDARD, BUOYS, PIPES, MAIN_PIPE, ALL
 };
 
 struct sensorTopics {
@@ -64,8 +64,7 @@ private:
     odtc::FrameType frameType_;
 
     bool PerceptionCallback(const nav_msgs::msg::Odometry::ConstSharedPtr& geoPoseStamped_msg);
-
-    void GetPipe(const image_pipeline_msgs::msg::PipeDirection::SharedPtr msg);
+    Pipe GetPipeInfo(const image_pipeline_msgs::msg::PipeDirection::ConstPtr msg);
 
     // Subscribers
     message_filters::Cache<image_pipeline_msgs::msg::PipeDirection> pipeCache_;
@@ -91,6 +90,8 @@ private:
 
     rclcpp::Time tsRos_;
     bool enableRosDebugPrints_ = false;
+
+    PerceptionState state = PerceptionState::IDLE;
 };
 
 #endif // MARINE_DETECTOR_ROS2_H

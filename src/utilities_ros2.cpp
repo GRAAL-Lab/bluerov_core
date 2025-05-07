@@ -1,5 +1,9 @@
 #include <utilities_ros2.h>
 
+double UtilitiesROS2::BuoyColorToDiameter(std::string clr) {
+    return 0.6; // TODO implement
+}
+
 double UtilitiesROS2::ROSTimeToTimestamp(const rclcpp::Time stamp) {
     return stamp.nanoseconds() * pow(10,-9);
 }
@@ -147,6 +151,13 @@ void UtilitiesROS2::PublishPose(const rclcpp::Publisher<geometry_msgs::msg::Pose
 
 bool UtilitiesROS2::ReadBoxArray2DFromCache(const message_filters::Cache<image_pipeline_msgs::msg::BoundingBox2DArray> &cache,
     const rclcpp::Time stamp, image_pipeline_msgs::msg::BoundingBox2DArray::ConstPtr &msgPtr, const double maxTimeLag_s) {
+    
+    msgPtr = cache.getElemBeforeTime(stamp);
+    return (msgPtr != nullptr) && (TimestampsAreClose(stamp, msgPtr->header.stamp, maxTimeLag_s));
+}
+
+bool UtilitiesROS2::ReadPipeDirectionFromCache(const message_filters::Cache<image_pipeline_msgs::msg::PipeDirection> &cache,
+    const rclcpp::Time stamp, image_pipeline_msgs::msg::PipeDirection::ConstPtr &msgPtr, const double maxTimeLag_s) {
     
     msgPtr = cache.getElemBeforeTime(stamp);
     return (msgPtr != nullptr) && (TimestampsAreClose(stamp, msgPtr->header.stamp, maxTimeLag_s));
@@ -348,6 +359,7 @@ Pipe UtilitiesROS2::PipeMsgToPipe(const image_pipeline_msgs::msg::Pipe &msg, con
     pipe.wF_startPose = GeoPoseWithCovarianceToEigen(msg.start_pose, centroid);
     pipe.wF_endPose = GeoPoseWithCovarianceToEigen(msg.end_pose, centroid);
     pipe.wF_pose.TranslationVector(Eigen::Vector3d(msg.pose.position.x, msg.pose.position.y, msg.pose.position.z));
+    pipe.notes = msg.notes;
 
     // Convert markers
     for (const auto &marker_msg : msg.markers) {
@@ -393,6 +405,14 @@ std::vector<odtc::Obstacle<2>> UtilitiesROS2::ObstacleDataToObstacleVector(const
     for (const auto &b : obstacleData.buoys) {
         odtc::BoundingBox<2> bx(b.wF_pose.TranslationVector().head(2), Eigen::Vector2d(b.radius * 2, b.radius * 2));
         bx.Id(b.id);
+        bx.Description("Buoy_" + b.color);
+        res.emplace_back(bx);
+    }
+
+    for (const auto &p : obstacleData.pipes) {
+        odtc::BoundingBox<2> bx; // todo fill when new PipeDirection msg is ready
+        bx.Id(p.id);
+        bx.Description("Main_pipe");
         res.emplace_back(bx);
     }
 
@@ -538,9 +558,7 @@ image_pipeline_msgs::msg::Pipe UtilitiesROS2::PipeToPipeMsg(const Pipe& pipe, co
     msg.pose.position.x = pipe.wF_pose.TranslationVector()[0];
     msg.pose.position.y = pipe.wF_pose.TranslationVector()[1];
     msg.pose.position.z = pipe.wF_pose.TranslationVector()[2];
-    //msg.pose.direction.x = ??
-    //msg.pose.direction.y = ??
-    //msg.pose.direction.z = ??
+    msg.notes = pipe.notes;
 
     // Convert markers
     for (const auto& marker : pipe.markers) {
