@@ -30,8 +30,14 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PoseStamped.msg"
   "msg/Obstacle.msg"
   "msg/ObstacleList.msg"
-  "msg/HeartBeat.msg"
-  "msg/RCChannels.msg"
+  "msg/DtcActionMap.msg"
+  "msg/DtcArea.msg"
+  "msg/LatLong.msg"
+  "msg/PipelinePipe.msg"
+  "msg/Position.msg"
+  "msg/Attitude.msg"
+
+  "srv/MissionCommand.srv"
   "srv/ControlCommand.srv"
   "srv/SetFlightMode.srv"
   DEPENDENCIES std_msgs geometry_msgs

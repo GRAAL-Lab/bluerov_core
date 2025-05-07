@@ -1,0 +1,18 @@
+# TaskBenchMark ID
+uint8 tbm_id
+
+#  Fixed Environment data
+LatLong[2] pipeline_structures
+DtcArea buoys_area
+
+LatLong uav_wp          #tbm 1
+uint8 selected_pipeline_structure_id #tbm 1, 2, 3
+uint8 n_damage_markers #tbm 2, 3
+uint8 n_buoys #tbm 1, 3
+
+DtcActionMap buoys_action #tbm 1, 3
+PipelinePipe[] pipes #tbm 1, 3
+PipelinePipe damaged_pipe #tbm 2
+
+---
+string res
