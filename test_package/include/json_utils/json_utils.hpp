@@ -1,0 +1,2238 @@
+#ifndef JSON_UTILS_HPP
+#define JSON_UTILS_HPP
+
+#include <jsoncons/json.hpp>
+#include <jsoncons_ext/jsonpath/jsonpath.hpp>
+#include <jsoncons_ext/jsonpointer/jsonpointer.hpp>
+
+#include <string.h>
+#include <iostream>
+#include <chrono>
+#include <iomanip>
+#include <sstream>
+#include <algorithm>
+
+#include "ctrl_toolbox_internal/Futils.h"
+
+using namespace jsoncons;
+using namespace jsoncons::jsonpath;
+using namespace jsoncons::jsonpointer;
+
+#define LATITUDE_MIN -90.0
+#define LATITUDE_MAX 90.0
+#define LONGITUDE_MAX 180.0
+#define LONGITUDE_MIN -180.0
+
+const std::vector<std::string> taskConstraintKeys = { "acceptance_radius", "surge", "heading" };  /*!< task constraints */
+
+const std::vector<std::string> verticalPositionNames = { "altitude", "height", "height_above_bottom", "depth" };  /*!< accepted vertical position names */
+
+/**
+ * \brief Functions for generating CATL+JSON messages
+ */
+namespace ctljsn {
+
+    struct JSonable {
+        /**
+         * \brief Convert to JSON format.
+         * \returns the JSON data.
+        */
+        virtual jsoncons::json ToJson() const = 0;
+        //virtual std::shared_ptr<JSonable> ToStruct() = 0;
+    };
+
+    template <typename T>
+    std::vector<T> GetVectorOfJsonableFromVectorOfJsons(std::vector<jsoncons::json> v) {
+        std::vector<T> result;
+        for (auto p : v) {
+            result.push_back(T(p));
+        }
+        return result;
+    }
+
+    template <typename T>
+    void MergeVectors(std::vector<T> &dst, const std::vector<T> &src) {
+      for (auto newItem : src) {
+        auto srcResult = std::find(dst.begin(), dst.end(), newItem);
+        if (srcResult != dst.end()) dst.erase(srcResult);
+        dst.push_back(newItem);
+      }
+    }
+
+    template <typename T>
+    void MergeVectorsOfPtr(std::vector<std::shared_ptr<T>> &dst, const std::vector<std::shared_ptr<T>> &src) {
+        for (auto newItem : src) {
+            auto srcResult = std::find_if(dst.begin(), dst.end(), 
+                                        [&newItem](std::shared_ptr<T> item) { return *item == *newItem; });
+            if (srcResult != dst.end()) {
+                dst.erase(srcResult);
+            }
+            dst.push_back(newItem);
+        }
+    }
+
+    template <typename T>
+    jsoncons::json GetJSonArrayOfJsonable(std::vector<T> vec) {
+        static_assert(std::is_base_of<JSonable, T>::value, "Not derived from Base.");
+        auto arr = jsoncons::json::make_array<1>(0);
+        for (auto p : vec) arr.push_back(p.ToJson());
+        return arr;
+    }
+
+    template <typename T>
+    jsoncons::json GetJSonArrayOfJsonablePtr(std::vector<std::shared_ptr<T>> vec) {
+        static_assert(std::is_base_of<JSonable, T>::value, "Not derived from Base.");
+        auto arr = jsoncons::json::make_array<1>(0);
+        for (auto p : vec) arr.push_back(p->ToJson());
+        return arr;
+    }
+
+    template <typename T>
+    jsoncons::json GetJSonArrayOfPureObjects(std::vector<T> vec) {
+        auto arr = jsoncons::json::make_array<1>(0);
+        for (auto p : vec) arr.push_back(p);
+        return arr;
+    }
+
+    /**
+     * \struct CATLIdentifier
+     * \brief CATL identifier. Composed of a name and a value.
+     */
+    struct CATLIdentifier : JSonable {
+        std::string name; /*!< name */
+        int value; /*!< value */
+        CATLIdentifier(const std::string name, int value) : name(name), value(value) {}
+        CATLIdentifier(const jsoncons::json &);
+        virtual jsoncons::json ToJson() const override;
+    };
+
+    /**
+     * \struct CATLIdentifier
+     * \brief CATL identifier. Composed of a name and a value.
+     */
+    struct CATLIdentifierStrStr : JSonable {
+        std::string name; /*!< name */
+        std::string value; /*!< value */
+        CATLIdentifierStrStr(const std::string name, const std::string value) : name(name), value(value) {}
+        CATLIdentifierStrStr(const jsoncons::json& jsonData)
+            : name(jsonData["name"].as<std::string>()),
+                value(jsonData["value"].as<std::string>()) {}
+        virtual jsoncons::json ToJson() const override;
+    };
+
+    struct MinMax : JSonable {
+        double xmin;
+        double xmax;
+
+        MinMax(const double xmin, const double xmax) : xmin(xmin), xmax(xmax) {};
+
+        MinMax(const jsoncons::json& jsonData)
+            : xmin(jsonData["minimum"].as<double>()),
+            xmax(jsonData["maximum"].as<double>()) {}
+        /**
+         * \brief Convert to JSON format.
+         * \returns the JSON data.
+        */
+        jsoncons::json ToJson() const override;
+    };
+
+    struct CapabilityAuthority : CATLIdentifier { using CATLIdentifier::CATLIdentifier; };
+
+    /**
+     * \brief Test for jsoncons library. Generates a sample JSON file and stores it to disk.
+     */
+    void Test1();
+
+    /**
+     * \brief Test for jsoncons library. Needs to be run after Test1(). Reads the file generated by Test1() and performs a few jsonpath queries.
+     */
+    void Test2();
+
+    /**
+     * \brief Checks range of first argument and, in case it is not in the range, throws an out-of-range exception with an informative message.
+     * @param[in] x: the value to be checked.
+     * @param[in] xMin: min acceptable value.
+     * @param[in] xMax: max acceptable value.
+     * @param[in] quantityName: name of quantity to be checked (will be used in the exception message in case of failure).
+     */
+    void CheckRange(const double x, const double xMin, const double xMax, std::string quantityName);
+
+    /**
+     * \brief Prints info from given status.
+     * @param[in] status: the given status.
+     */
+    void DebugStatus(const jsoncons::json &status);
+
+    /**
+     * \enum NodeStatus
+     * \brief Node status. See catl_spec-main/schema/core/node/NodeStatusEnum.json.
+     */
+    enum NodeStatus {
+        ND_STATUS_BUSY, /*!< busy */
+        ND_STATUS_AVAILABLE, /*!< available */
+        ND_STATUS_ON_TASK, /*!< on task */
+        ND_STATUS_ERROR, /*!< erroir */
+        ND_STATUS_U_LATLONG,
+        ND_STATUS_U_HALT,
+        ND_STATUS_U_HOLD,
+        ND_STATUS_U_SURGE_HEADING,
+        ND_STATUS_U_SURGE_YAW_RATE,
+        ND_STATUS_U_SURGE_PATH_FOLLOW
+    };
+    
+    inline const std::string ToString(NodeStatus u, std::map<std::string,NodeStatus> &s) {
+        for (auto p : s) {
+            if (p.second == u) {
+                //std::cerr << tc::yellow << "[NodeStatusToString] Found " << p.first << tc::none << std::endl;
+                return p.first;
+            }
+        }
+        throw std::runtime_error("[ToString] Node Status not found.");
+    }
+
+    inline const NodeStatus ToNodeStatus(const std::string nodeStatStr, std::map<std::string,NodeStatus> &s) {
+        if (s.find(nodeStatStr) != s.end()) {
+            return s[nodeStatStr];
+        }
+        else throw
+            std::runtime_error("[ToNodeStatus] Node status not found: " + nodeStatStr + ", map has size " + 
+            std::to_string(s.size()));
+    }
+
+    inline const int ToInt(const std::string nodeStatus, std::map<std::string,NodeStatus> &s) {
+        size_t cnt = 0;
+        for (auto p : s) {
+            if (p.first == nodeStatus) return cnt;
+            cnt++;
+        }
+        throw std::runtime_error("[ToInt] Node status not found: " + nodeStatus);
+    };
+
+    inline std::map<std::string,NodeStatus> strToNodeStatus;
+
+    inline const std::string ToString(NodeStatus status)
+    {
+        switch (status)
+        {
+            case ND_STATUS_BUSY: return "BUSY";
+            case ND_STATUS_AVAILABLE: return "AVAILABLE";
+            case ND_STATUS_ON_TASK: return "ON_TASK";
+            case ND_STATUS_ERROR: return "ERROR";
+            default: return ToString(status, strToNodeStatus);
+        }
+    }
+
+    inline const NodeStatus ToNodeStatus(const std::string s)
+    {
+        if (s.find("BUSY") != std::string::npos) return ND_STATUS_BUSY;
+        else if (s.find("AVAILABLE") != std::string::npos) return ND_STATUS_AVAILABLE;
+        else if (s.find("ON_TASK") != std::string::npos) return ND_STATUS_ON_TASK;
+        else return ToNodeStatus(s, strToNodeStatus);
+    }
+
+    namespace time {
+
+        /**
+         * \struct AbsoluteTime
+         * \brief Absolute time.
+         */
+        struct AbsoluteTime : JSonable {
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            virtual jsoncons::json ToJson() const override { return jsoncons::json(); };
+
+            protected:
+            /**
+             * \brief Constructor.
+            */
+            AbsoluteTime() {}
+        };
+
+        /**
+         * \struct DirectTime
+         * \brief Direct time. See catl_spec-main/schema/core/basic_types/time/DirectTime.json.
+         */
+        struct DirectTime : AbsoluteTime {
+            std::string data; /*!< Time string in RFC 3339, section 5.6 format */
+
+            /**
+             * \brief Constructor.
+             * @param[in] directDuration: the given time duration in ISO8601 format.
+            */
+            DirectTime(std::string directTime) : data(directTime) {};
+
+            /**
+             * \brief Constructor, encodes a given time in RFC 3339, section 5.6 format.
+             * @param[in] unixTimestamp: UNIX timestamp.
+            */
+            DirectTime(const time_t unixTimestamp);
+
+            DirectTime(const jsoncons::json& jsonData)
+                : data(jsonData[0].as<std::string>()) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            virtual jsoncons::json ToJson() const override;
+        };
+
+        /**
+         * \struct DeltaT
+         * \brief Time duration.
+         */
+        struct DeltaT : JSonable {
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            virtual jsoncons::json ToJson() const override { return jsoncons::json(); };
+
+            protected:
+            /**
+             * \brief Constructor.
+            */
+            DeltaT() {}
+        };
+        
+        /**
+         * \struct DirectDuration
+         * \brief Direct duration. See catl_spec-main/schema/core/basic_types/time/DirectDuration.json
+         */
+        struct DirectDuration : DeltaT {
+            std::string data; /*!< Duration string in ISO8601 format */
+
+            /**
+             * \brief Constructor.
+             * @param[in] directDuration: the given time duration in ISO8601 format.
+            */
+            DirectDuration(std::string directDuration) : data(directDuration) {};
+
+            /**
+             * \brief Constructor, encodes a given duration in ISO8601 format.
+             * @param[in] durationInSeconds: the given duration.
+            */
+            DirectDuration(const double durationInSeconds);
+
+            DirectDuration(const jsoncons::json& jsonData)
+                : data(jsonData[0].as<std::string>()) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+
+        };
+
+        /**
+         * \struct EpochTimePeriod
+         * \brief EpochTimePeriod. See catl_spec-main/schema/core/basic_types/time/EpochTimePeriod.json.
+         */
+        struct EpochTimePeriod : JSonable {
+            CATLIdentifier identifier; /*!< Epoch id */
+            DirectTime epoch; /*!< Epoch */
+            DirectDuration time_step; /*!< Timestep */
+            DirectDuration duration; /*!< Duration */
+
+            /**
+             * \brief Constructor
+             * @param[in] id: epoch id.
+             * @param[in] unixTimestamp: UNIX timestamp.
+             * @param[in] timeStep: time step in seconds.
+             * @param[in] duration: duration in seconds.
+            */
+            EpochTimePeriod(const CATLIdentifier id, const size_t unixTimestamp, const double timeStep, const double duration) : 
+                identifier(id), epoch(unixTimestamp), time_step(timeStep), duration(duration) {};
+
+            /**
+             * \brief Constructor
+             * @param[in] unixTimestamp: UNIX timestamp.
+             * @param[in] timeStep: time step in seconds.
+             * @param[in] duration: duration in seconds.
+            */
+            EpochTimePeriod(const time_t unixTimestamp, const double timeStep, const double duration) :
+                EpochTimePeriod(CATLIdentifier("", 0), unixTimestamp, timeStep, duration) {}
+
+            EpochTimePeriod(const jsoncons::json& jsonData)
+                : identifier(jsonData["identifier"]),
+                epoch(jsonData["epoch"]),
+                time_step(jsonData["time_step"]),
+                duration(jsonData["duration"]) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+        /**
+         * \struct IndexedTime
+         * \brief Indexed time. See catl_spec-main/schema/core/basic_types/time/IndexedTime.json.
+         */
+        struct IndexedTime : AbsoluteTime {
+            EpochTimePeriod epoch_time_period; /*!< Epoch time period */
+            int index; /*!< Time index, */
+
+            /**
+             * \brief Constructor
+             * @param[in] epoch_time_period: epoch time period.
+             * @param[in] index: time index.
+            */
+            IndexedTime(const EpochTimePeriod epoch_time_period, const int index) :
+                epoch_time_period(epoch_time_period), index(index) {};
+
+            IndexedTime(const jsoncons::json& jsonData)
+                : epoch_time_period(jsonData["epoch_time_period"]),
+                index(jsonData["index"].as<int>()) {}
+                
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const;
+        };
+
+        /**
+         * \struct IndexedDuration
+         * \brief Indexed duration. See catl_spec-main/schema/core/basic_types/time/IndexedDuration.json.
+         */
+        struct IndexedDuration : DeltaT {
+            EpochTimePeriod epoch_time_period; /*!< Epoch time period, */
+            int index; /*!< Time index, */
+
+            /**
+             * \brief Constructor
+             * @param[in] epoch_time_period: epoch time period.
+             * @param[in] index: time index.
+            */
+            IndexedDuration(const EpochTimePeriod epoch_time_period, const int index) :
+                DeltaT(), epoch_time_period(epoch_time_period), index(index) {};
+
+            IndexedDuration(const jsoncons::json& jsonData)
+                : epoch_time_period(jsonData["epoch_time_period"]),
+                index(jsonData["index"].as<int>()) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const;
+        };
+        std::shared_ptr<DeltaT> CreateDeltaTFromJson(const jsoncons::json& jsonData);
+        std::shared_ptr<AbsoluteTime> CreateAbsoluteTimeFromJson(const jsoncons::json& jsonData);
+    }
+
+    namespace geographic {
+
+        struct Position : JSonable {
+            jsoncons::json data;
+            std::string query;
+
+            Position(const jsoncons::json j) {
+                if (j.contains("reference")) {
+                    query = j["reference"].to_string();
+                    usesData = false;
+                }
+                else {
+                    data = j;
+                    usesData = true;
+                }
+            } ;
+
+            Position(const std::string query) : query(query), usesData(false) {} ;
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+
+            /**
+             * \brief Overload the == operator
+             * \returns equality predicate.
+            */
+            bool operator==(const Position& other) const {
+                if (data.contains("latitude") && data.contains("longitude") &&
+                    other.data.contains("latitude") && other.data.contains("longitude")) {
+                    auto sameLat = data["latitude"] == other.data["latitude"];
+                    auto sameLong = data["longitude"] == other.data["longitude"];
+                    return sameLat && sameLong;
+                }
+                else if (data.contains("boundaries")) {
+                    return data["boundaries"] == other.data["boundaries"];
+                }
+                else {
+                    throw std::runtime_error("Position equality not implemented for JSON data " + data.as_string()
+                        + ", other = " + other.data.to_string());
+                }
+            }
+            bool usesData;
+
+            protected:
+        };
+
+        struct Region : Position {
+            using Position::Position;
+        };
+
+        /**
+         * \brief Generate a absolute latlong postiion message. See catl_spec-main/schema/core/basic_types/geographic/AbsoluteLatitudeLongitude.json.
+         * @param[in] latitude: latitude [deg].
+         * @param[in] longitude: longitude [deg].
+         * \returns the JSON message.
+         */
+        jsoncons::json GenerateLatLongPosition(const double latitude, const double longitude);
+
+        /**
+         * \brief Generate a vertical position message. See catl_spec-main/schema/core/basic_types/geographic/VerticalPosition.json.
+         * @param[in] positions: a map containing pairs of position name and its corresponding position value.
+         * \returns the JSON message.
+         */
+        jsoncons::json GenerateVerticalPosition(const std::map<std::string, double> positions);
+
+        /**
+         * \brief Generate a absolute ENU postiion message. See catl_spec-main/schema/core/basic_types/geographic/AbsolutePositionVector.json.
+         * @param[in] E: East coordinate [m].
+         * @param[in] N: North coordinaate [m].
+         * @param[in] useUp: if true, include U in the message, otherwise don't.
+         * @param[in] U: Up coordinaate [m].
+         * \returns the JSON message.
+         */
+        jsoncons::json GenerateENUPosition(const double E, const double N, bool useUp = false, const double U = 0.0);
+        
+        /**
+         * \brief Generate a military grid message. See catl_spec-main/schema/core/basic_types/geographic/MilitaryGridReference.json.
+         * @param[in] grid_zone_designator: Grid Zone Designator (GDZ).
+         * @param[in] square_identifier: the 100,000-meter square identifier.
+         * @param[in] easting_northing: numerical location.
+         * \returns the JSON message.
+         */
+        jsoncons::json GenerateMilitaryGrid(const std::string grid_zone_designator, const std::string square_identifier, const std::string easting_northing);
+
+        /**
+         * \brief Generate a complete position specification for ASV vehicle (latlong + depth). Can be modified to embed more data.
+         * @param[in] latitude: latitude [deg].
+         * @param[in] longitude: longitude [deg].
+         * @param[in] depth: depth [m].
+         * \returns the JSON message.
+         */
+        jsoncons::json GenerateASVPosition(const double latitude, const double longitude, const double depth);
+
+        /**
+         * \brief Generate a defined region message. See catl_spec-main/schema/core/basic_types/geographic/DefinedRegion.json.
+         * @param[in] boundariesItems: list of boundaries.
+         * \returns the JSON message.
+         */
+        jsoncons::json GenerateDefinedRegion(std::vector<jsoncons::json> boundariesItems);
+        
+        double* CreateLatLongPositionFromJson(const jsoncons::json& jsonData);
+
+    }
+
+    namespace nd {
+        /**
+         * \struct Node
+         * \brief Node. See catl_spec-main/schema/core/basic_types/node/NodeIdentifier.json.
+         */
+        struct NodeIdentifier : CapabilityAuthority { using CapabilityAuthority::CapabilityAuthority; };
+
+        /**
+         * \struct SpatialParams
+         * \brief SpatialParams. See catl_spec-main/schema/core/node/SpatialParams.json.
+         */
+        struct SpatialParams : JSonable {
+            MinMax z;
+            MinMax altitude;
+            MinMax depth;
+
+            SpatialParams(const MinMax z, const MinMax altitude, const MinMax depth) : 
+                z(z), altitude(altitude), depth(depth) {};
+            
+            SpatialParams(const jsoncons::json& jsonData)
+                    : z(jsonData["z"]), altitude(jsonData["altitude"]), depth(jsonData["depth"]) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+        /**
+         * \struct EnvironmentalParams
+         * \brief EnvironmentalParams. See catl_spec-main/schema/core/node/EnvironmentalParams.json.
+         */
+        struct EnvironmentalParams : JSonable {
+            MinMax current;
+            MinMax sea_state;
+            MinMax wind_speed;
+            MinMax temperature;
+            MinMax salinity;
+
+            EnvironmentalParams(const MinMax current, const MinMax sea_state, const MinMax wind_speed,
+                const MinMax temperature, const MinMax salinity) : 
+                current(current), sea_state(sea_state), wind_speed(wind_speed),
+                temperature(temperature), salinity(salinity) {};
+
+            EnvironmentalParams(const jsoncons::json& jsonData)
+                : current(jsonData["current"]), sea_state(jsonData["sea_state"]),
+                wind_speed(jsonData["wind_speed"]), temperature(jsonData["temperature"]),
+                salinity(jsonData["salinity"]) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+
+
+        /**
+         * \struct OtherParams
+         * \brief OtherParams. See catl_spec-main/schema/core/node/OtherParams.json.
+         */
+        struct OtherParams : JSonable {
+            std::shared_ptr<time::DeltaT> endurance;
+
+            OtherParams(const std::shared_ptr<time::DeltaT> endurance) : 
+                endurance(endurance) {};
+
+            OtherParams(const jsoncons::json jsonData, int unused) // TODO REMOVE SECOND ARGUMENT
+                : endurance(time::CreateDeltaTFromJson(jsonData["endurance"])) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+        /**
+         * \struct OperatingEnvelope
+         * \brief Operating envelope. See catl_spec-main/schema/core/node/OperatingEnvelope.json.
+         */
+        struct OperatingEnvelope : JSonable {
+            EnvironmentalParams environmental_params;
+            SpatialParams spatial_params;
+            OtherParams other_params;
+
+            OperatingEnvelope(const EnvironmentalParams environmental_params,
+               const SpatialParams spatial_params,
+               const OtherParams other_params) :
+               environmental_params(environmental_params),
+               spatial_params(spatial_params),
+               other_params(other_params)
+               {};
+
+            OperatingEnvelope(const jsoncons::json& jsonData)
+                : environmental_params(jsonData["environmental_params"]),
+                spatial_params(jsonData["spatial_params"]),
+                other_params(jsonData["other_params"],0) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+
+        /**
+         * \struct TimeWindow
+         * \brief Time window. See catl_spec-main/schema/core/node/TimeWindow.json.
+         */
+        struct TimeWindow : JSonable {
+            std::shared_ptr<time::AbsoluteTime> minimum;
+            std::shared_ptr<time::AbsoluteTime> maximum;
+
+            TimeWindow(const std::shared_ptr<time::AbsoluteTime> minimum,
+                const std::shared_ptr<time::AbsoluteTime> maximum) :
+                minimum(minimum), maximum(maximum) {};
+
+            TimeWindow(const jsoncons::json& jsonData)
+                : minimum(time::CreateAbsoluteTimeFromJson(jsonData["minimum"])),
+                 maximum(time::CreateAbsoluteTimeFromJson(jsonData["maximum"])) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+
+        /**
+         * \struct Initialization
+         * \brief Node initialization. See catl_spec-main/schema/core/node/OperatingEnvelope.json.
+         */
+        struct Initialization : JSonable {
+            TimeWindow time_window;
+            geographic::Position launch_region;
+
+            Initialization(const TimeWindow time_window,
+                geographic::Position launch_region) : time_window(time_window),
+                launch_region(launch_region) {};
+
+            Initialization(const jsoncons::json& jsonData)
+                : time_window(jsonData["time_window"]), launch_region(jsonData["launch_region"]) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+
+        };
+    }
+
+
+    /**
+     * \struct CATLHeader
+     * \brief CATL Header. See catl_spec-main/schema/messages/core/MessageHeader.json
+     */
+    struct CATLHeader {
+        std::string message_type;
+        std::string source;
+        std::shared_ptr<time::AbsoluteTime> time_sent;
+
+        /**
+         * \brief Constructor.
+         * @param[in] msgType: message type.
+         * @param[in] src: message source.
+         * @param[in] time_sent: sending time.
+         */
+        CATLHeader(const std::string msgType, const std::string src, std::shared_ptr<time::AbsoluteTime> time_sent) : 
+            message_type(msgType), source(src), time_sent(time_sent) {} ;
+        
+        // Constructor from JSON
+        CATLHeader(const jsoncons::json& jsonData)
+            : message_type(jsonData["message_type"].as<std::string>()),
+            source(jsonData["source"].as<std::string>()),
+            time_sent(time::CreateAbsoluteTimeFromJson(jsonData["time_sent"])) {}
+
+        /**
+         * \brief Convert to JSON format.
+         * \returns the JSON data.
+        */
+        jsoncons::json ToJson() const;
+    };
+
+    namespace task {
+        
+        /**
+         * \enum TaskState
+         * \brief Task state. See catl_spec-main/schema/core/basic_types/task/TaskStateEnum.json.
+         */
+        enum TaskState {
+            TSK_STATE_UNASSIGNED, /*!< unassigned */
+            TSK_STATE_PENDING, /*!< pending */
+            TSK_STATE_ACTIVE, /*!< active */
+            TSK_STATE_RECALLING, /*!< recalling */
+            TSK_STATE_PREEMPTING, /*!< preempting */
+            TSK_STATE_RECALLED, /*!< recalled */
+            TSK_STATE_REJECTED, /*!< rejected */
+            TSK_STATE_PREEMPTED, /*!< preempted */
+            TSK_STATE_ABORTED, /*!< aborted */
+            TSK_STATE_SUCCEEDED, /*!< succeeded */
+            TSK_STATE_LOST, /*!< lost */
+            TSK_STATE_WAITING_FOR_PUSH_ACK, /*!< waiting for push acknowledgment */
+            TSK_STATE_WAITING_FOR_CANCEL_ACK /*!< waiting for cancel acknowledgment */
+        };
+
+        inline const std::string ToString(TaskState status)
+        {
+            switch (status)
+            {
+                case TSK_STATE_UNASSIGNED: return "UNASSIGNED";
+                case TSK_STATE_PENDING: return "PENDING";
+                case TSK_STATE_ACTIVE: return "ACTIVE";
+                case TSK_STATE_RECALLING: return "RECALLING";
+                case TSK_STATE_PREEMPTING: return "PREEMPTING";
+                case TSK_STATE_RECALLED: return "RECALLED";
+                case TSK_STATE_REJECTED: return "REJECTED";
+                case TSK_STATE_PREEMPTED: return "PREEMPTED";
+                case TSK_STATE_ABORTED: return "ABORTED";
+                case TSK_STATE_SUCCEEDED: return "SUCCEEDED";
+                case TSK_STATE_LOST: return "LOST";
+                case TSK_STATE_WAITING_FOR_PUSH_ACK: return "WAITING_FOR_PUSH_ACK";
+                case TSK_STATE_WAITING_FOR_CANCEL_ACK: return "WAITING_FOR_CANCEL_ACK";
+                default: return "ERROR";
+            }
+        }
+        
+        inline const TaskState ToTaskState(const std::string& s)
+        {
+            if (s == "UNASSIGNED") return TSK_STATE_UNASSIGNED;
+            else if (s == "PENDING") return TSK_STATE_PENDING;
+            else if (s == "ACTIVE") return TSK_STATE_ACTIVE;
+            else if (s == "RECALLING") return TSK_STATE_RECALLING;
+            else if (s == "PREEMPTING") return TSK_STATE_PREEMPTING;
+            else if (s == "RECALLED") return TSK_STATE_RECALLED;
+            else if (s == "REJECTED") return TSK_STATE_REJECTED;
+            else if (s == "PREEMPTED") return TSK_STATE_PREEMPTED;
+            else if (s == "ABORTED") return TSK_STATE_ABORTED;
+            else if (s == "SUCCEEDED") return TSK_STATE_SUCCEEDED;
+            else if (s == "LOST") return TSK_STATE_LOST;
+            else if (s == "WAITING_FOR_PUSH_ACK") return TSK_STATE_WAITING_FOR_PUSH_ACK;
+            else if (s == "WAITING_FOR_CANCEL_ACK") return TSK_STATE_WAITING_FOR_CANCEL_ACK;
+            else throw std::invalid_argument("Unknown TaskState string");
+        }
+
+        /**
+         * \enum TaskUpdateType
+         * \brief Action to be performed regardign a task. See catl_spec-main/spec/v1_3_2/messages/task_admin.md.
+         */
+        enum TaskUpdateType {
+            ACTION_PUSH, /*!< push task, ask node to execute specified task */
+            ACTION_UPDATE, /*!< distribute updated content of this task */
+            ACTION_PULL, /*!< pull task, inform everyone that we want to execute this task */
+            ACTION_PREDICT, /*!<  ask for prediction on task execution */
+            ACTION_CANCEL, /*!< cancel task */
+            ACTION_ERROR /*!< err */
+        };
+
+        inline const std::string ToString(TaskUpdateType u)
+        {
+            switch (u)
+            {
+                case ACTION_UPDATE: return "UPDATE";
+                case ACTION_PUSH: return "PUSH";
+                case ACTION_PULL: return "PULL";
+                case ACTION_PREDICT: return "PREDICT";
+                case ACTION_CANCEL: return "CANCEL";
+                default: return "ERROR";
+            }
+        }
+
+        inline const TaskUpdateType ToTaskUpdateType(const std::string s)
+        {
+            if (s.find("UPDATE") != std::string::npos) return ACTION_UPDATE;
+            else if (s.find("PUSH") != std::string::npos) return ACTION_PUSH;
+            else if (s.find("PULL") != std::string::npos) return ACTION_PULL;
+            else if (s.find("PREDICT") != std::string::npos) return ACTION_PREDICT;
+            else if (s.find("CANCEL") != std::string::npos) return ACTION_CANCEL;
+            else return ACTION_ERROR;
+        }
+
+        /**
+         * \enum TaskType
+         * \brief Task type. See catl_spec-main/schema/core/basic_types/task/TaskType.json.
+         */
+        enum TaskType {
+            TSKTP_STANDBY, /*!< vehicle standby */
+            TSKTP_MCM_SURVEY, /*!< mcm survey */
+            TSKTP_PREPARATION, /*!< preparation */
+            TSKTP_SYNCHRONISATION, /*!< synch */
+            TSKTP_SURVEY, /*!< survey */
+            TSKTP_TARGET, /*!< target */
+            TSKTP_CUSTOM_TASK, /*!< custom task */
+            TSKTP_U_HALT, /*!< custom task */
+            TSKTP_U_MOVE_TO_LATLONG, /*!< custom task */
+            TSKTP_U_HOLD, /*!< custom task */
+            TSKTP_U_SURGE_HEADING, /*!< custom task */
+            TSKTP_U_SURGE_YAWRATE, /*!< custom task */
+            TSKTP_U_PATH_FOLLOW, /*!< custom task */
+            TSKTP_ERR, /*!< custom task */
+        };
+    }
+
+    inline std::map<std::string,task::TaskType> strToTaskType;
+    inline bool bTest;
+    
+    namespace task {
+        inline const std::string ToString(TaskType u, std::map<std::string,task::TaskType> &s) {
+            for (auto p : s) {
+                if (p.second == u) return p.first;
+            }
+            throw std::runtime_error("[ToString] Task not found.");
+        }
+
+        inline const TaskType ToTaskType(const std::string taskStr, std::map<std::string,task::TaskType> &s) {
+            if (s.find(taskStr) != s.end()) return s[taskStr];
+            else throw std::runtime_error("[ToTaskType] Task not found: " + taskStr);
+        }
+
+        inline const int ToInt(const std::string taskStr, std::map<std::string,task::TaskType> &s) {
+            size_t cnt = 0;
+            for (auto p : s) {
+                if (p.first == taskStr) return cnt;
+                cnt++;
+            }
+            throw std::runtime_error("[ToInt] Task not found: " + taskStr);
+        };
+
+
+        inline const std::string ToString(TaskType u)
+        {
+            switch (u)
+            {
+                case TSKTP_STANDBY: return "STANDBY";
+                case TSKTP_MCM_SURVEY: return "MCM_SURVEY";
+                case TSKTP_PREPARATION: return "PREPARATION";
+                case TSKTP_SYNCHRONISATION: return "SYNCHRONISATION";
+                case TSKTP_SURVEY: return "SURVEY";
+                case TSKTP_TARGET: return "TARGET";
+                case TSKTP_CUSTOM_TASK: return "CUSTOM_TASK";
+                default: return ToString(u, strToTaskType);
+            }
+        }
+        
+        inline const TaskType ToTaskType(const std::string s)
+        {
+            if (s.find("STANDBY") != std::string::npos) return TSKTP_STANDBY;
+            else if (s.find("MCM_SURVEY") != std::string::npos) return TSKTP_MCM_SURVEY;
+            else if (s.find("PREPARATION") != std::string::npos) return TSKTP_PREPARATION;
+            else if (s.find("SYNCHRONISATION") != std::string::npos) return TSKTP_SYNCHRONISATION;
+            else if (s.find("SURVEY") != std::string::npos) return TSKTP_SURVEY;
+            else if (s.find("TARGET") != std::string::npos) return TSKTP_TARGET;
+            else if (s.find("CUSTOM_TASK") != std::string::npos) return TSKTP_CUSTOM_TASK;
+            else return ToTaskType(s, strToTaskType);
+        }
+
+
+        inline const int ToInt(TaskType u)
+        {
+            switch (u)
+            {
+                case TSKTP_STANDBY: return 0;
+                case TSKTP_MCM_SURVEY: return 1;
+                case TSKTP_PREPARATION: return 2;
+                case TSKTP_SYNCHRONISATION: return 3;
+                case TSKTP_SURVEY: return 4;
+                case TSKTP_TARGET: return 5;
+                case TSKTP_CUSTOM_TASK: return 6;
+                default: return ToInt(ToString(u, strToTaskType), strToTaskType);
+            }
+        };
+        /**
+         * \struct TaskType
+         * \brief Task type. See catl_spec-main/schema/core/basic_types/task/TaskType.json.
+         */
+        struct TaskTypeVN : CATLIdentifier {
+            using CATLIdentifier::CATLIdentifier;
+
+            TaskTypeVN(TaskType taskType) :
+                CATLIdentifier(ToString(taskType), ToInt(taskType)) {};
+
+            TaskTypeVN(std::string taskTypeStr, int taskTypeId) :
+                CATLIdentifier(taskTypeStr, taskTypeId) {};
+            
+            TaskTypeVN(const jsoncons::json& jsonData) :
+                CATLIdentifier(jsonData["name"].to_string(),
+                jsonData["value"].as<double>()) {
+                    name.erase(std::remove(name.begin(), name.end(), '"'), name.end());
+                };
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+
+        /**
+         * \struct TaskID
+         * \brief Task id. See catl_spec-main/schema/core/basic_types/task/TaskIdentifier.json
+         */
+        struct TaskID : CATLIdentifier { using CATLIdentifier::CATLIdentifier; };
+
+        /**
+         * \struct TaskStatus
+         * \brief TaskStatus. See catl_spec-main/schema/core/basic_types/task/TaskStatus.json
+         */
+        struct TaskStatus {
+                TaskState taskState;
+                double percentComplete;
+                std::shared_ptr<time::DeltaT> time_remaining;
+
+                /**
+                 * \brief Convert to JSON format.
+                 * \returns the JSON data.
+                */
+                virtual jsoncons::json ToJson() const;
+
+                /**
+                 * \brief Constructor
+                 * @param[in] taskState: task state.
+                 * @param[in] percentComplete: percentage of task completion.
+                */
+                TaskStatus(const TaskState taskState, const double percentComplete, std::shared_ptr<time::DeltaT> time_remaining) :
+                    taskState(taskState), percentComplete(percentComplete), time_remaining(time_remaining) {};
+                
+                TaskStatus(const jsoncons::json& jsonData)
+                    : taskState(ToTaskState(jsonData["state"]["name"].as<std::string>())),
+                    percentComplete(jsonData["state"]["percent_complete"].as<double>()),
+                    time_remaining(time::CreateDeltaTFromJson(jsonData["time_remaining"])) {}
+
+        };
+
+        /**
+         * \enum ActivityType
+         * \brief Acticity type. See catl_spec-main/schema/tasks/common/core/TaskActivityType.json.
+         */
+        enum ActivityType {
+            ACTIVITY_RECHARGE_BATTERIES, /*!< recharge batteries */
+            ACTIVITY_STANDARD, /*!< standard */
+            ACTIVITY_ERROR /*!< error */
+        };
+
+        inline const ActivityType ToActivityType(const std::string s)
+        {
+            if (s.find("RECHARGE_BATTERIES") != std::string::npos) return ACTIVITY_RECHARGE_BATTERIES;
+            if (s.find("ACTIVITY_STANDARD") != std::string::npos) return ACTIVITY_STANDARD;
+            else return ACTIVITY_ERROR;
+        }
+
+        inline const std::string ToString(ActivityType u)
+        {
+            switch (u)
+            {
+                case ACTIVITY_RECHARGE_BATTERIES: return "RECHARGE_BATTERIES";
+                case ACTIVITY_STANDARD: return "ACTIVITY_STANDARD";
+                default: return "UNKNOWN";
+            }
+        }
+
+        struct TaskPerformance {
+
+            std::map<std::string, double> dict;
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            virtual jsoncons::json ToJson() const;
+        };
+
+        struct TaskPerformanceBasic : TaskPerformance {
+            std::shared_ptr<time::DeltaT> timeout;
+
+            TaskPerformanceBasic(const std::shared_ptr<time::DeltaT> timeout) : timeout(timeout) {};
+
+            TaskPerformanceBasic(jsoncons::json& jsonData) :
+                timeout(time::CreateDeltaTFromJson(jsonData["timeout"])) {};
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+        struct TaskPerformancePreparation : TaskPerformance {
+            using TaskPerformance::TaskPerformance;
+
+            std::shared_ptr<time::AbsoluteTime> start_time;
+            std::shared_ptr<time::AbsoluteTime> end_time;
+
+            TaskPerformancePreparation(std::shared_ptr<time::AbsoluteTime> start_time, std::shared_ptr<time::AbsoluteTime> end_time) :
+                start_time(start_time), end_time(end_time) {};
+            TaskPerformancePreparation(const jsoncons::json& jsonData)
+                : start_time(time::CreateAbsoluteTimeFromJson(jsonData["start_time"])),
+                end_time(time::CreateAbsoluteTimeFromJson(jsonData["end_time"])) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+        struct TaskPerformanceStandby : TaskPerformance {
+            using TaskPerformance::TaskPerformance;
+
+            std::shared_ptr<time::AbsoluteTime> start_time;
+            std::shared_ptr<time::AbsoluteTime> end_time;
+
+            TaskPerformanceStandby(std::shared_ptr<time::AbsoluteTime> start_time, std::shared_ptr<time::AbsoluteTime> end_time) :
+                start_time(start_time), end_time(end_time) {};
+            TaskPerformanceStandby(const jsoncons::json& jsonData)
+                : start_time(time::CreateAbsoluteTimeFromJson(jsonData["start_time"])),
+                end_time(time::CreateAbsoluteTimeFromJson(jsonData["end_time"])) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+        struct TaskPerformanceSurvey : TaskPerformance {
+            using TaskPerformance::TaskPerformance;
+            TaskPerformanceSurvey() {};
+            TaskPerformanceSurvey(const jsoncons::json&) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+        struct TaskPerformanceSynchronisation : TaskPerformance {
+            using TaskPerformance::TaskPerformance;
+
+            bool acknowledge;
+
+            TaskPerformanceSynchronisation(const bool acknowledge) : acknowledge(acknowledge) {};
+
+            TaskPerformanceSynchronisation(const jsoncons::json& jsonData)
+                : acknowledge(jsonData["acknowledge"].as<bool>()) {}
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+        struct TaskConstraints {
+            ActivityType activityType;
+            geographic::Position p;
+            bool isPosSet = false;
+
+            std::map<std::string, double> dict;
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            virtual jsoncons::json ToJson() const;
+            protected:
+
+            /**
+             * \brief Constructor.
+             * @param[in] activityType: activity type.
+             */
+            TaskConstraints(ActivityType activityType) : activityType(activityType), p(jsoncons::json()), isPosSet(false) {}
+
+            /**
+             * \brief Constructor.
+             * @param[in] activityType: activity type.
+             * @param[in] target: target.
+             */
+            TaskConstraints(ActivityType activityType, geographic::Position target) :
+                activityType(activityType), p(target), isPosSet(true) {}
+        };
+
+        struct TaskConstraintsBasic : TaskConstraints {
+
+            TaskConstraintsBasic(const ActivityType activityType) : 
+                TaskConstraints(activityType) {};
+                
+            TaskConstraintsBasic(const ActivityType activityType, const geographic::Position p) : 
+                TaskConstraints(activityType, p) {};
+                
+            TaskConstraintsBasic(const jsoncons::json& jsonData)
+                : TaskConstraints(ToActivityType(jsonData["activity"].as<std::string>())) {
+                    if (jsonData.contains("target")) {
+                        p = jsonData["target"];
+                        isPosSet = true;
+                    }
+                    else isPosSet = false;
+                    //std::cerr << tc::yellow << "[TaskConstraintsBasic] data = " << jsonData << std::endl;
+                    for (auto k : taskConstraintKeys) {
+                        if (jsonData.contains(k)) {
+                            dict[k] = jsonData[k].as<double>();
+                           // std::cerr << tc::yellow << "[TaskConstraintsBasic] key " << k << " found, setting to " 
+                             //   << dict[k] << std::endl;
+                        }
+                    }
+                }
+            /**
+            
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            virtual jsoncons::json ToJson() const;
+            protected:
+        };
+
+        struct TaskConstraintsPreparation : TaskConstraints {
+            using TaskConstraints::TaskConstraints;
+            geographic::Position region;
+            
+            /**
+             * \brief Constructor.
+             * @param[in] region: task region.
+             */
+            TaskConstraintsPreparation(const ActivityType activityType, geographic::Position region) :
+                TaskConstraints(activityType), region(region) {};
+
+            TaskConstraintsPreparation(const jsoncons::json& jsonData)
+                : TaskConstraints(ToActivityType(jsonData["activity"].as<std::string>())), region(jsonData["region"]) {}
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const;
+        };
+
+        struct TaskConstraintsSynchronisation : TaskConstraints {
+            using TaskConstraints::TaskConstraints;
+            geographic::Position region;
+            nd::NodeIdentifier nodeIdentifier;
+            
+            /**
+             * \brief Constructor.
+             * @param[in] activityType: activity type.
+             * @param[in] region: task region.
+             * @param[in] nodeIdentifier: node identifier.
+             */
+            TaskConstraintsSynchronisation(const ActivityType activityType, geographic::Position region, nd::NodeIdentifier nodeIdentifier) :
+                TaskConstraints(activityType), region(region), nodeIdentifier(nodeIdentifier) {};
+
+            TaskConstraintsSynchronisation(const jsoncons::json& jsonData)
+                : TaskConstraints(ToActivityType(jsonData["activity"].as<std::string>())),
+                region(jsonData["region"]),
+                nodeIdentifier(jsonData["destination_node_id"]) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const;
+        };
+
+        struct TaskConstraintsStandBy : TaskConstraints {
+            using TaskConstraints::TaskConstraints;
+            jsoncons::json region;
+            
+            /**
+             * \brief Constructor.
+             * @param[in] region: task region.
+             * @param[in] activityType: activity type.
+             */
+            TaskConstraintsStandBy(const ActivityType activityType, const jsoncons::json region) :
+                TaskConstraints(activityType), region(region) {};
+
+            TaskConstraintsStandBy(const jsoncons::json& jsonData)
+                : TaskConstraints(ToActivityType(jsonData["activity"].as<std::string>())),
+                region(jsonData["region"]) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const;
+        };
+
+        struct TaskConstraintsSurvey : TaskConstraints {
+            using TaskConstraints::TaskConstraints;
+            jsoncons::json region;
+            std::shared_ptr<time::AbsoluteTime> deadline;
+            
+            /**
+             * \brief Constructor.
+             * @param[in] region: task region.
+             * @param[in] activityType: activity type.
+             * @param[in] deadline: deadline.
+             */
+            TaskConstraintsSurvey(const ActivityType activityType, const jsoncons::json region, std::shared_ptr<time::AbsoluteTime> deadline) :
+                TaskConstraints(activityType), region(region), deadline(deadline) {};
+            
+            TaskConstraintsSurvey(const jsoncons::json& jsonData)
+                : TaskConstraints(ToActivityType(jsonData["activity"].as<std::string>())),
+                region(jsonData["region"]),
+                deadline(time::CreateAbsoluteTimeFromJson(jsonData["deadline"])) {}
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const;
+        };
+
+        //struct TaskDescription {
+            
+       // }
+
+        struct TaskIdAndStatus : JSonable {
+            TaskStatus taskStatus;
+            TaskID taskId;
+            
+            /**
+             * \brief Constructor
+             * @param[in] taskStatus: task status.
+             * @param[in] taskId: task id.
+            */
+            TaskIdAndStatus(TaskStatus taskStatus, const TaskID taskId) : taskStatus(std::move(taskStatus)), taskId(taskId) { };
+
+            TaskIdAndStatus(const jsoncons::json& jsonData)
+                : taskStatus(jsonData),
+                taskId(jsonData["identifier"]) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+        std::shared_ptr<TaskPerformance> GetTaskPerformanceFromJson(jsoncons::json jsonData, TaskType taskType);
+        std::shared_ptr<TaskConstraints> GetTaskConstraintsFromJson(jsoncons::json jsonData, TaskType taskType);
+
+        /**
+         * \struct TaskDescriptor
+         * \brief TaskDescriptor. See catl_spec-main/schema/core/basic_types/task/Task.json
+         */
+        struct TaskDescriptor : JSonable {
+            std::shared_ptr<TaskConstraints> taskConstraints;
+            std::shared_ptr<TaskPerformance> taskPerformance;
+
+            TaskDescriptor() : taskConstraints(nullptr), taskPerformance(nullptr) {};
+
+            TaskDescriptor(std::shared_ptr<TaskConstraints> taskConstraints, std::shared_ptr<TaskPerformance> taskPerformance) :
+                taskConstraints(taskConstraints), taskPerformance(taskPerformance) {} ;
+
+            TaskDescriptor(const jsoncons::json jsonData, const task::TaskType taskType) {
+                taskConstraints = GetTaskConstraintsFromJson(jsonData["constraints"], taskType);
+                taskPerformance = GetTaskPerformanceFromJson(jsonData["performance_envelope"], taskType);
+            }
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+        /**
+         * \struct TaskAdmin
+         * \brief TaskAdmin. See catl_spec-main/schema/messages/task/TaskAdmin.json
+         */
+        struct TaskAdmin : JSonable {
+            CATLHeader header;
+            TaskUpdateType action;
+            nd::NodeIdentifier node;
+            TaskID taskID;
+            TaskType taskType;
+            TaskDescriptor taskDescriptor;
+
+            TaskAdmin(const std::string srcId, const std::shared_ptr<time::AbsoluteTime> time_sent,
+                const TaskUpdateType taskUpdateType, const nd::NodeIdentifier& node, 
+                const TaskID& taskID, const TaskType taskType) : header("TASK_ADMIN", srcId, time_sent),
+                action(taskUpdateType), node(node), taskID(taskID), taskType(taskType), descriptorIsSet_(false) {} ;
+
+            TaskAdmin(const std::string srcId, const std::shared_ptr<time::AbsoluteTime> time_sent,
+                const TaskUpdateType taskUpdateType, const nd::NodeIdentifier& node, 
+                const TaskID& taskID, const TaskType taskType, const TaskDescriptor taskDescriptor) :
+                header("TASK_ADMIN", srcId, time_sent), action(taskUpdateType),  node(node), taskID(taskID), taskType(taskType),
+                taskDescriptor(taskDescriptor), descriptorIsSet_(true) {} ;
+                
+            TaskAdmin(const jsoncons::json& jsonData)
+                : header(jsonData["header"]),
+                action(ToTaskUpdateType(jsonData["body"]["action"].as<std::string>())),
+                node(jsonData["body"]["node"]),
+                taskID(jsonData["body"]["identifier"]),
+                taskType(ToTaskType(jsonData["body"]["type"]["name"].as<std::string>()))
+                {
+                
+                if (jsonData["body"].contains("description")) {
+                    taskDescriptor = TaskDescriptor(jsonData["body"]["description"], taskType);
+                    descriptorIsSet_ = true;
+                } else {
+                    descriptorIsSet_ = false;
+                }
+            }
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+
+            protected:
+            bool descriptorIsSet_ = false;
+        };
+    }
+
+    namespace security {
+
+        enum class Classification {/*!< see  catl_spec-main/schema/core/basic_types/security/ClassificationEnum.json */
+            CLASSIFICATION_UNCLASSIFIED_SLASH_OFFICIAL, /*!< unclassified/official */
+            CLASSIFICATION_PROTECTED, /*!< protected */
+            CLASSIFICATION_CONFIDENTIAL, /*!< confidential */
+            CLASSIFICATION_SECRET, /*!< secret */
+            CLASSIFICATION_TOP_SECRET, /*!< top-secret */
+            CLASSIFICATION_NONE/*!< nones */
+        };
+
+        /**
+         * \struct ToString
+         * \brief Convert classification to string.
+         */
+        inline std::string ToString(Classification classification) {
+            switch (classification) {
+                case Classification::CLASSIFICATION_UNCLASSIFIED_SLASH_OFFICIAL:
+                    return "UNCLASSIFIED/OFFICIAL";
+                case Classification::CLASSIFICATION_PROTECTED:
+                    return "PROTECTED";
+                case Classification::CLASSIFICATION_CONFIDENTIAL:
+                    return "CONFIDENTIAL";
+                case Classification::CLASSIFICATION_SECRET:
+                    return "SECRET";
+                case Classification::CLASSIFICATION_TOP_SECRET:
+                    return "TOP-SECRET";
+                case Classification::CLASSIFICATION_NONE:
+                    return "UNKNOWN CLASSIFICATION";
+                default:
+                    return "UNKNOWN CLASSIFICATION";
+            }
+        }
+
+
+        /**
+         * \brief Convert string to classification enum.
+         */
+        inline Classification ToClassification(const std::string& str) {
+            if (str == "UNCLASSIFIED/OFFICIAL") {
+                return Classification::CLASSIFICATION_UNCLASSIFIED_SLASH_OFFICIAL;
+            } else if (str == "PROTECTED") {
+                return Classification::CLASSIFICATION_PROTECTED;
+            } else if (str == "CONFIDENTIAL") {
+                return Classification::CLASSIFICATION_CONFIDENTIAL;
+            } else if (str == "SECRET") {
+                return Classification::CLASSIFICATION_SECRET;
+            } else if (str == "TOP-SECRET") {
+                return Classification::CLASSIFICATION_TOP_SECRET;
+            } else {
+                return Classification::CLASSIFICATION_NONE;
+            }
+        }
+        /**
+         * \struct Markings
+         * \brief Markings. See catl_spec-main/schema/core/world_model/Resources.json
+         */
+        struct Markings {
+
+            Classification classification;
+            
+            Markings(const Classification classification) : classification(classification) {};
+
+            Markings(const jsoncons::json &j) :
+                classification(ToClassification(j["classification"].to_string())) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson()  const;
+
+        };
+    }
+
+    /**
+     * \struct Contact
+     * \brief Contact. See catl_spec-main/schema/core/basic_types/contact/Contact.json
+     */
+    struct Contact : JSonable {
+            
+        std::string identifier;
+        geographic::Position position;
+        Contact(const std::string identifier, const geographic::Position position) : identifier(identifier), position(position) {};
+
+        /**
+         * \brief Convert to JSON format.
+         * \returns the JSON data.
+        */
+        jsoncons::json ToJson()  const override;
+
+        // Overload the == operator
+        bool operator==(const Contact& other) const {
+            return identifier == other.identifier;
+        }
+
+        
+    };
+
+    /**
+     * \struct ASWContact
+     * \brief Anti-submarine warfare (ASW) domain specific contact. See catl_spec-main/schema/core/basic_types/contact/ASWContact.json
+     */
+    struct ASWContact : Contact {
+        using Contact::Contact;
+
+        ASWContact(const std::string identifier, const geographic::Position position) : Contact(identifier, position) {};
+
+        /**
+         * \brief Convert to JSON format.
+         * \returns the JSON data.
+        */
+        jsoncons::json ToJson()  const override;
+        
+    };
+
+    enum class MCMContactState {
+        MILEC,
+        MILCO,
+        Non_MILCO,
+        MINE,
+        NOMBO,
+        UNDEFINED
+    };
+
+    inline std::string ToString(MCMContactState state) {
+        switch(state) {
+            case MCMContactState::MILEC: return "MILEC";
+            case MCMContactState::MILCO: return "MILCO";
+            case MCMContactState::Non_MILCO: return "Non_MILCO";
+            case MCMContactState::MINE: return "MINE";
+            case MCMContactState::NOMBO: return "NOMBO";
+            case MCMContactState::UNDEFINED: return "UNDEFINED";
+            default: return "Unknown";
+        }
+    }
+    
+    /**
+     * \struct MCMContact
+     * \brief Mine countermeasures (MCM) specific contacts. See catl_spec-main/schema/core/basic_types/contact/MCMContact.json
+     */
+    struct MCMContact : Contact {
+        using Contact::Contact;
+
+        double positional_uncertainty;
+        MCMContactState mcmContactState;
+        std::string classificationType;
+        double confidence;
+
+        MCMContact(const std::string identifier, const geographic::Position position, const double positional_uncertainty,
+            const MCMContactState mcmContactState, const std::string classificationType, const double confidence) :
+            Contact(identifier, position), positional_uncertainty(positional_uncertainty),
+            mcmContactState(mcmContactState), classificationType(classificationType), confidence(confidence) {};
+
+        /**
+         * \brief Convert to JSON format.
+         * \returns the JSON data.
+        */
+        jsoncons::json ToJson()  const;
+        
+    };
+
+    namespace wm {
+
+        /**
+         * \struct LabelledSpace
+         * \brief LabelledSpace. See catl_spec-main/schema/core/basic_types/entity/LabelledSpace.json
+         */
+        struct LabelledSpace : JSonable {
+            CATLIdentifier identifier;
+            geographic::Position region;
+            enum class SpaceType { POS, REG, OBJ };
+            SpaceType spaceType;
+            
+            LabelledSpace(const CATLIdentifier identifier, const geographic::Position pos, SpaceType spaceType) : identifier(identifier),
+                region(pos), spaceType(spaceType) {};
+
+            LabelledSpace(const CATLIdentifier identifier, const std::vector<jsoncons::json> boundariesItems, SpaceType spaceType) : identifier(identifier),
+                region(geographic::Position(geographic::GenerateDefinedRegion(boundariesItems))),
+                spaceType(spaceType) {};
+
+            LabelledSpace(const CATLIdentifier identifier, const std::string query, SpaceType spaceType) : identifier(identifier),
+                region(std::string(query)), spaceType(spaceType) {} ;
+                
+            LabelledSpace(const jsoncons::json &j) :
+                identifier(j["identifier"]), region(jsoncons::json()) {
+                    if (j.contains("position")) {
+                        region = geographic::Position(j["position"]);
+                        spaceType = SpaceType::POS;
+                    }
+                    else if (j.contains("region")) {
+                        region = geographic::Position(j["region"]);
+                        spaceType = SpaceType::REG;
+                    }
+                    else if (j.contains("object")) {
+                        region = geographic::Position(j["object"]);
+                        spaceType = SpaceType::OBJ;
+                    }
+                };
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+
+            /**
+             * \brief Overload the == operator
+             * \returns the JSON data.
+            */
+            bool operator==(const LabelledSpace& other) const {
+                return identifier.name == other.identifier.name;
+            }
+        };
+
+        /**
+         * \struct SpatialPrimitives
+         * \brief SpatialPrimitives. See catl_spec-main/schema/core/basic_types/entity/SpatialPrimitives.json
+         */
+        struct SpatialPrimitives : JSonable {
+            std::vector<LabelledSpace> positions;
+            std::vector<LabelledSpace> regions;
+            std::vector<LabelledSpace> objects;
+
+            SpatialPrimitives(const std::vector<LabelledSpace> positions, const std::vector<LabelledSpace> regions,
+                const std::vector<LabelledSpace> objects)
+                : positions(positions) , regions(regions), objects(objects) {};
+
+            SpatialPrimitives(const jsoncons::json &j) {
+                positions = GetVectorOfJsonableFromVectorOfJsons<LabelledSpace>(j["positions"].as<std::vector<jsoncons::json>>());
+                regions = GetVectorOfJsonableFromVectorOfJsons<LabelledSpace>(j["regions"].as<std::vector<jsoncons::json>>());
+                objects = GetVectorOfJsonableFromVectorOfJsons<LabelledSpace>(j["objects"].as<std::vector<jsoncons::json>>());
+            }
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+        struct Terrain : JSonable {
+
+            std::string terrainType;
+            geographic::Region region;
+            /**
+             * \brief Terrain constructor. // TODO implement
+             */
+            Terrain(const std::string terrainType, const std::vector<jsoncons::json> boundariesItems) : 
+                terrainType(terrainType), region(geographic::GenerateDefinedRegion(boundariesItems)) {};
+
+            Terrain(const jsoncons::json &j) : terrainType(j["terrain_type"].as_string()), region(j["boundary"]["region"]) {}
+            
+            /**
+             * \brief Overload the == operator
+             * \returns equality predicate.
+            */
+            bool operator==(const Terrain& other) const {
+                return terrainType == other.terrainType;
+            }
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson()  const override;
+        };
+
+        struct Currents : JSonable {
+            double speed;
+            double direction;
+            geographic::Region region;
+
+            /**
+             * \brief Currents constructor. // TODO implement
+             */
+            Currents(const double speed, const double direction, const std::vector<jsoncons::json> boundariesItems) :
+            speed(speed), direction(direction), region(geographic::GenerateDefinedRegion(boundariesItems)) {};
+
+            Currents(const jsoncons::json &j) : speed(j["speed"].as<double>()),
+                direction(j["direction"].as<double>()), region(j["boundary"]["region"]) {}
+            
+            /**
+             * \brief Overload the == operator
+             * \returns equality predicate.
+            */
+            bool operator==(const Currents& other) const {
+                return region == other.region;
+            }
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson()  const override;
+        };
+        
+        struct Bathymetry : JSonable {
+
+            geographic::Position location;
+            double depth;
+
+            /**
+             * \brief Bathymetry constructor. // TODO implement
+             */
+            Bathymetry(const geographic::Position location, const double depth) : location(location), depth(depth) {};
+
+            Bathymetry(const jsoncons::json &j) : location(j["location"]), depth(j["depth"].as<double>()) {};
+            
+            /**
+             * \brief Convert to JSON format.ù
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson()  const override;
+
+            /**
+             * \brief Overload the == operator
+             * \returns equality predicate.
+            */
+            bool operator==(const Bathymetry& other) const {
+                return location == other.location;
+            }
+        };
+
+        struct Assignment : JSonable {
+
+            /**
+             * \brief Assignment constructor. // TODO implement
+             */
+            Assignment() {};
+
+            Assignment(const jsoncons::json &j) {};
+            
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson()  const override;
+
+            /**
+             * \brief Overload the == operator
+             * \returns equality predicate.
+            */
+            bool operator==(const Assignment& other) const {
+                return true;
+            }
+        };
+
+        /**
+         * \struct Maps
+         * \brief Maps. See catl_spec-main/schema/core/world_model/Maps.json
+         */
+        struct Maps : JSonable{
+            
+            std::vector<Assignment> occupancy;
+            std::vector<Terrain> terrain;
+            std::vector<Currents> currents;
+            std::vector<Bathymetry> bathymetry;
+
+            /**
+             * \brief Maps constructor.
+             * @param[in] inclusion_zones: inclusion zones.
+             */
+            Maps(const std::vector<Assignment> occupancy, const std::vector<Terrain> terrain,
+                const std::vector<Currents> currents, const std::vector<Bathymetry> bathymetry) :
+                occupancy(occupancy), terrain(terrain), currents(currents), bathymetry(bathymetry) {};
+            
+            Maps(const jsoncons::json &j) {
+                occupancy = GetVectorOfJsonableFromVectorOfJsons<Assignment>(j["occupancy"]["assignments"].as<std::vector<jsoncons::json>>());
+                std::cerr << "[Maps] Occup ok" << std::endl;
+                terrain = GetVectorOfJsonableFromVectorOfJsons<Terrain>(j["terrain"].as<std::vector<jsoncons::json>>());
+                std::cerr << "[Maps] Terr ok" << std::endl;
+                currents = GetVectorOfJsonableFromVectorOfJsons<Currents>(j["currents"].as<std::vector<jsoncons::json>>());
+                std::cerr << "[Maps] currents ok" << std::endl;
+                bathymetry = GetVectorOfJsonableFromVectorOfJsons<Bathymetry>(j["bathymetry"].as<std::vector<jsoncons::json>>());
+                std::cerr << "[Maps] bathymetry ok" << std::endl;
+            }
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson()  const override;
+        };
+
+        struct DataProducts {
+            CATLIdentifier identifier;
+            std::vector<task::TaskID> relevant_tasks;
+            std::vector<std::string> products;
+
+            /**
+             * \brief MissionData constructor.
+             * @param[in] identifier: identifier.
+             * @param[in] relevant_tasks: vector of tasks id involved.
+             * @param[in] products: vector of jsonpath strings or URI strings.
+             */
+            DataProducts(
+                const CATLIdentifier identifier,
+                const std::vector<task::TaskID> relevant_tasks,
+                const std::vector<std::string> products) :
+                identifier(identifier),
+                relevant_tasks(relevant_tasks),
+                products(products) {};
+            
+
+            DataProducts(const jsoncons::json &j) : identifier(j["identifier"]) {
+                relevant_tasks = GetVectorOfJsonableFromVectorOfJsons<task::TaskID>(j["relevant_tasks"].as<std::vector<jsoncons::json>>());
+                products = j["products"].as<std::vector<std::string>>();
+            }
+
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson()  const;
+        };
+
+        /**
+         * \struct MissionData
+         * \brief MissionData. See catl_spec-main/schema/core/world_model/MissionData.json
+         */
+        struct MissionData : JSonable {
+            std::vector<LabelledSpace> inclusion_zones;
+            std::vector<LabelledSpace> exclusion_zones;
+            std::shared_ptr<time::AbsoluteTime> end_time;
+            std::vector<std::shared_ptr<Contact>> contacts;
+            DataProducts dataProducts;
+            
+            /**
+             * \brief MissionData constructor.
+             * @param[in] inclusion_zones: inclusion zones.
+             * @param[in] exclusion_zones: exclusion zones.
+             * @param[in] end_time: end time.
+             * @param[in] contacts: contacts.
+             */
+            MissionData(const std::vector<LabelledSpace> inclusion_zones,
+                        const std::vector<LabelledSpace> exclusion_zones,
+                        const std::shared_ptr<time::AbsoluteTime> end_time,
+                        const std::vector<std::shared_ptr<Contact>> contacts) :
+                            inclusion_zones(inclusion_zones), exclusion_zones(exclusion_zones),
+                            end_time(end_time), contacts(contacts),
+                            dataProducts(CATLIdentifier("", 0), {}, {}),  isDataProductsSet(false) {};
+            
+            /**
+             * \brief MissionData constructor.
+             * @param[in] inclusion_zones: inclusion zones.
+             * @param[in] exclusion_zones: exclusion zones.
+             * @param[in] end_time: end time.
+             * @param[in] contacts: contacts.
+             */
+            MissionData(const std::vector<LabelledSpace> inclusion_zones,
+                        const std::vector<LabelledSpace> exclusion_zones,
+                        const std::shared_ptr<time::AbsoluteTime> end_time,
+                        const std::vector<std::shared_ptr<Contact>> contacts,
+                        const DataProducts dataProducts) :
+                            inclusion_zones(inclusion_zones), exclusion_zones(exclusion_zones),
+                            end_time(end_time), contacts(contacts),
+                            dataProducts(dataProducts), isDataProductsSet(true) {};
+
+            
+            MissionData(const jsoncons::json &j) : dataProducts(CATLIdentifier("", 0), {}, {}), end_time(time::CreateAbsoluteTimeFromJson(j["end_time"])) {
+                inclusion_zones = GetVectorOfJsonableFromVectorOfJsons<LabelledSpace>(j["inclusion_zones"].as<std::vector<jsoncons::json>>());
+                exclusion_zones = GetVectorOfJsonableFromVectorOfJsons<LabelledSpace>(j["exclusion_zones"].as<std::vector<jsoncons::json>>());
+                if (j.contains("data_products")) dataProducts = DataProducts(j["data_products"]);
+                // TODO fill contacts
+            }
+
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson()  const override;
+
+            protected:
+            bool isDataProductsSet = false;
+        };
+
+        /**
+         * \struct Labels
+         * \brief Labels. See catl_spec-main/schema/core/world_model/Labels.json
+         */
+        struct Labels : JSonable {
+            std::vector<std::string> bottom_types;
+            
+            /**
+             * \brief Labels constructor.
+             * @param[in] std::vector<std::string> bottom_types: resources.
+             */
+            Labels(const std::vector<std::string> bottom_types) : bottom_types(bottom_types) {};
+
+            Labels(const jsoncons::json &j) { 
+                for (auto p : j["bottom_types"].as<std::vector<jsoncons::json>>())
+                    bottom_types.push_back(p.to_string());
+            }
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson()  const override;
+
+            
+        };
+
+        /**
+         * \struct Resource
+         * \brief Resource. See catl_spec-main/schema/core/world_model/Resources.json
+         */
+        struct Resource : JSonable {
+
+            wm::SpatialPrimitives spatial_primitives;
+            wm::Labels labels;
+            security::Markings markings;
+            
+            /**
+             * \brief Resource constructor.
+             * @param[in] resources: resources.
+             */
+            Resource(const wm::Labels labels, const wm::SpatialPrimitives spatial_primitives) :
+                labels(labels), spatial_primitives(spatial_primitives), markings(security::Classification::CLASSIFICATION_NONE),
+                markingsIsSet(false) {};
+
+            /**
+             * \brief Resource constructor.
+             * @param[in] resources: resources.
+             */
+            Resource(const security::Markings markings, const wm::Labels labels, const wm::SpatialPrimitives spatial_primitives) :
+                labels(labels), spatial_primitives(spatial_primitives), markings(markings), markingsIsSet(true) {};
+
+            Resource(const jsoncons::json &j) :
+                spatial_primitives(j["spatial_primitives"]),
+                labels(j["labels"]), markings(security::Classification::CLASSIFICATION_NONE)
+                {
+                    if (j.contains("markings")) markings = security::Markings(j["markings"]);
+                };
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson()  const override;
+
+            protected:
+            bool markingsIsSet = false;
+        };
+
+        struct FlexEnum : JSonable {
+            std::string name;
+            std::vector<CATLIdentifier> enumerations;
+            std::string desc;
+
+            FlexEnum() {};
+
+            FlexEnum(const std::string name, const std::vector<CATLIdentifier> enumerations,
+                const std::string desc) : name(name), enumerations(enumerations), desc(desc) {};
+
+            FlexEnum(const jsoncons::json &j) : name(j["name"].as_string()), desc(j["desc"].as_string()) {
+                enumerations = GetVectorOfJsonableFromVectorOfJsons<CATLIdentifier>(j["enumerations"].as<std::vector<jsoncons::json>>());
+            }
+
+            /**
+             * \brief Overload the == operator
+             * \returns equality predicate.
+            */
+            bool operator==(const FlexEnum& other) const {
+                return name == other.name;
+            }
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+
+        } ;
+
+        struct WorldModel : JSonable {
+
+            CATLHeader header;
+
+            Resource resources;
+            MissionData missionData;
+            Maps maps;
+            std::vector<FlexEnum> enumerations;
+
+            /**
+             * \brief WorldModel constructor.
+             * @param[in] resources: resources.
+             * @param[in] missionData: missionData.
+             */
+            WorldModel(const std::string srcId, const std::shared_ptr<time::AbsoluteTime> timeSent,
+                const Resource resources, const MissionData missionData, const Maps maps) :
+                header("SET_WORLD_MODEL", srcId, timeSent),
+                resources(resources), missionData(missionData), maps(maps) {} ;
+
+            /**
+             * \brief WorldModel constructor.
+             * @param[in] resources: resources.
+             * @param[in] missionData: missionData.
+             */
+            WorldModel(const std::string srcId, const std::shared_ptr<time::AbsoluteTime> timeSent,
+                const Resource resources, const MissionData missionData, const Maps maps,
+                const std::vector<FlexEnum> enumsVec) :
+                header("SET_WORLD_MODEL", srcId, timeSent),
+                resources(resources), missionData(missionData), maps(maps),
+                enumerations(enumsVec) {
+                    std::cerr << "[WM] enumerations.size() = " << enumerations.size() << std::endl;
+                    std::cerr << "[WM] enumsVec.size() = " << enumsVec.size() << std::endl;
+                } ;
+            
+            WorldModel(const jsoncons::json &j) :
+                header(j["header"]),
+                resources(j["body"]["resources"]),
+                missionData(j["body"]["mission_data"]),
+                maps(j["body"]["maps"]) {
+                enumerations = {};
+                    //GetVectorOfJsonableFromVectorOfJsons<FlexEnum>(j["enumerations"].as<std::vector<jsoncons::json>>());
+            }
+
+            WorldModel(const std::string srcId, const std::shared_ptr<time::AbsoluteTime> timeSent, 
+                const Resource& resources): header("SET_WORLD_MODEL", srcId, timeSent), 
+                                            resources(resources),  
+                                            missionData({}, {}, 
+                                                std::make_shared<ctljsn::time::DirectTime>(std::time(0)), 
+                                                {}, 
+                                                wm::DataProducts(ctljsn::CATLIdentifier("0", 1), {}, {})),  
+                                            maps({}, {}, {}, {}), 
+                                            enumerations({}) {} ; 
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+
+            void Merge(const WorldModel &other);
+
+        };
+
+    }
+
+    jsoncons::json GenerateDynamicUpdateItem(std::string action, std::string ref, jsoncons::json value);
+
+    struct DynamicUpdate : JSonable {
+        CATLHeader header;
+        std::string target;
+        std::vector<jsoncons::json> ops;
+
+        DynamicUpdate(std::string srcId, const std::shared_ptr<time::AbsoluteTime> time_sent,
+            std::string target, const std::vector<jsoncons::json> ops) :
+            header("DYNAMIC_UPDATE", srcId, time_sent), target(target), ops(ops) {};
+
+        DynamicUpdate(jsoncons::json &j) : header(j["header"]), target(j["body"]["target"].as_string()), 
+            ops(j["body"]["operations"].as<std::vector<jsoncons::json>>()) {}
+
+        /**
+         * \brief Convert to JSON format.
+         * \returns the JSON data.
+        */
+        jsoncons::json ToJson() const override;
+    };
+
+    /**
+     * \struct GeneralSourceOfInformation
+     * \brief General source of information. See catl_spec-main/schema/core/basic_types/entity/GeneralSourceOfInformation.json.
+     */
+    struct GeneralSourceOfInformation : CapabilityAuthority {
+        using CapabilityAuthority::CapabilityAuthority;
+        
+        std::string organization;
+        std::string group;
+        
+        /**
+         * \brief Constructor.
+         * @param[in] name: name.
+         * @param[in] value: value.
+         * @param[in] org: organization name.
+         * @param[in] group: group nome.
+         */
+        GeneralSourceOfInformation(const std::string name, int value, std::string org, std::string group) : 
+            CapabilityAuthority(name, value), organization(org), group(group) {};
+
+        /**
+         * \brief Convert to JSON format.
+         * \returns the JSON data.
+        */
+        jsoncons::json ToJson() const override;
+
+        private:
+        GeneralSourceOfInformation(const std::string name, int value) : CapabilityAuthority(name, value) {}
+     };
+
+    /**
+     * \struct Role
+     * \brief Role. See catl_spec-main/schema/core/basic_types/entity/Role.json.
+     */
+    struct Role : CapabilityAuthority { using CapabilityAuthority::CapabilityAuthority; };
+
+
+    /**
+     * \struct CapabilityDescriptor
+     * \brief Capability descriptor. See catl_spec-main/schema/core/node/CapabilityDescriptor.json.
+     */
+    struct CapabilityDescriptor : JSonable {
+        task::TaskTypeVN type;
+        std::vector<std::shared_ptr<CapabilityAuthority>> authorities;
+
+        /**
+         * \brief Constructor with only task type.
+         * @param[in] type: task type.
+         */
+        CapabilityDescriptor(const task::TaskType type) : type(type) {};
+
+        /**
+         * \brief Full constructor.
+         * @param[in] type: task type.
+         * @param[in] authorities: vector of authorities.
+         */
+        CapabilityDescriptor(const task::TaskType type, std::vector<std::shared_ptr<CapabilityAuthority>> authorities)
+            : type(type), authorities(authorities) {};
+
+        // Constructor from JSON
+        CapabilityDescriptor(const jsoncons::json& jsonData)
+            : type(jsonData["type"]) {
+            if (jsonData.contains("Authorities")) {
+                for (const auto& authorityJson : jsonData["Authorities"].array_range()) {
+                    authorities.push_back(std::make_shared<CapabilityAuthority>(authorityJson));
+                }
+            }
+        }
+
+        /**
+         * \brief Convert to JSON format.
+         * \returns the JSON data.
+        */
+        jsoncons::json ToJson() const override;
+    };
+
+    namespace nd {
+        
+        /**
+         * \struct ConfigOption
+         * \brief Node config options. See catl_spec-main/schema/core/node/ConfigOption.json.
+         */
+        struct ConfigOption : CATLIdentifierStrStr { 
+            using CATLIdentifierStrStr::CATLIdentifierStrStr;
+            
+            ConfigOption(const jsoncons::json& jsonData)
+                : ConfigOption(jsonData["name"].as<std::string>(), jsonData["value"].as<std::string>()) {}
+        };
+
+        /**
+         * \struct AddNode
+         * \brief Add node message. See catl_spec-main/schema/messages/add_node/AddNode.json.
+         */
+        struct AddNode : JSonable {
+            CATLHeader header;
+            NodeIdentifier identifier;
+            std::vector<CapabilityDescriptor> capabilities;
+            std::vector<ConfigOption> config_options;
+            OperatingEnvelope operating_envelope;
+            Initialization initialization;
+            std::vector<jsoncons::json> assigned_exclusion_zones;
+            std::vector<jsoncons::json> assigned_inclusion_zones;
+
+            AddNode(const std::string src, std::shared_ptr<time::AbsoluteTime> time_sent,
+                const NodeIdentifier &identifier, const std::vector<CapabilityDescriptor> &capabilities,
+                const std::vector<ConfigOption> &config_options, const OperatingEnvelope &operating_envelope,
+                const Initialization &initialization,
+                const std::vector<jsoncons::json> &assigned_exclusion_zones,
+                const std::vector<jsoncons::json> &assigned_inclusion_zones) : 
+                identifier(identifier), capabilities(capabilities), config_options(config_options),
+                operating_envelope(operating_envelope), initialization(initialization),
+                assigned_exclusion_zones(assigned_exclusion_zones),
+                assigned_inclusion_zones(assigned_inclusion_zones),
+                header("ADD_NODE", src, time_sent) {} ;
+
+                // Constructor from JSON
+                AddNode(const jsoncons::json& jsonData)
+                    : header(jsonData["header"]),
+                    identifier(jsonData["body"]["identifier"]),
+                    capabilities(GetVectorOfJsonableFromVectorOfJsons<CapabilityDescriptor>(jsonData["body"]["capabilities"].as<std::vector<jsoncons::json>>())),
+                    config_options(GetVectorOfJsonableFromVectorOfJsons<ConfigOption>(jsonData["body"]["config_options"].as<std::vector<jsoncons::json>>())),
+                    operating_envelope(jsonData["body"]["operating_envelope"]),
+                    initialization(jsonData["body"]["initialization"]),
+                    assigned_exclusion_zones(jsonData["body"]["assigned_exclusion_zones"].as<std::vector<jsoncons::json>>()),
+                    assigned_inclusion_zones(jsonData["body"]["assigned_inclusion_zones"].as<std::vector<jsoncons::json>>()) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+        };
+
+    }
+
+    /**
+     * \struct Status
+     * \brief Vehicle statsu. See catl_spec-main/schema/messages/status/Status.json.
+     */
+    struct Status : JSonable {
+        std::string vehicleId;
+        CATLHeader header;
+        std::vector<task::TaskIdAndStatus> owned_tasks;
+        geographic::Position location;
+        NodeStatus nodeStatus;
+        std::vector<CapabilityDescriptor> capabilities;
+
+        /**
+         * \brief Constructor.
+         * @param[in] vehicleId: vehicle id.
+         * @param[in] srcId: id of message source.
+         * @param[in] t: sending time.
+         * @param[in] location: vehicle location
+         * @param[in] owned_tasks: owned tasks.
+         * @param[in] nodeStatus: node status.
+         */
+        Status(const std::string vehicleId, const std::string srcId, std::shared_ptr<time::AbsoluteTime> t,
+            const geographic::Position location, const std::vector<task::TaskIdAndStatus> owned_tasks,
+            NodeStatus nodeStatus, std::vector<CapabilityDescriptor> capabilities) : 
+            vehicleId(vehicleId), header("STATUS", srcId, t),
+            location(location), owned_tasks(owned_tasks),
+            nodeStatus(nodeStatus), capabilities(capabilities) {} ;
+            
+        Status(const jsoncons::json& jsonData)
+            : vehicleId(jsonData["body"]["id"].as<std::string>()),
+            header(jsonData["header"]),
+            location(jsonData["body"]["location"]),
+            nodeStatus(ToNodeStatus(jsonData["body"]["status"].as<std::string>())) {
+
+            for (const auto& taskJson : jsonData["body"]["owned_tasks"].array_range()) {
+                owned_tasks.emplace_back(task::TaskIdAndStatus(taskJson));
+            }
+
+            for (const auto& capabilityJson : jsonData["body"]["capabilities"].array_range()) {
+                capabilities.emplace_back(CapabilityDescriptor(capabilityJson));
+            }
+        }
+        /**
+         * \brief Convert to JSON format.
+         * \returns the JSON data.
+        */
+        jsoncons::json ToJson() const override;
+    };
+
+    namespace chat {
+
+        struct Chat : JSonable {
+            CATLHeader header;
+            std::string identifier;
+            std::string text;
+            std::string author;
+
+            Chat(
+                const std::string srcId, std::shared_ptr<time::AbsoluteTime> timeSent,
+                const std::string identifier, const std::string text,
+                const std::string author) : 
+                header("CHAT", srcId, timeSent),
+                identifier(identifier),
+                text(text),
+                author(author) {};
+
+            Chat(const jsoncons::json& jsonData) :
+                header(jsonData["header"]),
+                identifier(jsonData["body"]["identifier"].as<std::string>()),
+                text(jsonData["body"]["text"].as<std::string>()),
+                author(jsonData["body"]["author"].as<std::string>()) {}
+
+            /**
+             * \brief Convert to JSON format.
+             * \returns the JSON data.
+            */
+            jsoncons::json ToJson() const override;
+                
+        };
+    }
+
+    std::string LocationToJsonPointerString(jsoncons::jsonpath::json_location);
+    bool ResolveRef(jsoncons::json &t, const std::shared_ptr<wm::WorldModel> &wm, jsoncons::json &result, std::string text);
+    bool EvalDynamicUpdate(DynamicUpdate &du, std::shared_ptr<JSonable> wm, jsoncons::json &result, std::string text);
+    bool EvalDynamicUpdate2(DynamicUpdate &du, std::shared_ptr<JSonable> wm, jsoncons::json &result, std::string text);
+}
+
+#endif
