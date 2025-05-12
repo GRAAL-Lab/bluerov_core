@@ -25,6 +25,7 @@ struct ControlData {
     // ------------------------------
     // Desired State
     // ------------------------------
+    Eigen::VectorXd desiredPose_LatLong = Eigen::VectorXd(2); ///< Desired pose goal in 2D (x, y).
     Eigen::VectorXd velocityDesired = Eigen::VectorXd(6); ///< Desired linear and angular velocities.
     Eigen::VectorXd poseGoal = Eigen::VectorXd(6); ///< Desired pose goal.
 

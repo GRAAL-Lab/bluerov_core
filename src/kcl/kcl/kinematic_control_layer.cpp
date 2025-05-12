@@ -54,9 +54,20 @@ KCL::KCL()
     pathPublisher_ = this->create_publisher<nav_msgs::msg::Path>("planned_path", 1);
 
     // Create service for control commands
-    controlCommandService_ = this->create_service<auv_core_helper::srv::ControlCommand>(
-        auv_core_helper::topicnames::control_cmd_service,
-        std::bind(&KCL::HandleControlCommand, this, std::placeholders::_1, std::placeholders::_2));
+    // controlCommandService_ = this->create_service<auv_core_helper::srv::ControlCommand>(
+    //     auv_core_helper::topicnames::control_cmd_service,
+    //     std::bind(&KCL::HandleControlCommand, this, std::placeholders::_1, std::placeholders::_2));
+    
+    // Create action server for KCL
+    KCLSetter_ = rclcpp_action::create_server<auv_core_helper::action::SetKCL>(
+    this,
+    "set_kcl_state",
+    std::bind(&KCL::HandleGoal, this, std::placeholders::_1, std::placeholders::_2),
+    std::bind(&KCL::HandleCancel, this, std::placeholders::_1),
+    std::bind(&KCL::HandleSetKCL, this, std::placeholders::_1)
+    );
+
+
 }
 
 void KCL::PoseActualCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg) {
@@ -76,13 +87,51 @@ void KCL::AccelerationActualCallback(const geometry_msgs::msg::Twist::SharedPtr 
     ctrlData_->accelerationActual << msg->linear.x, msg->linear.y, msg->linear.z,
                                        msg->angular.x, msg->angular.y, msg->angular.z;
 }
-void KCL::HandleControlCommand(
-    const std::shared_ptr<auv_core_helper::srv::ControlCommand::Request> request,
-    std::shared_ptr<auv_core_helper::srv::ControlCommand::Response> response) {
-        //TO DO!
-        //print the request
-        // RCLCPP_INFO(this->get_logger(), "Received request to transition to state: %s", request->state.c_str());
+
+
+rclcpp_action::GoalResponse KCL::HandleGoal(
+    const rclcpp_action::GoalUUID &, 
+    std::shared_ptr<const auv_core_helper::action::SetKCL::Goal> goal)
+{
+    RCLCPP_INFO(this->get_logger(), "Received goal request with state: %s", goal->desired_state.c_str());
+    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
+
+rclcpp_action::CancelResponse KCL::HandleCancel(
+    const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>>)
+{
+    RCLCPP_INFO(this->get_logger(), "Received request to cancel goal");
+    return rclcpp_action::CancelResponse::ACCEPT;
+}
+
+
+void KCL::HandleSetKCL(
+    const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> goal_handle)
+{
+    const auto goal = goal_handle->get_goal();
+
+    //print the request
+    RCLCPP_INFO(this->get_logger(), "Received request to transition to state: %s", goal->desired_state.c_str());
+    RCLCPP_INFO(this->get_logger(), "Received latitude: %f", goal->data.latitude);
+    RCLCPP_INFO(this->get_logger(), "Received longitude: %f", goal->data.longitude);
+
+    // // Store in member variables
+    desiredState_ = goal->desired_state;
+    ctrlData_->desiredPose_LatLong(0) = goal->data.latitude;
+    ctrlData_->desiredPose_LatLong(1) = goal->data.longitude;
+
+    // // Print to console
+    RCLCPP_INFO(this->get_logger(), "Received desired_state: %s", desiredState_.c_str());
+    RCLCPP_INFO(this->get_logger(), "Received latitude: %f", ctrlData_->desiredPose_LatLong[0]);
+    RCLCPP_INFO(this->get_logger(), "Received longitude: %f", ctrlData_->desiredPose_LatLong[1]);
+
+    // Mark goal as succeeded
+    auto result = std::make_shared<auv_core_helper::action::SetKCL::Result>();
+    result->success = true;
+    result->message = "Data received and printed.";
+    goal_handle->succeed(result);
+}
+
 
 void KCL::SetupTransitions() {
     // Create states
@@ -91,6 +140,7 @@ void KCL::SetupTransitions() {
     wayPointNavigationState_ = std::make_unique<WayPointNavigationState>(&fsm_);
     surfaceState_ = std::make_unique<SurfaceState>(&fsm_);
     pathFollowingState_ = std::make_unique<PathFollowingState>(&fsm_);
+    
 
     // Share control data with states
     idleState_->ctrlData = ctrlData_;
@@ -107,34 +157,35 @@ void KCL::SetupTransitions() {
     fsm_.AddState(States::PATH_FOLLOWING, pathFollowingState_.get());
 
 
-    //TO DO: edit the transitions
     // Enable transitions
     fsm_.EnableTransition(States::IDLE, States::HOLD, true);
     fsm_.EnableTransition(States::IDLE, States::WAYPOINT_NAVIGATION, true);
     fsm_.EnableTransition(States::IDLE, States::SURFACE, true);
     fsm_.EnableTransition(States::IDLE, States::PATH_FOLLOWING, true);
+
     fsm_.EnableTransition(States::HOLD, States::IDLE, true);
     fsm_.EnableTransition(States::HOLD, States::WAYPOINT_NAVIGATION, true);
     fsm_.EnableTransition(States::HOLD, States::SURFACE, true);
     fsm_.EnableTransition(States::HOLD, States::PATH_FOLLOWING, true);
+
     fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::IDLE, true);
     fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::HOLD, true);
-    fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::SURFACE, true);
-    fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::PATH_FOLLOWING, true);
+
     fsm_.EnableTransition(States::SURFACE, States::IDLE, true);
     fsm_.EnableTransition(States::SURFACE, States::HOLD, true);
-    fsm_.EnableTransition(States::SURFACE, States::WAYPOINT_NAVIGATION, true);
-    fsm_.EnableTransition(States::SURFACE, States::PATH_FOLLOWING, true);
+
     fsm_.EnableTransition(States::PATH_FOLLOWING, States::IDLE, true);
     fsm_.EnableTransition(States::PATH_FOLLOWING, States::HOLD, true);
-    fsm_.EnableTransition(States::PATH_FOLLOWING, States::WAYPOINT_NAVIGATION, true);
-    fsm_.EnableTransition(States::PATH_FOLLOWING, States::SURFACE, true);
-    fsm_.SetInitState(States::HOLD);
+
+    fsm_.SetInitState(States::IDLE);
 
     RCLCPP_INFO(this->get_logger(), "FSM transitions set up.");
 }
 
 void KCL::ExecuteFSM() {
+
+    // MIGHT NEED SOME MODIFICATIONS
+
     // Execute the current FSM state
     // std::string previous_state = fsm_.GetCurrentStateName();
     fsm_.SwitchState();

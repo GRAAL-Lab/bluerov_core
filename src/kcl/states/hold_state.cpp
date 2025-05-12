@@ -16,6 +16,8 @@ fsm::retval HoldState::OnEntry() noexcept {
         return fsm::fail;
     }
 
+    //arm vechicle
+    //set vehicle to hold mode
     RCLCPP_INFO(rclcpp::get_logger("HoldState"), "Entering HOLD state");
 
   return fsm::ok;

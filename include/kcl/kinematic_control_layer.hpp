@@ -15,6 +15,7 @@
 #include "auv_core_helper/srv/control_command.hpp"
 #include "auv_core_helper/msg/pose_stamped.hpp"
 #include "auv_core_helper/helper_lib.hpp"
+#include "rclcpp_action/rclcpp_action.hpp"
 
 // State headers
 #include "states/base_auv_state.hpp"
@@ -27,6 +28,9 @@
 
 // AUV-specific topic names
 #include "auv_msgs_ros2/topicnames.hpp"
+
+// AUV-specific message types between mission control and the AUV
+#include "auv_core_helper/action/set_kcl.hpp"
 
 // Graal library 
 #include "fsm/fsm.h"
@@ -45,6 +49,11 @@ private:
     // --------------------
     fsm::FSM fsm_; ///< The finite state machine instance.
 
+    // --------------------
+    // State Variables
+    // --------------------
+    std::string desiredState_;
+    
     // State objects
     std::unique_ptr<IdleState> idleState_;
     std::unique_ptr<HoldState> holdState_;
@@ -70,10 +79,17 @@ private:
     // --------------------
     // ROS 2 Services
     // --------------------
-    rclcpp::Service<auv_core_helper::srv::ControlCommand>::SharedPtr controlCommandService_;
+    // rclcpp::Service<auv_core_helper::srv::ControlCommand>::SharedPtr controlCommandService_;
 
-    // ROS 2 Client
-    rclcpp::Client<auv_core_helper::srv::ControlCommand>::SharedPtr client_;
+    // --------------------
+    // ROS 2 Action Server
+    // --------------------
+    rclcpp_action::Server<auv_core_helper::action::SetKCL>::SharedPtr KCLSetter_;
+    rclcpp_action::GoalResponse HandleGoal(const rclcpp_action::GoalUUID & uuid,std::shared_ptr<const auv_core_helper::action::SetKCL::Goal> goal);
+    rclcpp_action::CancelResponse HandleCancel(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> goal_handle);
+
+
+
 
     // --------------------
     // Timer
@@ -100,8 +116,9 @@ private:
     /// Callback for actual acceleration data.
     void AccelerationActualCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
 
-    /// Service callback to handle control commands.
-    void HandleControlCommand(
-        const std::shared_ptr<auv_core_helper::srv::ControlCommand::Request> request,
-        std::shared_ptr<auv_core_helper::srv::ControlCommand::Response> response);
+    /// Callback for control command service.
+    void HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> goal_handle);
+
+    
+
 };
