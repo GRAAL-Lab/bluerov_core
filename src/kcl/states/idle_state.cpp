@@ -34,7 +34,7 @@ fsm::retval IdleState::Execute() noexcept {
         RCLCPP_ERROR(rclcpp::get_logger("IdleState"), "Control data is null!");
         return fsm::fail;
     }
-
+    RCLCPP_INFO(rclcpp::get_logger("IdleState"), "Executing IDLE state");
     // The idle state does not perform any operations
     return fsm::ok;
 }

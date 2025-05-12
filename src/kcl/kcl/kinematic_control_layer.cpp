@@ -94,6 +94,7 @@ rclcpp_action::GoalResponse KCL::HandleGoal(
     std::shared_ptr<const auv_core_helper::action::SetKCL::Goal> goal)
 {
     RCLCPP_INFO(this->get_logger(), "Received goal request with state: %s", goal->desired_state.c_str());
+    // TODO: Validate the goal here
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
@@ -101,6 +102,7 @@ rclcpp_action::CancelResponse KCL::HandleCancel(
     const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>>)
 {
     RCLCPP_INFO(this->get_logger(), "Received request to cancel goal");
+    // TODO: Handle cancel request
     return rclcpp_action::CancelResponse::ACCEPT;
 }
 
@@ -110,26 +112,29 @@ void KCL::HandleSetKCL(
 {
     const auto goal = goal_handle->get_goal();
 
-    //print the request
-    RCLCPP_INFO(this->get_logger(), "Received request to transition to state: %s", goal->desired_state.c_str());
-    RCLCPP_INFO(this->get_logger(), "Received latitude: %f", goal->data.latitude);
-    RCLCPP_INFO(this->get_logger(), "Received longitude: %f", goal->data.longitude);
-
-    // // Store in member variables
+    // Store in member variables
     desiredState_ = goal->desired_state;
     ctrlData_->desiredPose_LatLong(0) = goal->data.latitude;
     ctrlData_->desiredPose_LatLong(1) = goal->data.longitude;
 
-    // // Print to console
+    // Print to console
     RCLCPP_INFO(this->get_logger(), "Received desired_state: %s", desiredState_.c_str());
     RCLCPP_INFO(this->get_logger(), "Received latitude: %f", ctrlData_->desiredPose_LatLong[0]);
     RCLCPP_INFO(this->get_logger(), "Received longitude: %f", ctrlData_->desiredPose_LatLong[1]);
 
-    // Mark goal as succeeded
-    auto result = std::make_shared<auv_core_helper::action::SetKCL::Result>();
-    result->success = true;
-    result->message = "Data received and printed.";
-    goal_handle->succeed(result);
+
+    if (fsm_.SetNextState(desiredState_) == fsm::ok && fsm_.SwitchState() == fsm::ok) {
+        auto result = std::make_shared<auv_core_helper::action::SetKCL::Result>();
+        result->success = true;
+        result->message = "State set successfully.";
+        goal_handle->succeed(result);
+    } else {
+        auto result = std::make_shared<auv_core_helper::action::SetKCL::Result>();
+        result->success = false;
+        result->message = "Failed to set state.";
+        goal_handle->abort(result);
+    }
+
 }
 
 
