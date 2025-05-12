@@ -53,11 +53,11 @@ flowchart LR
     K_PATH_FOLLOW <--> K_HOLD
     K_WAYPOINT <--> K_HOLD
     K_SURFACE <--> K_HOLD
-    CONTROL_STATION["Control Station"] --> MISSION_PLANNER
-    MISSION_PLANNER <--> KCL_MODULE & PERCEPTION_SYSTEM
+    CONTROL_STATION["Control Station"] --Ros Service--> MISSION_PLANNER
+    MISSION_PLANNER <--Ros Service--> KCL_MODULE & PERCEPTION_SYSTEM
     KCL_MODULE <--> BRIDGE["BlueROV Bridge"]
-    BRIDGE <--> VEHICLE["Vehicle"]
-    VEHICLE --> PERCEPTION_SYSTEM
+    BRIDGE <--Mavlink--> VEHICLE["Vehicle"]
+    VEHICLE --H.264 Camera Stream--> PERCEPTION_SYSTEM
     linkStyle 0 stroke:#00C853,fill:none
     linkStyle 2 stroke:#FF6D00,fill:none
     linkStyle 3 stroke:#00C853,fill:none
@@ -77,3 +77,15 @@ flowchart LR
     linkStyle 20 stroke:#FF6D00,fill:none
     linkStyle 22 stroke:#FF6D00,fill:none
 ```
+
+---
+
+### Notes
+Legend for arrows color in Mission planner FSM:
+- green = TBM1
+- orange = TBM2
+- black = TBM3
+
+TODO?
+- add interface between mission planner and bridge?
+- add connection between bridge and ardusub?
