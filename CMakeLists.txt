@@ -21,27 +21,23 @@ find_package(rclcpp REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(PkgConfig REQUIRED)
+find_package(action_msgs REQUIRED)
 
 # Manually find qpOASES library
 find_library(QPOASES_LIBRARY NAMES qpOASES REQUIRED)
 
-# Generate ROS interfaces (messages and services)
-rosidl_generate_interfaces(${PROJECT_NAME}
-  "msg/PoseStamped.msg"
-  "msg/Obstacle.msg"
-  "msg/ObstacleList.msg"
-  "msg/DtcActionMap.msg"
-  "msg/DtcArea.msg"
-  "msg/LatLong.msg"
-  "msg/PipelinePipe.msg"
-  "msg/HeartBeat.msg"
-  "msg/RCChannels.msg"
+# Collect all .msg and .srv files
+file(GLOB_RECURSE MSG_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "msg/*.msg")
+file(GLOB_RECURSE SRV_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "srv/*.srv")
+file(GLOB_RECURSE ACTION_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "action/*.action")
 
-  "srv/MissionCommand.srv"
-  "srv/ControlCommand.srv"
-  "srv/SetFlightMode.srv"
-  DEPENDENCIES std_msgs geometry_msgs
+rosidl_generate_interfaces(${PROJECT_NAME}
+  ${MSG_FILES}
+  ${SRV_FILES}
+  ${ACTION_FILES}
+  DEPENDENCIES std_msgs geometry_msgs builtin_interfaces action_msgs
 )
+
 
 # Define the helper library
 add_library(${PROJECT_NAME}_lib SHARED
@@ -58,6 +54,7 @@ ament_target_dependencies(${PROJECT_NAME}_lib
   geometry_msgs
   PkgConfig
   rosidl_default_runtime
+  action_msgs
 )
 
 # Include directories for the helper library
