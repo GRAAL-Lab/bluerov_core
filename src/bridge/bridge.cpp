@@ -24,29 +24,34 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options)
   RCLCPP_INFO(this->get_logger(), 
       "Starting BlueROVBridge node (UDP port 14551)...");
 
-  // 1) Initialize the MAVLink UDP connection on local port=14551
+  // Initialize the MAVLink UDP connection on local port=14551
   initMavlinkConnection();
 
-  // 2) Setup ROS pubs/subs
-  localPositionActualPublisher_ = this->create_publisher<auv_core_helper::msg::Position>(auv_core_helper::topicnames::local_position_actual,10);
-  globalPositionActualPublisher_ = this->create_publisher<auv_core_helper::msg::Position>(auv_core_helper::topicnames::global_position_actual,10);
-  attitudeActualPublisher_ = this->create_publisher<auv_core_helper::msg::Attitude>(auv_core_helper::topicnames::attitude_actual,10);
+  // Setup ROS pubs/subs
+  heartBeatPublisher_ = this->create_publisher<auv_core_helper::msg::HeartBeat>(auv_core_helper::topicnames::heart_beat,10);
+  localPoseActualPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::local_pose_actual,10);
+  globalPoseActualPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::global_pose_actual,10);
+  localVelocityActualPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::local_velocity_actual,10);
+  globalVelocityActualPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::global_velocity_actual,10);
   dvlDistancePublisher_ = this->create_publisher<std_msgs::msg::Float64>(auv_core_helper::topicnames::dvl_distance_actual,10);
 
-  armedPublisher_ = this->create_publisher<std_msgs::msg::Int8>(auv_core_helper::topicnames::armed,10);
-  flightModePublisher_ = this->create_publisher<std_msgs::msg::Int32>(auv_core_helper::topicnames::flight_mode,10);
+  localPoseDesiredSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::local_pose_desired,10,
+    std::bind(&BlueROVBridge::localPoseDesiredCallback, this, std::placeholders::_1));
+  localVelocityDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::local_velocity_desired,10,
+    std::bind(&BlueROVBridge::localVelocityDesiredCallback, this, std::placeholders::_1));
+  rcChannelValuesDesiredSubscription_ = this->create_subscription<auv_core_helper::msg::RCChannels>(auv_core_helper::topicnames::rc_channel_values_desired,10,
+    std::bind(&BlueROVBridge::rcChannelValuesDesiredCallback, this, std::placeholders::_1));
+  
+  // ROS Services
+  armingService_ = this->create_service<std_srvs::srv::SetBool>(auv_core_helper::topicnames::arming_service, std::bind(&BlueROVBridge::armingServiceCallback, this,
+     std::placeholders::_1, std::placeholders::_2));
+    
+  flightModeService_ = this->create_service<auv_core_helper::srv::SetFlightMode>(auv_core_helper::topicnames::flight_mode_service,
+     std::bind(&BlueROVBridge::flightModeServiceCallback, this, std::placeholders::_1, std::placeholders::_2));
 
-  poseDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(auv_core_helper::topicnames::pose_desired,10,std::bind(&BlueROVBridge::poseDesiredCallback, this, std::placeholders::_1));
-  velocityDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired,10,std::bind(&BlueROVBridge::velocityDesiredCallback, this, std::placeholders::_1));
-  accelerationDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::Accel>(auv_core_helper::topicnames::acceleration_desired,10,std::bind(&BlueROVBridge::accelerationDesiredCallback, this, std::placeholders::_1));
-  yawRateDesiredSubscription_ = this->create_subscription<std_msgs::msg::Float64>(auv_core_helper::topicnames::yaw_rate_desired,10,std::bind(&BlueROVBridge::yawRateDesiredCallback, this, std::placeholders::_1));
-  kclStateSubscription_ = this->create_subscription<std_msgs::msg::String>(auv_core_helper::topicnames::kcl_state,10,std::bind(&BlueROVBridge::kclStateCallback, this, std::placeholders::_1));
+  // Timers
+  data_timer_ = this->create_wall_timer(std::chrono::milliseconds(125), std::bind(&BlueROVBridge::receiveData, this)); // ~8Hz
 
-  // 3) Timers
-  data_timer_ = this->create_wall_timer(
-      std::chrono::milliseconds(125), // ~8Hz
-      std::bind(&BlueROVBridge::receiveData, this)
-  );
 }
 
 //=============================================================================
@@ -188,171 +193,6 @@ void BlueROVBridge::receiveData()
   }
 }
 
-
-//=============================================================================
-// Message handler functions
-//=============================================================================
-
-void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr_in& sender_addr)
-{
-  // Ignore if it's our own GCS heartbeat
-  if (msg.sysid == system_id_ && msg.compid == component_id_) {
-    RCLCPP_INFO(this->get_logger(),
-       "Ignoring GCS heartbeat (sys=%d, comp=%d).", msg.sysid, msg.compid);
-    return;
-  }
-
-  // Extract the heartbeat info
-  mavlink_heartbeat_t hb;
-  mavlink_msg_heartbeat_decode(&msg, &hb);
-
-  // If we haven't yet received the autopilot heartbeat, handle it:
-  if (!got_heartbeat_) {
-    target_system_    = msg.sysid;
-    target_component_ = msg.compid;
-    got_heartbeat_    = true;
-
-    // Overwrite remote_addr_ with the sender's IP:port
-    remote_addr_ = sender_addr;
-
-    char ip_str[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &(sender_addr.sin_addr), ip_str, sizeof(ip_str));
-    uint16_t sender_port = ntohs(sender_addr.sin_port);
-
-    RCLCPP_INFO(this->get_logger(),
-        "Got AUTOPILOT heartbeat from sys=%d, comp=%d at %s:%d => storing remote_addr_",
-        target_system_, target_component_, ip_str, sender_port);
-
-    // Configure data streams directly (merged from requestDataStreams)
-    setMessageInterval(MAVLINK_MSG_ID_ATTITUDE, 8.0f); // #30
-    setMessageInterval(MAVLINK_MSG_ID_LOCAL_POSITION_NED, 8.0f); // #32
-
-    RCLCPP_INFO(this->get_logger(),
-        "Configured message intervals for ATTITUDE(#30) and LOCAL_POSITION_NED(#32) at 8 Hz.");
-  }
-}
-
-//=============================================================================
-// Postion and Velocity in NED
-//=============================================================================
-void BlueROVBridge::handleLocalPositionNed(const mavlink_message_t& msg)
-{
-  mavlink_local_position_ned_t pos_ned;
-  mavlink_msg_local_position_ned_decode(&msg, &pos_ned);
-
-  auto local_position_msg = std::make_unique<auv_core_helper::msg::Position>();
-  local_position_msg->timestamp = pos_ned.time_boot_ms;
-  local_position_msg->x = pos_ned.x;
-  local_position_msg->y = pos_ned.y;
-  local_position_msg->z = pos_ned.z;
-  local_position_msg->vx = pos_ned.vx;
-  local_position_msg->vy = pos_ned.vy;
-  local_position_msg->vz = pos_ned.vz;
-
-  localPositionActualPublisher_->publish(std::move(local_position_msg));
-
-  if (!home_pose_set_) {
-    poseHome_[0] = poseActual_[0];
-    poseHome_[1] = poseActual_[1];
-    poseHome_[2] = poseActual_[2];
-    home_pose_set_ = true;
-  }
-}
-
-//=============================================================================
-// Global Position
-//=============================================================================
-void BlueROVBridge::handleGlobalPositionInt(const mavlink_message_t& msg)
-{
-  mavlink_global_position_int_t pos_int;
-  mavlink_msg_global_position_int_decode(&msg, &pos_int);
-
-  auto global_position_msg = std::make_unique<auv_core_helper::msg::Position>();
-  global_position_msg->timestamp = pos_int.time_boot_ms;
-  global_position_msg->x = pos_int.lat / 1.0e7;
-  global_position_msg->y = pos_int.lon / 1.0e7;
-  global_position_msg->z = -pos_int.alt / 1.0e3;
-  global_position_msg->vx = pos_int.vx;
-  global_position_msg->vy = pos_int.vy;
-  global_position_msg->vz = pos_int.vz;
-
-  globalPositionActualPublisher_->publish(std::move(global_position_msg));
-}
-
-//=============================================================================
-// Attitude
-//=============================================================================
-void BlueROVBridge::handleAttitude(const mavlink_message_t& msg)
-{
-  mavlink_attitude_t attitude;
-  mavlink_msg_attitude_decode(&msg, &attitude);
-
-  auto attitude_msg = std::make_unique<auv_core_helper::msg::Attitude>();
-  attitude_msg->timestamp = attitude.time_boot_ms;
-  attitude_msg->roll = attitude.roll;
-  attitude_msg->pitch = attitude.pitch;
-  attitude_msg->yaw = attitude.yaw;
-  attitude_msg->rollrate = attitude.rollspeed;
-  attitude_msg->pitchrate = attitude.pitchspeed;
-  attitude_msg->yawrate = attitude.yawspeed;
-  
-  if (!home_pose_set_) {
-    poseHome_[3] = poseActual_[3];
-    poseHome_[4] = poseActual_[4];
-    poseHome_[5] = poseActual_[5];
-  }
-  
-  attitudeActualPublisher_->publish(*attitude_msg);
-}
-
-//=============================================================================
-// DVL Distance
-//=============================================================================
-void BlueROVBridge::handleDvlDistance(const mavlink_message_t& msg)
-{
-  mavlink_distance_sensor_t distance_sensor;
-  mavlink_msg_distance_sensor_decode(&msg, &distance_sensor);
-
-  auto dvl_distance_msg = std::make_unique<std_msgs::msg::Float64>();
-  dvl_distance_msg->data = distance_sensor.current_distance;
-
-  dvlDistancePublisher_->publish(*dvl_distance_msg);
-}
-
-//=============================================================================
-// Command ACK
-//=============================================================================
-void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg)
-{
-  mavlink_command_ack_t ack;
-  mavlink_msg_command_ack_decode(&msg, &ack);
-  
-  // Log ACK messages regardless of the command type
-  if (ack.command == MAV_CMD_DO_SET_MODE) {
-    if (ack.result == MAV_RESULT_ACCEPTED) {
-      RCLCPP_INFO(this->get_logger(), "Mode change accepted by ArduSub");
-    } else {
-      // Log the specific error code for better diagnostics
-      const char* error_str = "Unknown";
-      switch (ack.result) {
-        case MAV_RESULT_DENIED: error_str = "DENIED"; break;
-        case MAV_RESULT_UNSUPPORTED: error_str = "UNSUPPORTED"; break;
-        case MAV_RESULT_FAILED: error_str = "FAILED"; break;
-        case MAV_RESULT_TEMPORARILY_REJECTED: error_str = "TEMPORARILY_REJECTED"; break;
-        default: error_str = "UNKNOWN"; break;
-      }
-      
-      RCLCPP_WARN(this->get_logger(), 
-          "Mode change REJECTED by ArduSub (result=%s).", error_str);
-    }
-  } else {
-    // Only log non-mode change ACKs at DEBUG level to reduce noise
-    RCLCPP_DEBUG(this->get_logger(),
-        "CMD_ACK received: command=%u, result=%u",
-        ack.command, ack.result);
-  }
-}
-
 //=============================================================================
 // sendMavlinkMessage
 //=============================================================================
@@ -394,8 +234,6 @@ void BlueROVBridge::setMessageInterval(uint16_t message_id, float frequency_hz)
   float interval_us = 1.0e6f / frequency_hz;  
 
   mavlink_message_t msg;
-  // param1 = message_id
-  // param2 = desired interval in microseconds
   mavlink_msg_command_long_pack(
       system_id_,
       component_id_,
@@ -416,40 +254,216 @@ void BlueROVBridge::setMessageInterval(uint16_t message_id, float frequency_hz)
 }
 
 //=============================================================================
-// velocityDesiredCallback
+// Message handler functions
+// Heartbeat
 //=============================================================================
-void BlueROVBridge::velocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
+
+void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr_in& sender_addr)
 {
-  // Store the desired velocity
-  velocityDesired_[0] = msg->linear.x;
-  velocityDesired_[1] = msg->linear.y;
-  velocityDesired_[2] = msg->linear.z;
-  velocityDesired_[3] = msg->angular.x;
-  velocityDesired_[4] = msg->angular.y;
-  velocityDesired_[5] = msg->angular.z;
+  // Ignore if it's our own GCS heartbeat
+  if (msg.sysid == system_id_ && msg.compid == component_id_) {
+    RCLCPP_INFO(this->get_logger(),
+       "Ignoring GCS heartbeat (sys=%d, comp=%d).", msg.sysid, msg.compid);
+    return;
+  }
+
+  // Extract the heartbeat info
+  mavlink_msg_heartbeat_decode(&msg, &hb);
+
+  auto heartBeatMsg = std::make_unique<auv_core_helper::msg::HeartBeat>();
+  heartBeatMsg->type = hb.type;
+  heartBeatMsg->base_mode = hb.base_mode;
+  heartBeatMsg->custom_mode = hb.custom_mode;
+  heartBeatMsg->system_status = hb.system_status;
+
+  heartBeatPublisher_->publish(*heartBeatMsg);
+
+  // If we haven't yet received the autopilot heartbeat, handle it:
+  if (!got_heartbeat_) {
+    target_system_    = msg.sysid;
+    target_component_ = msg.compid;
+    got_heartbeat_    = true;
+
+    // Overwrite remote_addr_ with the sender's IP:port
+    remote_addr_ = sender_addr;
+
+    char ip_str[INET_ADDRSTRLEN];
+    inet_ntop(AF_INET, &(sender_addr.sin_addr), ip_str, sizeof(ip_str));
+    uint16_t sender_port = ntohs(sender_addr.sin_port);
+
+    RCLCPP_INFO(this->get_logger(),
+        "Got AUTOPILOT heartbeat from sys=%d, comp=%d at %s:%d => storing remote_addr_",
+        target_system_, target_component_, ip_str, sender_port);
+
+    // Configure data streams directly (merged from requestDataStreams)
+    setMessageInterval(MAVLINK_MSG_ID_ATTITUDE, 8.0f); // #30
+    setMessageInterval(MAVLINK_MSG_ID_LOCAL_POSITION_NED, 8.0f); // #32
+    setMessageInterval(MAVLINK_MSG_ID_GLOBAL_POSITION_INT, 8.0f); // #33
+    setMessageInterval(MAVLINK_MSG_ID_DISTANCE_SENSOR, 8.0f); // #34
+    setMessageInterval(MAVLINK_MSG_ID_COMMAND_ACK, 8.0f); // #35
+
+    RCLCPP_INFO(this->get_logger(),
+        "Configured messages interval at 8 Hz.");
+  }
 }
 
 //=============================================================================
-// kclStateCallback
-//   - If state="IDLE": disarm
-//   - If state="ARM": arm without changing mode
-//   - If state="MANUAL", "STABILIZE", etc.: set flight mode (possibly while staying armed)
-//   - If "PATH_FOLLOWING": reset home pose
-//   - If "WAYPOINT_NAVIGATION": set GUIDED mode for waypoint navigation
+// Handler for Publishing Local Position and Velocity in NED Frame
 //=============================================================================
-void BlueROVBridge::kclStateCallback(const std_msgs::msg::String::SharedPtr msg)
-{  
-  if (msg->data == "IDLE")
-    setArmState(false);
-  else if(msg->data == "ARM")
-    setArmState(true);
-  else
-    setFlightMode(msg->data);
+void BlueROVBridge::handleLocalPositionNed(const mavlink_message_t& msg)
+{
+  mavlink_local_position_ned_t pos_ned;
+  mavlink_msg_local_position_ned_decode(&msg, &pos_ned);
+
+  auto local_pose_msg = std::make_unique<auv_core_helper::msg::PoseStamped>();
+  local_pose_msg->header.stamp = this->now();
+  local_pose_msg->header.frame_id = "NED";
+  local_pose_msg->x = pos_ned.x;
+  local_pose_msg->y = pos_ned.y;
+  local_pose_msg->z = pos_ned.z;
+
+  auto local_velocity_msg = std::make_unique<geometry_msgs::msg::Twist>();
+  local_velocity_msg->linear.x = pos_ned.vx;
+  local_velocity_msg->linear.y = pos_ned.vy;
+  local_velocity_msg->linear.z = pos_ned.vz;
+
+  localPoseActualPublisher_->publish(std::move(local_pose_msg));
+  localVelocityActualPublisher_->publish(std::move(local_velocity_msg));
+}
+
+//=============================================================================
+// Handler for Publishing Global Position and Velocity 
+//=============================================================================
+void BlueROVBridge::handleGlobalPositionInt(const mavlink_message_t& msg)
+{
+  mavlink_global_position_int_t pos_int;
+  mavlink_msg_global_position_int_decode(&msg, &pos_int);
+
+  auto global_pose_msg = std::make_unique<auv_core_helper::msg::PoseStamped>();
+  global_pose_msg->header.stamp = this->now();
+  global_pose_msg->header.frame_id = "Global";
+  global_pose_msg->x = pos_int.lat / 1.0e7;
+  global_pose_msg->y = pos_int.lon / 1.0e7;
+  global_pose_msg->z = -pos_int.alt / 1.0e3;
+
+  auto global_velocity_msg = std::make_unique<geometry_msgs::msg::Twist>();
+  global_velocity_msg->linear.x = pos_int.vx/1.0e2;
+  global_velocity_msg->linear.y = pos_int.vy/1.0e2;
+  global_velocity_msg->linear.z = pos_int.vz/1.0e2;
+
+  globalPoseActualPublisher_->publish(std::move(global_pose_msg));  
+  globalVelocityActualPublisher_->publish(std::move(global_velocity_msg));
+}
+
+//=============================================================================
+// Handler for Publishing Attitude and Angular Velocities 
+//=============================================================================
+void BlueROVBridge::handleAttitude(const mavlink_message_t& msg)
+{
+  mavlink_attitude_t attitude;
+  mavlink_msg_attitude_decode(&msg, &attitude);
+  // Add a the rotation matrix to the auv_core_helper package
+  
+  auto local_pose_msg = std::make_unique<auv_core_helper::msg::PoseStamped>();
+  local_pose_msg->roll = attitude.roll*180/M_PI;
+  local_pose_msg->pitch = attitude.pitch*180/M_PI;
+  local_pose_msg->yaw = attitude.yaw*180/M_PI;
+
+  auto local_velocity_msg = std::make_unique<geometry_msgs::msg::Twist>();
+  local_velocity_msg->angular.x = attitude.rollspeed*180/M_PI;
+  local_velocity_msg->angular.y = attitude.pitchspeed*180/M_PI;
+  local_velocity_msg->angular.z = attitude.yawspeed*180/M_PI;
+  
+  auto global_pose_msg = std::make_unique<auv_core_helper::msg::PoseStamped>();
+  global_pose_msg->roll = attitude.roll*180/M_PI;
+  global_pose_msg->pitch = attitude.pitch*180/M_PI;
+  global_pose_msg->yaw = attitude.yaw*180/M_PI;
+
+  auto global_velocity_msg = std::make_unique<geometry_msgs::msg::Twist>();
+  global_velocity_msg->angular.x = attitude.rollspeed*180/M_PI;
+  global_velocity_msg->angular.y = attitude.pitchspeed*180/M_PI;
+  global_velocity_msg->angular.z = attitude.yawspeed*180/M_PI;
+  
+  localPoseActualPublisher_->publish(std::move(local_pose_msg));
+  localVelocityActualPublisher_->publish(std::move(local_velocity_msg));
+  globalPoseActualPublisher_->publish(std::move(global_pose_msg));
+  globalVelocityActualPublisher_->publish(std::move(global_velocity_msg));
+}
+
+//=============================================================================
+// Handler for Publishing DVL Distance
+//=============================================================================
+void BlueROVBridge::handleDvlDistance(const mavlink_message_t& msg)
+{
+  mavlink_distance_sensor_t distance_sensor;
+  mavlink_msg_distance_sensor_decode(&msg, &distance_sensor);
+
+  auto dvl_distance_msg = std::make_unique<std_msgs::msg::Float64>();
+  dvl_distance_msg->data = distance_sensor.current_distance;
+
+  dvlDistancePublisher_->publish(std::move(dvl_distance_msg));
+}
+
+//=============================================================================
+// Handler of Command ACK
+//=============================================================================
+void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg)
+{
+  // is adding a publisher for the command ack needed?  
+  
+  mavlink_msg_command_ack_decode(&msg, &ack);
+  
+  // Log ACK messages regardless of the command type
+  if (ack.command == MAV_CMD_DO_SET_MODE) {
+    if (ack.result == MAV_RESULT_ACCEPTED) {
+      RCLCPP_INFO(this->get_logger(), "Mode change accepted by ArduSub");
+    } else {
+      // Log the specific error code for better diagnostics
+      const char* error_str = "Unknown";
+      switch (ack.result) {
+        case MAV_RESULT_DENIED: error_str = "DENIED"; break;
+        case MAV_RESULT_UNSUPPORTED: error_str = "UNSUPPORTED"; break;
+        case MAV_RESULT_FAILED: error_str = "FAILED"; break;
+        case MAV_RESULT_TEMPORARILY_REJECTED: error_str = "TEMPORARILY_REJECTED"; break;
+        default: error_str = "UNKNOWN"; break;
+      }
+      
+      RCLCPP_WARN(this->get_logger(), 
+          "Mode change REJECTED by ArduSub (result=%s).", error_str);
+    }
+  }
+}
+
+//=============================================================================
+// armingServiceCallback
+// Service callback to arm or disarm the vehicle.
+//=============================================================================
+void BlueROVBridge::armingServiceCallback(
+    const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+    std::shared_ptr<std_srvs::srv::SetBool::Response> response)
+{
+  RCLCPP_INFO(this->get_logger(), "Arming service called: %s", request->data ? "ARM" : "DISARM");
+  setArmState(request->data); // True to arm, false to disarm
+  response->success = true; // Assuming setArmState handles logging/errors
+  response->message = request->data ? "Arm command sent." : "Disarm command sent.";
+}
+
+//=============================================================================
+// flightModeServiceCallback
+// Service callback to set the vehicle's flight mode.
+//=============================================================================
+void BlueROVBridge::flightModeServiceCallback(
+    const std::shared_ptr<auv_core_helper::srv::SetFlightMode::Request> request,
+    std::shared_ptr<auv_core_helper::srv::SetFlightMode::Response> response)
+{
+  RCLCPP_INFO(this->get_logger(), "Flight mode service called: %s", request->mode.c_str());
+  setFlightMode(request->mode);
+  response->success = true; // Assuming setFlightMode handles logging/errors
+  response->message = "Set flight mode command sent to '" + request->mode + "'.";
 }
 
 //=============================================================================
 // setArmState
-// Arms or disarms the vehicle and optionally sets the mode after arming.
 //=============================================================================
 void BlueROVBridge::setArmState(bool arm_vehicle)
 {
@@ -493,10 +507,6 @@ void BlueROVBridge::setFlightMode(const std::string& mode)
     return;
   }
 
-  RCLCPP_INFO(this->get_logger(),
-      "Setting flight mode=%s (sys=%d, comp=%d)...",
-      mode.c_str(), target_system_, target_component_);
-
   // Map mode string to ArduSub custom mode number
   int32_t custom_mode = 19;         // Default to MANUAL=19
   if (mode == "MANUAL") {           // Pass-through input with no stabilization
@@ -534,66 +544,53 @@ void BlueROVBridge::setFlightMode(const std::string& mode)
       0,  // param3: Custom sub-mode - not used for ArduSub
       0, 0, 0, 0 // param4-7 unused
   );
-  
-  // Send multiple times for reliability (UDP is unreliable)
-  constexpr int NUM_RETRIES = 3;
-  constexpr int RETRY_DELAY_MS = 20;
-  
-  for (int i = 0; i < NUM_RETRIES; i++) {
-    sendMavlinkMessage(msg);
-    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY_MS));
-  }
-  
-  RCLCPP_INFO(this->get_logger(), 
-      "Set mode command sent (%s, sent %d times).", mode.c_str(), NUM_RETRIES);
-      
-  // Set the requested mode and track the request time
-  // Note: we don't immediately set guided_mode_active_/position_hold_active_ flags
-  // Instead, we wait for confirmation via heartbeat
-  requested_mode_ = mode;
-  mode_change_requested_ = true;
-  mode_change_request_time_ = this->now();
-  mode_change_attempts_++;
-  
-  // Log the mode change attempt number
-  if (mode_change_attempts_ > 1) {
-    RCLCPP_INFO(this->get_logger(), "Mode change attempt #%d", mode_change_attempts_);
-  }
+
+  sendMavlinkMessage(msg);
+
+    RCLCPP_INFO(this->get_logger(),"Setting flight mode=%s (sys=%d, comp=%d)...",mode.c_str(), target_system_, target_component_);
 }
 
 //=============================================================================
-// setRcChannelPwm
+// rcChannelValuesDesiredCallback
 //=============================================================================
-void BlueROVBridge::setRcChannelPwm(const Eigen::VectorXd& velocityDesiredPwm)
-{
-    // Check the size of the input vector
-    if (velocityDesiredPwm.size() != 6) {
-        RCLCPP_ERROR(this->get_logger(),
-                     "setRcChannelPwm: velocityDesiredPwm must have exactly 6 elements.");
+void BlueROVBridge::rcChannelValuesDesiredCallback(const auv_core_helper::msg::RCChannels::SharedPtr msg)
+{   
+    if (!got_heartbeat_) {
+        RCLCPP_WARN(this->get_logger(), 
+            "Cannot set RC channel values yet; no autopilot heartbeat discovered!");
+        return;
+    }
+    
+    if (hb.custom_mode != MAV_MODE_MANUAL_ARMED) {
+        RCLCPP_WARN(this->get_logger(), 
+            "Vehicle is not in MANUAL mode. Setting MANUAL mode before sending RC channel values.");
         return;
     }
 
-    // Initialize all channels to "do not change" (65535).
+    RCLCPP_INFO(this->get_logger(), "RC channel values desired received");
+    RCLCPP_INFO(this->get_logger(), "channels: %d, %d, %d, %d, %d, %d", msg->channels[0], msg->channels[1], msg->channels[2], msg->channels[3], msg->channels[4], msg->channels[5]);
+   
+  // Initialize all channels .
     uint16_t rc_channel_values[18];
     for (int i = 0; i < 18; ++i) {
-        rc_channel_values[i] = 65535; // Do not override these channels
+        rc_channel_values[i] = UINT16_MAX; //  A value of 0 or UINT16_MAX means to ignore this field
     }
 
-    // Map velocityDesiredPwm to the correct channel order:
-    //
-    // Channel 1 -> pitch    = velocityDesiredPwm(4)
-    // Channel 2 -> roll     = velocityDesiredPwm(3)
-    // Channel 3 -> vertical = velocityDesiredPwm(2)
-    // Channel 4 -> yaw      = velocityDesiredPwm(5)
-    // Channel 5 -> forward  = velocityDesiredPwm(0)
-    // Channel 6 -> lateral  = velocityDesiredPwm(1)
-    rc_channel_values[0] = static_cast<uint16_t>(velocityDesiredPwm(4));  // pitch
-    rc_channel_values[1] = static_cast<uint16_t>(velocityDesiredPwm(3));  // roll
-    rc_channel_values[2] = static_cast<uint16_t>(velocityDesiredPwm(2));  // vertical
-    rc_channel_values[3] = static_cast<uint16_t>(velocityDesiredPwm(5));  // yaw
-    rc_channel_values[4] = static_cast<uint16_t>(velocityDesiredPwm(0));  // forward
-    rc_channel_values[5] = static_cast<uint16_t>(velocityDesiredPwm(1));  // lateral
+    rc_channel_values[0] = msg->channels[0];
+    rc_channel_values[1] = msg->channels[1];
+    rc_channel_values[2] = msg->channels[2];
+    rc_channel_values[3] = msg->channels[3];
+    rc_channel_values[4] = msg->channels[4];
+    rc_channel_values[5] = msg->channels[5];
 
+    setRcChannelPwm(rc_channel_values);
+}
+//=============================================================================
+// setRcChannelPwm
+//=============================================================================
+void BlueROVBridge::setRcChannelPwm(const uint16_t* rc_channel_values)
+{
+  RCLCPP_INFO(this->get_logger(), "Setting RC channel values");
     // Send MAVLink RC override message
     mavlink_message_t msg;
     mavlink_msg_rc_channels_override_pack(
@@ -621,9 +618,246 @@ void BlueROVBridge::setRcChannelPwm(const Eigen::VectorXd& velocityDesiredPwm)
         rc_channel_values[16],
         rc_channel_values[17]
     );
-
     sendMavlinkMessage(msg);
 }
+
+//=============================================================================
+// localPoseDesiredCallback 
+//=============================================================================
+void BlueROVBridge::localPoseDesiredCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg)
+{
+  if (!got_heartbeat_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Cannot set local pose yet; no autopilot heartbeat discovered!");
+    return;
+  }
+
+  if (hb.custom_mode != MAV_MODE_GUIDED_ARMED) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Vehicle is not in GUIDED mode and Armed. Cannot set local pose.");
+    return;
+  }
+  
+  RCLCPP_INFO(this->get_logger(), "Local pose desired received");
+  RCLCPP_INFO(this->get_logger(), "x: %f, y: %f, z: %f, yaw: %f", position_target_.x, position_target_.y, position_target_.z, position_target_.yaw);
+
+  
+  position_target_.time_boot_ms = static_cast<uint32_t>(this->now().nanoseconds() / 1000000);
+  position_target_.target_system = target_system_;
+  position_target_.target_component = target_component_;
+  position_target_.coordinate_frame = MAV_FRAME_LOCAL_NED;
+  position_target_.type_mask = MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_POSITION 
+  | MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_VELOCITY 
+  | MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_YAW 
+  | MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_YAW_RATE;
+
+  position_target_.x = msg->x;
+  position_target_.y = msg->y;
+  position_target_.z = msg->z;
+  position_target_.yaw = msg->yaw;
+
+  SetPositionTargetLocalNED(position_target_); 
+
+  //attitude_target_.time_boot_ms = static_cast<uint32_t>(this->now().nanoseconds() / 1000000);
+  //attitude_target_.target_system = target_system_;
+  //attitude_target_.target_component = target_component_;
+  //attitude_target_.type_mask = MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_YAW_ANGLE;
+  // Add the a coversion function in the auv_core_helper package from euler angles to quaternion
+  //attitude_target_.q[0] = 1.0f;
+  //attitude_target_.q[1] = 0.0f;
+  //attitude_target_.q[2] = 0.0f;
+  //attitude_target_.q[3] = 0.0f;
+  //SetAttitudeTarget(attitude_target_);
+
+}
+//=============================================================================
+// velocityDesiredCallback
+//=============================================================================
+void BlueROVBridge::velocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
+{
+  RCLCPP_INFO(this->get_logger(), "Velocity desired received");
+  if (!got_heartbeat_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Cannot set velocity yet; no autopilot heartbeat discovered!");
+    return;
+  }
+  
+  if (hb.custom_mode != MAV_MODE_GUIDED_ARMED) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Vehicle is not in GUIDED mode and Armed. Cannot set velocity.");
+    return;
+  }
+  
+  position_target_.vx = msg->linear.x;
+  position_target_.vy = msg->linear.y;
+  position_target_.vz = msg->linear.z;
+  position_target_.yaw_rate = msg->angular.z;
+
+  SetPositionTargetLocalNED(position_target_);
+
+  //attitude_target_.body_roll_rate = msg->angular.x;
+  //attitude_target_.body_pitch_rate = msg->angular.y;
+  //attitude_target_.body_yaw_rate = msg->angular.z;
+
+  //SetAttitudeTarget(attitude_target_);
+}
+
+//=============================================================================
+// sendLocalWaypointToArdupilot
+// Converts a waypoint to MAVLink SET_POSITION_TARGET_LOCAL_NED message
+//=============================================================================
+/**
+ * @brief Send a waypoint to ArduPilot in GUIDED mode
+ * 
+ * This function converts a ROS waypoint to a MAVLink SET_POSITION_TARGET_LOCAL_NED message and sends it to ArduPilot.
+ */
+void BlueROVBridge::SetPositionTargetLocalNED(const mavlink_set_position_target_local_ned_t& position_target_)
+{
+  if (!got_heartbeat_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Cannot send waypoint yet; no autopilot heartbeat discovered!");
+    return;
+  }
+  
+  mavlink_message_t msg;
+  mavlink_msg_set_position_target_local_ned_encode(
+      system_id_,
+      component_id_,
+      &msg,
+      &position_target_
+  );
+  
+  sendMavlinkMessage(msg);
+  
+  RCLCPP_INFO(this->get_logger(), 
+      "Sent waypoint to ArduPilot: NED(%.2f, %.2f, %.2f)",
+      position_target_.x, position_target_.y, position_target_.z);
+}
+
+//=============================================================================
+// prepareGlobalPositionTarget
+// Prepares a MAVLink SET_POSITION_TARGET_GLOBAL_INT structure
+//=============================================================================
+void BlueROVBridge::prepareGlobalPositionTarget(int32_t lat_int, int32_t lon_int, float alt, 
+                                              mavlink_set_position_target_global_int_t& global_target)
+{
+  // Clear the structure
+  memset(&global_target, 0, sizeof(global_target));
+  
+  // Set header information
+  global_target.time_boot_ms = static_cast<uint32_t>(this->now().nanoseconds() / 1000000);
+  global_target.target_system = target_system_;
+  global_target.target_component = target_component_;
+  
+  // Set coordinate frame
+  global_target.coordinate_frame = MAV_FRAME_GLOBAL_INT;  // Or MAV_FRAME_GLOBAL_RELATIVE_ALT_INT
+  
+  // Create type_mask - ignore velocity and acceleration
+  // bit set to 1 means "ignore this dimension"
+  global_target.type_mask = 0b0000111111000000;  // Ignore velocity, acceleration, yaw, yaw rate
+  
+  // Set position (lat/lon in degrees*1e7, altitude in meters)
+  global_target.lat_int = lat_int;
+  global_target.lon_int = lon_int;
+  global_target.alt = alt;
+  
+  // Set velocities and accelerations to zero (not used with the defined type_mask)
+  global_target.vx = 0.0f;
+  global_target.vy = 0.0f;
+  global_target.vz = 0.0f;
+  global_target.afx = 0.0f;
+  global_target.afy = 0.0f;
+  global_target.afz = 0.0f;
+  global_target.yaw = 0.0f;
+  global_target.yaw_rate = 0.0f;
+}
+
+//=============================================================================
+// sendGlobalWaypoint
+// Sends a waypoint using SET_POSITION_TARGET_GLOBAL_INT message
+//=============================================================================
+void BlueROVBridge::sendGlobalWaypoint(int32_t lat_int, int32_t lon_int, float alt)
+{
+  if (!got_heartbeat_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Cannot send global waypoint; no autopilot heartbeat discovered!");
+    return;
+  }
+  
+  // Ensure we're in GUIDED mode
+  if (!guided_mode_active_ && !mode_change_requested_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Vehicle not in GUIDED mode. Setting GUIDED mode before sending global waypoint.");
+    setFlightMode("GUIDED");
+    return;
+  }
+  
+  RCLCPP_INFO(this->get_logger(),
+      "Sending global waypoint: lat=%d, lon=%d, alt=%.2f", 
+      lat_int, lon_int, alt);
+  
+  // Create the position target message
+  mavlink_set_position_target_global_int_t global_target;
+  prepareGlobalPositionTarget(lat_int, lon_int, alt, global_target);
+  
+  // Create the MAVLink message
+  mavlink_message_t msg;
+  mavlink_msg_set_position_target_global_int_encode(
+      system_id_,
+      component_id_,
+      &msg,
+      &global_target
+  );
+  
+  // Send the message
+  sendMavlinkMessage(msg);
+  
+  RCLCPP_INFO(this->get_logger(), 
+      "Global waypoint sent successfully.");
+}
+
+//=============================================================================
+// sendAttitudeTarget
+// Sends MAV_CMD_DO_SET_ATTITUDE_TARGET command to control vehicle attitude
+//=============================================================================
+//void BlueROVBridge::SetAttitudeTarget(const mavlink_set_attitude_target_t& attitude_target_)
+//{
+//  if (!got_heartbeat_) {
+//    RCLCPP_WARN(this->get_logger(), 
+//        "Cannot send ATTITUDE_TARGET command; no autopilot heartbeat discovered!");
+//    return;
+//  }
+  
+  // Create the MAVLink message
+//  mavlink_message_t msg;
+//  mavlink_msg_set_attitude_target_pack(
+//      system_id_,
+//      component_id_,
+//      &msg,
+//      target_system_,
+//      target_component_,
+//      MAVLINK_MSG_ID_SET_ATTITUDE_TARGET,
+//      0, // confirmation
+//      attitude_target_.type_mask,
+//      1, // param1: 0=ignore, 1=take attitude from param2-7
+//      0, // param2: roll
+//      0, // param3: pitch
+//      0, // param4: yaw
+//      0, // param5: thrust
+//      0, // param6: reserved
+//      0, // param7: reserved
+//      0, // param8: reserved
+//      0, // param9: reserved
+//      0, // param10: reserved
+//      0, // param11: reserved
+//      0  // param12: reserved
+//  );
+  
+//  // Send the message
+//  sendMavlinkMessage(msg);
+  
+//  RCLCPP_INFO(this->get_logger(), "ATTITUDE_TARGET command sent");
+//}
 
 //=============================================================================
 // sendConditionYaw
@@ -673,201 +907,58 @@ void BlueROVBridge::sendConditionYaw(float heading_deg, bool is_relative, int di
 }
 
 //=============================================================================
-// sendWaypointToArdupilot
-// Converts a waypoint to MAVLink SET_POSITION_TARGET_LOCAL_NED message
+// sendSetHome
+// Sends MAV_CMD_DO_SET_HOME command to set home position
 //=============================================================================
-/**
- * @brief Send a waypoint to ArduPilot in GUIDED mode
- * 
- * This function converts a ROS waypoint (in ENU coordinates) to a MAVLink
- * SET_POSITION_TARGET_LOCAL_NED message (in NED coordinates) and sends it
- * to ArduPilot.
- * 
- * @param waypoint The waypoint position in ENU coordinates
- */
-void BlueROVBridge::sendWaypointToArdupilot(const geometry_msgs::msg::PoseStamped& waypoint)
+void BlueROVBridge::sendSetHome(float latitude, float longitude, float altitude, bool use_current)
 {
   if (!got_heartbeat_) {
     RCLCPP_WARN(this->get_logger(), 
-        "Cannot send waypoint yet; no autopilot heartbeat discovered!");
+        "Cannot send DO_SET_HOME command; no autopilot heartbeat discovered!");
     return;
   }
   
-  // Convert waypoint from ENU to NED coordinate system for ArduPilot
-  mavlink_set_position_target_local_ned_t position_target;
-  convertENUtoNED(waypoint, position_target);
+  // Create the position information string properly
+  std::string position_str;
+  if (use_current) {
+    position_str = "current position";
+  } else {
+    position_str = "lat=" + std::to_string(latitude) + 
+                  ", lon=" + std::to_string(longitude) + 
+                  ", alt=" + std::to_string(altitude);
+  }
   
-  // Create the MAVLink message
+  RCLCPP_INFO(this->get_logger(), "Setting home position: %s", position_str.c_str());
+  
+  // Create command message
   mavlink_message_t msg;
-  mavlink_msg_set_position_target_local_ned_encode(
+  mavlink_msg_command_long_pack(
       system_id_,
       component_id_,
       &msg,
-      &position_target
+      target_system_,
+      target_component_,
+      MAV_CMD_DO_SET_HOME,
+      0,                                // confirmation
+      use_current ? 1.0f : 0.0f,        // param1: 1=use current position, 0=use specified position
+      0.0f,                             // param2: reserved
+      0.0f,                             // param3: reserved
+      0.0f,                             // param4: yaw angle (not used)
+      latitude,                         // param5: latitude (ignored if use_current=1)
+      longitude,                        // param6: longitude (ignored if use_current=1)
+      altitude                          // param7: altitude (ignored if use_current=1)
   );
   
-  // Send the message
-  sendMavlinkMessage(msg);
+  // Send the message multiple times for reliability
+  constexpr int NUM_RETRIES = 3;
+  constexpr int RETRY_DELAY_MS = 100;
   
-  RCLCPP_INFO(this->get_logger(), 
-      "Sent waypoint to ArduPilot: NED(%.2f, %.2f, %.2f)",
-      position_target.x, position_target.y, position_target.z);
-      
-  // Calculate desired yaw to point towards the waypoint
-  if (home_pose_set_) {
-    // Calculate the current position in NED
-    double relative_x_ned = poseActual_[0] - poseHome_[0];
-    double relative_y_ned = poseActual_[1] - poseHome_[1];
-    
-    // Calculate vector to target from current position
-    double dx = position_target.x - relative_x_ned;
-    double dy = position_target.y - relative_y_ned;
-    
-    // Calculate heading in degrees (0 is North, positive clockwise)
-    double heading_deg = std::atan2(dy, dx) * 180.0 / M_PI;
-    
-    // Convert to 0-360 range
-    if (heading_deg < 0) {
-      heading_deg += 360.0;
-    }
-    
-    // Send yaw command to face the waypoint
-    // 0=shortest path determination, 5=reasonable rotation rate (deg/sec)
-    sendConditionYaw(static_cast<float>(heading_deg), false, 0, 5.0f);
-    
-    RCLCPP_INFO(this->get_logger(), 
-        "Setting heading towards waypoint: %.1f degrees", heading_deg);
-  }
-}
-
-//=============================================================================
-// convertENUtoNED
-// Converts waypoint from ENU coordinates to NED coordinates for ArduPilot
-//=============================================================================
-/**
- * @brief Convert waypoint from ENU to NED coordinate system
- * 
- * Coordinate conversion from ROS (ENU) to ArduPilot (NED):
- * NED.x = ENU.y  (North = East)
- * NED.y = ENU.x  (East = North) 
- * NED.z = -ENU.z (Down = -Up)
- * 
- * @param enu Input waypoint in ENU coordinates
- * @param ned Output structure in NED coordinates for MAVLink
- */
-void BlueROVBridge::convertENUtoNED(const geometry_msgs::msg::PoseStamped& enu, 
-                                   mavlink_set_position_target_local_ned_t& ned)
-{
-  // Clear the structure
-  memset(&ned, 0, sizeof(ned));
-  
-  // Set header information
-  ned.time_boot_ms = static_cast<uint32_t>(this->now().nanoseconds() / 1000000);
-  ned.target_system = target_system_;
-  ned.target_component = target_component_;
-  ned.coordinate_frame = MAV_FRAME_LOCAL_NED;
-  
-  // Create mask 
-  // Each bit set to 1 means "ignore this dimension"
-  ned.type_mask =0b0000000111000000 ; 
-  
-  
-  // Convert ENU to NED coordinates
-  ned.x = enu.pose.position.y;  // North = East (ENU.y -> NED.x)
-  ned.y = enu.pose.position.x;  // East = North (ENU.x -> NED.y)
-  ned.z = -enu.pose.position.z; // Down = -Up (negative ENU.z -> NED.z)
-  
-  // Set velocities and accelerations to zero (not used with the defined type_mask)
-  ned.vx = 0.0f;
-  ned.vy = 0.0f;
-  ned.vz = 0.0f;
-  ned.afx = 0.0f;
-  ned.afy = 0.0f;
-  ned.afz = 0.0f;
-  ned.yaw = 0.0f;
-  ned.yaw_rate = 0.0f;
-}
-
-//=============================================================================
-// sendGlobalWaypoint
-// Sends a waypoint using SET_POSITION_TARGET_GLOBAL_INT message
-//=============================================================================
-void BlueROVBridge::sendGlobalWaypoint(int32_t lat_int, int32_t lon_int, float alt)
-{
-  if (!got_heartbeat_) {
-    RCLCPP_WARN(this->get_logger(), 
-        "Cannot send global waypoint; no autopilot heartbeat discovered!");
-    return;
+  for (int i = 0; i < NUM_RETRIES; i++) {
+    sendMavlinkMessage(msg);
+    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY_MS));
   }
   
-  // Ensure we're in GUIDED mode
-  if (!guided_mode_active_ && !mode_change_requested_) {
-    RCLCPP_WARN(this->get_logger(), 
-        "Vehicle not in GUIDED mode. Setting GUIDED mode before sending global waypoint.");
-    setFlightMode("GUIDED");
-    return;
-  }
-  
-  RCLCPP_INFO(this->get_logger(),
-      "Sending global waypoint: lat=%d, lon=%d, alt=%.2f", 
-      lat_int, lon_int, alt);
-  
-  // Create the position target message
-  mavlink_set_position_target_global_int_t global_target;
-  prepareGlobalPositionTarget(lat_int, lon_int, alt, global_target);
-  
-  // Create the MAVLink message
-  mavlink_message_t msg;
-  mavlink_msg_set_position_target_global_int_encode(
-      system_id_,
-      component_id_,
-      &msg,
-      &global_target
-  );
-  
-  // Send the message
-  sendMavlinkMessage(msg);
-  
-  RCLCPP_INFO(this->get_logger(), 
-      "Global waypoint sent successfully.");
-}
-
-//=============================================================================
-// prepareGlobalPositionTarget
-// Prepares a MAVLink SET_POSITION_TARGET_GLOBAL_INT structure
-//=============================================================================
-void BlueROVBridge::prepareGlobalPositionTarget(int32_t lat_int, int32_t lon_int, float alt, 
-                                              mavlink_set_position_target_global_int_t& global_target)
-{
-  // Clear the structure
-  memset(&global_target, 0, sizeof(global_target));
-  
-  // Set header information
-  global_target.time_boot_ms = static_cast<uint32_t>(this->now().nanoseconds() / 1000000);
-  global_target.target_system = target_system_;
-  global_target.target_component = target_component_;
-  
-  // Set coordinate frame
-  global_target.coordinate_frame = MAV_FRAME_GLOBAL_INT;  // Or MAV_FRAME_GLOBAL_RELATIVE_ALT_INT
-  
-  // Create type_mask - ignore velocity and acceleration
-  // bit set to 1 means "ignore this dimension"
-  global_target.type_mask = 0b0000111111000000;  // Ignore velocity, acceleration, yaw, yaw rate
-  
-  // Set position (lat/lon in degrees*1e7, altitude in meters)
-  global_target.lat_int = lat_int;
-  global_target.lon_int = lon_int;
-  global_target.alt = alt;
-  
-  // Set velocities and accelerations to zero (not used with the defined type_mask)
-  global_target.vx = 0.0f;
-  global_target.vy = 0.0f;
-  global_target.vz = 0.0f;
-  global_target.afx = 0.0f;
-  global_target.afy = 0.0f;
-  global_target.afz = 0.0f;
-  global_target.yaw = 0.0f;
-  global_target.yaw_rate = 0.0f;
+  RCLCPP_INFO(this->get_logger(), "DO_SET_HOME command sent (repeated %d times)", NUM_RETRIES);
 }
 
 //=============================================================================
@@ -927,10 +1018,6 @@ void BlueROVBridge::sendOverrideGoto(const geometry_msgs::msg::Point& position, 
   if (!continue_cmd) {
     waypoint_navigation_active_ = false;
     
-    // Clear the waypoint queue (optional, depending on desired behavior)
-    std::queue<geometry_msgs::msg::PoseStamped> empty;
-    std::swap(waypoint_queue_, empty);
-    
     // Create a new waypoint at the override position
     geometry_msgs::msg::PoseStamped override_wp;
     override_wp.header.stamp = this->now();
@@ -940,100 +1027,4 @@ void BlueROVBridge::sendOverrideGoto(const geometry_msgs::msg::Point& position, 
     // Update the current waypoint
     current_waypoint_ = override_wp;
   }
-}
-
-//=============================================================================
-// sendSetHome
-// Sends MAV_CMD_DO_SET_HOME command to set home position
-//=============================================================================
-void BlueROVBridge::sendSetHome(float latitude, float longitude, float altitude, bool use_current)
-{
-  if (!got_heartbeat_) {
-    RCLCPP_WARN(this->get_logger(), 
-        "Cannot send DO_SET_HOME command; no autopilot heartbeat discovered!");
-    return;
-  }
-  
-  // Create the position information string properly
-  std::string position_str;
-  if (use_current) {
-    position_str = "current position";
-  } else {
-    position_str = "lat=" + std::to_string(latitude) + 
-                  ", lon=" + std::to_string(longitude) + 
-                  ", alt=" + std::to_string(altitude);
-  }
-  
-  RCLCPP_INFO(this->get_logger(), "Setting home position: %s", position_str.c_str());
-  
-  // Create command message
-  mavlink_message_t msg;
-  mavlink_msg_command_long_pack(
-      system_id_,
-      component_id_,
-      &msg,
-      target_system_,
-      target_component_,
-      MAV_CMD_DO_SET_HOME,
-      0,                                // confirmation
-      use_current ? 1.0f : 0.0f,        // param1: 1=use current position, 0=use specified position
-      0.0f,                             // param2: reserved
-      0.0f,                             // param3: reserved
-      0.0f,                             // param4: yaw angle (not used)
-      latitude,                         // param5: latitude (ignored if use_current=1)
-      longitude,                        // param6: longitude (ignored if use_current=1)
-      altitude                          // param7: altitude (ignored if use_current=1)
-  );
-  
-  // Send the message multiple times for reliability
-  constexpr int NUM_RETRIES = 3;
-  constexpr int RETRY_DELAY_MS = 100;
-  
-  for (int i = 0; i < NUM_RETRIES; i++) {
-    sendMavlinkMessage(msg);
-    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_DELAY_MS));
-  }
-  
-  RCLCPP_INFO(this->get_logger(), "DO_SET_HOME command sent (repeated %d times)", NUM_RETRIES);
-  
-  // If we're using the current position, update our internal home pose
-  if (use_current) {
-    poseHome_ = poseActual_;
-    home_pose_set_ = true;
-    
-    RCLCPP_INFO(this->get_logger(),
-        "Updated internal home pose to current position: NED=(%.2f, %.2f, %.2f)",
-        poseHome_[0], poseHome_[1], poseHome_[2]);
-  }
-}
-
-//=============================================================================
-// STUB: poseDesiredCallback - TODO: Implement actual logic
-//=============================================================================
-void BlueROVBridge::poseDesiredCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
-{
-  RCLCPP_WARN(this->get_logger(), "poseDesiredCallback received data but is not implemented!");
-  // Suppress unused parameter warning
-  (void)msg;
-}
-
-//=============================================================================
-// STUB: accelerationDesiredCallback - TODO: Implement actual logic
-//=============================================================================
-void BlueROVBridge::accelerationDesiredCallback(const geometry_msgs::msg::Accel::SharedPtr msg)
-{
-  RCLCPP_WARN(this->get_logger(), "accelerationDesiredCallback received data but is not implemented!");
-  // Suppress unused parameter warning
-  (void)msg;
-}
-
-//=============================================================================
-// STUB: yawRateDesiredCallback - TODO: Implement actual logic
-//=============================================================================
-void BlueROVBridge::yawRateDesiredCallback(const std_msgs::msg::Float64::SharedPtr msg)
-{
-  RCLCPP_WARN(this->get_logger(), "yawRateDesiredCallback received data (%.2f deg/s) but is not implemented!", msg->data);
-  // Suppress unused parameter warning
-  (void)msg;
-  // Example: Might use MAV_CMD_CONDITION_YAW with rate or SET_ATTITUDE_TARGET
 }

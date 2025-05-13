@@ -4,17 +4,20 @@
 
 // ROS 2 message headers
 #include "geometry_msgs/msg/twist.hpp"
+#include "geometry_msgs/msg/pose_stamped.hpp"
+#include "geometry_msgs/msg/point.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "auv_core_helper/msg/pose_stamped.hpp"
-#include "auv_core_helper/msg/position.hpp"
-#include "auv_core_helper/msg/attitude.hpp"
-#include "geometry_msgs/msg/pose_stamped.hpp"         
-#include "nav_msgs/msg/path.hpp"                     
+#include "auv_core_helper/msg/heart_beat.hpp"                           
+#include "auv_core_helper/msg/rc_channels.hpp"
 #include "std_msgs/msg/bool.hpp"                     
 #include "std_msgs/msg/float64.hpp"                  
 #include "std_msgs/msg/int8.hpp"                     
-#include "std_msgs/msg/int32.hpp"                    
-#include "geometry_msgs/msg/accel.hpp"               
+#include "std_msgs/msg/int32.hpp"                                   
+
+// ROS 2 service headers
+#include "std_srvs/srv/set_bool.hpp"             
+#include "auv_core_helper/srv/set_flight_mode.hpp" 
 
 // AUV-specific topic names
 #include "auv_core_helper/topicnames.hpp"
@@ -31,21 +34,9 @@ extern "C" {
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <unistd.h>
-#include <queue>                                     // For waypoint queue
 
 /**
  * @brief A ROS 2 node that interfaces with ArduPilot/BlueROV using MAVLink protocol.
- *
- * This bridge enables:
- * 1. Manual control by passing velocity commands to ArduSub
- * 2. Waypoint navigation in GUIDED mode (single waypoint or path)
- * 3. Position holding at the last waypoint
- * 
- * Features:
- * - Coordinate transformations between NED (ArduSub) and ENU (ROS)
- * - Automatic mode switching based on flight state
- * - Queue-based waypoint following
- * - Position hold after waypoint completion
  */
 class BlueROVBridge : public rclcpp::Node
 {
@@ -57,31 +48,26 @@ public:
 
 private:
     //--------------------------------------------------------------------------
-    // ROS Publishers & Subscribers
+    // ROS Publishers, Subscribers & Services
     //--------------------------------------------------------------------------
-    rclcpp::Publisher<auv_core_helper::msg::Position>::SharedPtr localPositionActualPublisher_;
-    rclcpp::Publisher<auv_core_helper::msg::Position>::SharedPtr globalPositionActualPublisher_;
-    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr waypointReachedPublisher_;
-    rclcpp::Publisher<auv_core_helper::msg::Attitude>::SharedPtr attitudeActualPublisher_;
+    rclcpp::Publisher<auv_core_helper::msg::HeartBeat>::SharedPtr heartBeatPublisher_;
+    rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr localPoseActualPublisher_;
+    rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseActualPublisher_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr localVelocityActualPublisher_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr globalVelocityActualPublisher_;
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr dvlDistancePublisher_;
-    rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr armedPublisher_;
-    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr flightModePublisher_;
-
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr kclStateSubscription_;
-    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr waypointSubscription_;
-    rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr pathSubscription_;
-    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr poseDesiredSubscription_;
-    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr velocityDesiredSubscription_;
-    rclcpp::Subscription<geometry_msgs::msg::Accel>::SharedPtr accelerationDesiredSubscription_;
-    rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr yawRateDesiredSubscription_;
     
+    rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr localPoseDesiredSubscription_;
+    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr localVelocityDesiredSubscription_;
+    rclcpp::Subscription<auv_core_helper::msg::RCChannels>::SharedPtr rcChannelValuesDesiredSubscription_;
 
+    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr armingService_;
+    rclcpp::Service<auv_core_helper::srv::SetFlightMode>::SharedPtr flightModeService_;
+    
     //--------------------------------------------------------------------------
     // Timers
     //--------------------------------------------------------------------------
     rclcpp::TimerBase::SharedPtr data_timer_;         // Timer for MAVLink data reception
-    rclcpp::TimerBase::SharedPtr control_loop_timer_; // Timer for manual control
-    rclcpp::TimerBase::SharedPtr waypoint_timer_;     // Timer for waypoint navigation
 
     //--------------------------------------------------------------------------
     // MAVLink Socket / Connection
@@ -97,53 +83,40 @@ private:
     uint8_t target_system_{0};          // Target system ID (from heartbeat)
     uint8_t target_component_{0};       // Target component ID (from heartbeat)
     bool got_heartbeat_{false};         // Flag indicating if heartbeat was received
-    bool is_armed_{false};              // Flag indicating if vehicle is armed
 
-    //--------------------------------------------------------------------------
-    // State Variables
-    //--------------------------------------------------------------------------
+    //=============================================================================
+    // MAVLink declarations
+    //=============================================================================
+    mavlink_heartbeat_t hb;
+    mavlink_command_ack_t ack;
+    mavlink_set_position_target_local_ned_t position_target_;
+    mavlink_set_position_target_global_int_t position_target_global_;
+    mavlink_set_attitude_target_t attitude_target_;
 
-    /// [x, y, z, roll, pitch, yaw] in NED
-    Eigen::Matrix<double, 6, 1> poseActual_{Eigen::Matrix<double, 6, 1>::Zero()};
-
-    /// [vx, vy, vz, rollspeed, pitchspeed, yawspeed]
-    Eigen::Matrix<double, 6, 1> velocityActual_{Eigen::Matrix<double, 6, 1>::Zero()};
-
-    /// Home pose in NED
-    Eigen::Matrix<double, 6, 1> poseHome_{Eigen::Matrix<double, 6, 1>::Zero()};
-    bool home_pose_set_{false};
-
-    /// Desired velocity [lin.x, lin.y, lin.z, ang.x, ang.y, ang.z]
-    Eigen::Matrix<double, 6, 1> velocityDesired_{Eigen::Matrix<double, 6, 1>::Zero()};   // [m/s, m/s, m/s, rad/s, rad/s, rad/s]
-    Eigen::Matrix<double, 6, 1> velocityDesiredPwm_{Eigen::Matrix<double, 6, 1>::Zero()}; // [PWM, PWM, PWM, PWM, PWM, PWM]
-
-    /// Velocity limits
-    Eigen::Matrix<double, 6, 1> maxVelocities_{2.0, 1.8, 0.55, 2.0, 2.2, 1.85}; // [m/s, m/s, m/s, rad/s, rad/s, rad/s]
-    Eigen::Matrix<double, 6, 1> minVelocities_{-2.0, -1.8, -0.55, -2.0, -2.2, -1.85}; // [m/s, m/s, m/s, rad/s, rad/s, rad/s]
-
-    /// KCL state
-    std::string kcl_state_{};
-
-    /// Depth filtering
-    bool depth_initialized_{false};
-    double depth_filtered_;
-    double alpha_depth_;
-    
+    const uint16_t MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_POSITION = 0b00000000000000000000000000000001;
+    const uint16_t MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_VELOCITY = 0b00000000000000000000000000000010;
+    const uint16_t MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_YAW = 0b00000000000000000000000000000100;
+    const uint16_t MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_YAW_RATE = 0b00000000000000000000000000001000;
+    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_YAW_ANGLE = 0b00000000000000000000000000000001;
+    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_YAW_RATE = 0b00000000000000000000000000000010;
+    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_BODY_RATE_OUTPUT = 0b00000000000000000000000000000100;
+    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_THRUST = 0b00000000000000000000000000001000;
+    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_FORCE = 0b00000000000000000000000000001000;
+    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_ANGULAR_VELOCITY = 0b00000000000000000000000000010000;
+    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_ANGULAR_VELOCITY_BODY = 0b00000000000000000000000000100000;
+    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_FORCE_BODY = 0b00000000000000000000000001000000;
+    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_FORCE_NED = 0b00000000000000000000000010000000;
+     
     //--------------------------------------------------------------------------
     // Waypoint Navigation Variables
     //--------------------------------------------------------------------------
-    
-    /// Queue of waypoints (stored in ENU coordinates)
-    std::queue<geometry_msgs::msg::PoseStamped> waypoint_queue_;
     
     /// Current waypoint being navigated to (ENU coordinates)
     geometry_msgs::msg::PoseStamped current_waypoint_;
     
     /// Pending waypoint/path when mode change is in progress
     geometry_msgs::msg::PoseStamped pending_waypoint_; 
-    nav_msgs::msg::Path pending_path_;
     bool has_pending_waypoint_{false};
-    bool has_pending_path_{false};
     
     /// Waypoint navigation state
     bool waypoint_navigation_active_{false}; // Actively following waypoints
@@ -162,6 +135,7 @@ private:
     /// Position hold at last waypoint when queue is empty
     bool position_hold_active_{false};              // Vehicle is in POSHOLD mode
     geometry_msgs::msg::PoseStamped position_hold_waypoint_; // Position being held
+    
 
     //--------------------------------------------------------------------------
     // Internal Methods
@@ -175,6 +149,16 @@ private:
      * @brief Receive and process MAVLink data
      */
     void receiveData();
+
+    /**
+     * @brief Send a MAVLink message to ArduSub
+     */
+    void sendMavlinkMessage(const mavlink_message_t& msg);
+    
+    /**
+     * @brief Set the update interval for MAVLink messages
+     */
+    void setMessageInterval(uint16_t message_id, float frequency_hz);
     
     /**
      * @brief Handle HEARTBEAT message
@@ -219,94 +203,63 @@ private:
     void velocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
     
     /**
-     * @brief Process state change requests
+     * @brief Service callback for arming/disarming the vehicle.
+     * @param request Service request containing boolean for arm (true) or disarm (false).
+     * @param response Service response indicating success/failure.
      */
-    void kclStateCallback(const std_msgs::msg::String::SharedPtr msg);
-    
-    /**
-     * @brief Check if the vehicle is armed
-     * @return true if armed, false otherwise
-     */
-    bool isArmed();
-    
-    /**
-     * @brief Send waypoint to ArduSub in NED coordinates
-     */
-    void sendWaypointToArdupilot(const geometry_msgs::msg::PoseStamped& waypoint);
-    
-    /**
-     * @brief Convert from ENU to NED coordinate system
-     */
-    void convertENUtoNED(const geometry_msgs::msg::PoseStamped& enu, mavlink_set_position_target_local_ned_t& ned);
+    void armingServiceCallback(
+        const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+        std::shared_ptr<std_srvs::srv::SetBool::Response> response);
 
     /**
-     * @brief Set flight mode without changing arm state
-     * 
-     * This method sets the vehicle flight mode without changing the arming state.
-     * It supports these modes: "MANUAL", "STABILIZE", "ALT_HOLD", "GUIDED", "POSHOLD"
-     * 
-     * @param mode The desired flight mode
+     * @brief Service callback for setting the vehicle's flight mode.
+     * @param request Service request containing the desired flight mode string.
+     * @param response Service response indicating success/failure.
      */
-    void setFlightMode(const std::string& mode);
-    
+    void flightModeServiceCallback(
+        const std::shared_ptr<auv_core_helper::srv::SetFlightMode::Request> request,
+        std::shared_ptr<auv_core_helper::srv::SetFlightMode::Response> response);
+
     /**
-     * @brief Sends a command to arm or disarm the vehicle.
-     * @param arm_vehicle True to arm, false to disarm.
-     * @param mode Optional flight mode to set *after* arming (e.g., "GUIDED"). Ignored if disarming or empty/"CURRENT".
+     * @brief Set the arm state
+     * @param arm The desired arm state
      */
     void setArmState(bool arm_vehicle);
 
     /**
+     * @brief Set the flight mode
+     * @param mode The desired flight mode
+     */
+    void setFlightMode(const std::string& mode);
+
+    /**
+     * @brief Callback for receiving desired RC channels
+     * @param msg The received RCChannels message
+     */
+    void rcChannelValuesDesiredCallback(const auv_core_helper::msg::RCChannels::SharedPtr msg);
+
+    /**
      * @brief Set RC channel PWM values
      */
-    void setRcChannelPwm(const Eigen::VectorXd& velocityDesiredPwm);
+    void setRcChannelPwm(const uint16_t* rc_channel_values);
     
     /**
-     * @brief Send a MAVLink message to ArduSub
+     * @brief Callback for receiving desired pose
+     * @param msg The received PoseStamped message
      */
-    void sendMavlinkMessage(const mavlink_message_t& msg);
-    
+    void localPoseDesiredCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
+
     /**
-     * @brief Set the update interval for MAVLink messages
+     * @brief Callback for receiving desired velocity
+     * @param msg The received Twist message
      */
-    void setMessageInterval(uint16_t message_id, float frequency_hz);
+    void localVelocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
     
+
     /**
-     * @brief Send MAV_CMD_OVERRIDE_GOTO command to interrupt current navigation
-     * 
-     * This commands the vehicle to immediately move to the specified position.
-     * It can be used in emergency situations to redirect the vehicle.
-     * 
-     * @param position Target position in ENU coordinates
-     * @param continue_cmd If true, the vehicle will continue executing mission after reaching position
+     * @brief Send waypoint to ArduSub in NED coordinates
      */
-    void sendOverrideGoto(const geometry_msgs::msg::Point& position, bool continue_cmd = false);
-    
-    /**
-     * @brief Send MAV_CMD_DO_SET_HOME command to set the home position
-     * 
-     * This sets the home position of the vehicle, which is used as the reference
-     * for RTL mode and relative positions.
-     * 
-     * @param latitude Latitude in degrees (use NAN to use current position)
-     * @param longitude Longitude in degrees (use NAN to use current position)
-     * @param altitude Altitude in meters (above MSL)
-     * @param use_current If true, ignore lat/lon/alt and use current position
-     */
-    void sendSetHome(float latitude, float longitude, float altitude, bool use_current = false);
-    
-    /**
-     * @brief Send MAV_CMD_CONDITION_YAW command to set vehicle heading
-     * 
-     * This command sets the heading of the vehicle. It can be used in combination
-     * with waypoints to control the facing direction.
-     * 
-     * @param heading_deg Target heading in degrees
-     * @param is_relative If true, heading is relative to current heading
-     * @param direction Direction to rotate: 1=clockwise, -1=counterclockwise, 0=shortest
-     * @param angular_rate Angular rate for rotation (degrees/second)
-     */
-    void sendConditionYaw(float heading_deg, bool is_relative = false, int direction = 0, float angular_rate = 0.0f);
+    void SetPositionTargetLocalNED(const mavlink_set_position_target_local_ned_t& position_target_);
     
     /**
      * @brief Send a waypoint in global coordinates
@@ -332,24 +285,45 @@ private:
                                     mavlink_set_position_target_global_int_t& global_target);
 
     /**
-     * @brief Callback for receiving desired pose
-     * @param msg The received PoseStamped message
+     * @brief Send MAV_CMD_CONDITION_YAW command to set vehicle heading
+     * 
+     * This command sets the heading of the vehicle. It can be used in combination
+     * with waypoints to control the facing direction.
+     * 
+     * @param heading_deg Target heading in degrees
+     * @param is_relative If true, heading is relative to current heading
+     * @param direction Direction to rotate: 1=clockwise, -1=counterclockwise, 0=shortest
+     * @param angular_rate Angular rate for rotation (degrees/second)
      */
-    void poseDesiredCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg);
+    void sendConditionYaw(float heading_deg, bool is_relative = false, int direction = 0, float angular_rate = 0.0f);                                
 
     /**
-     * @brief Callback for receiving desired acceleration
-     * @param msg The received Accel message
+     * @brief Set the attitude target
+     * @param attitude_target The desired attitude target
      */
-    void accelerationDesiredCallback(const geometry_msgs::msg::Accel::SharedPtr msg);
+    void SetAttitudeTarget(const mavlink_set_attitude_target_t& attitude_target_);
 
     /**
-     * @brief Callback for receiving desired yaw rate
-     * @param msg The received Float64 message (rate in degrees/sec)
+     * @brief Send MAV_CMD_DO_SET_HOME command to set the home position
+     * 
+     * This sets the home position of the vehicle, which is used as the reference
+     * for RTL mode and relative positions.
+     * 
+     * @param latitude Latitude in degrees (use NAN to use current position)
+     * @param longitude Longitude in degrees (use NAN to use current position)
+     * @param altitude Altitude in meters (above MSL)
+     * @param use_current If true, ignore lat/lon/alt and use current position
      */
-    void yawRateDesiredCallback(const std_msgs::msg::Float64::SharedPtr msg);
+    void sendSetHome(float latitude, float longitude, float altitude, bool use_current = false);
 
-    //--------------------------------------------------------------------------
-    // Internal Helper Functions
-    //--------------------------------------------------------------------------
+    /**
+     * @brief Send MAV_CMD_OVERRIDE_GOTO command to interrupt current navigation
+     * 
+     * This commands the vehicle to immediately move to the specified position.
+     * It can be used in emergency situations to redirect the vehicle.
+     * 
+     * @param position Target position in ENU coordinates
+     * @param continue_cmd If true, the vehicle will continue executing mission after reaching position
+     */
+    void sendOverrideGoto(const geometry_msgs::msg::Point& position, bool continue_cmd = false);
 };
