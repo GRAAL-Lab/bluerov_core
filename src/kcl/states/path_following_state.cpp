@@ -113,17 +113,17 @@ fsm::retval PathFollowingState::Execute() noexcept {
         double yawDirection = atan2(pathDirection.y(), pathDirection.x());
         double pitchDirection = -atan2(pathDirection.z(), sqrt(pathDirection.x()*pathDirection.x() + pathDirection.y()*pathDirection.y()));
 
-        Eigen::Matrix<double, 6, 1> poseGoal;
-        poseGoal << firstPoint.x(), firstPoint.y(), firstPoint.z(), 0, pitchDirection, yawDirection;
-        ctrlData->poseGoal = poseGoal;
+        Eigen::Matrix<double, 6, 1> poseGoalLocal;
+        poseGoalLocal << firstPoint.x(), firstPoint.y(), firstPoint.z(), 0, pitchDirection, yawDirection;
+        ctrlData->poseGoalLocal = poseGoalLocal;
 
         // Compute errors (world frame)
-        positionXError_ = ctrlData->poseGoal(0) - ctrlData->poseActual(0);
-        positionYError_ = ctrlData->poseGoal(1) - ctrlData->poseActual(1);
-        positionZError_ = ctrlData->poseGoal(2) - ctrlData->poseActual(2);
-        rollError_      =  ctb::AngleDifference(ctrlData->poseGoal(3), ctrlData->poseActual(3));
-        pitchError_     =  ctb::AngleDifference(ctrlData->poseGoal(4), ctrlData->poseActual(4));
-        yawError_       =  ctb::AngleDifference(ctrlData->poseGoal(5), ctrlData->poseActual(5));
+        positionXError_ = ctrlData->poseGoalLocal(0) - ctrlData->poseActual(0);
+        positionYError_ = ctrlData->poseGoalLocal(1) - ctrlData->poseActual(1);
+        positionZError_ = ctrlData->poseGoalLocal(2) - ctrlData->poseActual(2);
+        rollError_      =  ctb::AngleDifference(ctrlData->poseGoalLocal(3), ctrlData->poseActual(3));
+        pitchError_     =  ctb::AngleDifference(ctrlData->poseGoalLocal(4), ctrlData->poseActual(4));
+        yawError_       =  ctb::AngleDifference(ctrlData->poseGoalLocal(5), ctrlData->poseActual(5));
 
         // // Normalize orientation errors for safety
         // ctb::NormalizeAngle(rollError_);
@@ -138,9 +138,9 @@ fsm::retval PathFollowingState::Execute() noexcept {
         Eigen::Vector3d errorBody = R.transpose() * errorWorld;
 
         // Compute body-frame linear velocities using PID
-        ctrlData->velocityDesired(0) = -pidX_.Compute(0, errorBody.x());
-        ctrlData->velocityDesired(1) = -pidY_.Compute(0, errorBody.y());
-        ctrlData->velocityDesired(2) = -pidZ_.Compute(0, errorBody.z());
+        ctrlData->velocityDesiredLocal(0) = -pidX_.Compute(0, errorBody.x());
+        ctrlData->velocityDesiredLocal(1) = -pidY_.Compute(0, errorBody.y());
+        ctrlData->velocityDesiredLocal(2) = -pidZ_.Compute(0, errorBody.z());
 
 
         // Compute body-frame angular velocities using PID
@@ -150,15 +150,15 @@ fsm::retval PathFollowingState::Execute() noexcept {
         wDesired[2] = -pidYaw_.Compute(0, yawError_);
 
         // Directly assign body-frame angular velocities (no Euler angle rate conversion)
-        ctrlData->velocityDesired(3) = wDesired[0];
-        ctrlData->velocityDesired(4) = wDesired[1];
-        ctrlData->velocityDesired(5) = wDesired[2];
+        ctrlData->velocityDesiredLocal(3) = wDesired[0];
+        ctrlData->velocityDesiredLocal(4) = wDesired[1];
+        ctrlData->velocityDesiredLocal(5) = wDesired[2];
 
         // Check if aligned
         if (std::abs(positionXError_) < 0.1 && std::abs(positionYError_) < 0.1 && std::abs(positionZError_) < 0.1 &&
             std::abs(rollError_) < 0.1 && std::abs(yawError_) < 0.1 && std::abs(pitchError_) < 0.1) {
             RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Vehicle reached starting point and aligned with path direction");
-            ctrlData->velocityDesired.setZero();
+            ctrlData->velocityDesiredLocal.setZero();
             isVehicleOnPathDirection_ = true;
         }
 
@@ -196,20 +196,20 @@ fsm::retval PathFollowingState::Execute() noexcept {
         }
 
 
-        ctrlData->poseGoal(0) = nextPoint.x();
-        ctrlData->poseGoal(1) = nextPoint.y();
-        ctrlData->poseGoal(2) = nextPoint.z();
-        ctrlData->poseGoal(3) = 0;
-        ctrlData->poseGoal(4) = theta_psi_d; 
-        ctrlData->poseGoal(5) = psi_d;
+        ctrlData->poseGoalLocal(0) = nextPoint.x();
+        ctrlData->poseGoalLocal(1) = nextPoint.y();
+        ctrlData->poseGoalLocal(2) = nextPoint.z();
+        ctrlData->poseGoalLocal(3) = 0;
+        ctrlData->poseGoalLocal(4) = theta_psi_d; 
+        ctrlData->poseGoalLocal(5) = psi_d;
 
         // Compute errors in world frame
-        positionXError_ = ctrlData->poseGoal(0) - ctrlData->poseActual(0);
-        positionYError_ = ctrlData->poseGoal(1) - ctrlData->poseActual(1);
-        positionZError_ = ctrlData->poseGoal(2) - ctrlData->poseActual(2);
-        rollError_      =  ctb::AngleDifference(ctrlData->poseGoal(3), ctrlData->poseActual(3));
-        pitchError_     =  ctb::AngleDifference(ctrlData->poseGoal(4), ctrlData->poseActual(4));
-        yawError_       =  ctb::AngleDifference(ctrlData->poseGoal(5), ctrlData->poseActual(5));
+        positionXError_ = ctrlData->poseGoalLocal(0) - ctrlData->poseActual(0);
+        positionYError_ = ctrlData->poseGoalLocal(1) - ctrlData->poseActual(1);
+        positionZError_ = ctrlData->poseGoalLocal(2) - ctrlData->poseActual(2);
+        rollError_      =  ctb::AngleDifference(ctrlData->poseGoalLocal(3), ctrlData->poseActual(3));
+        pitchError_     =  ctb::AngleDifference(ctrlData->poseGoalLocal(4), ctrlData->poseActual(4));
+        yawError_       =  ctb::AngleDifference(ctrlData->poseGoalLocal(5), ctrlData->poseActual(5));
 
         // ctb::NormalizeAngle(rollError_);
         // ctb::NormalizeAngle(yawError_);
@@ -221,9 +221,9 @@ fsm::retval PathFollowingState::Execute() noexcept {
         Eigen::Vector3d errorWorld(positionXError_, positionYError_, positionZError_);
         Eigen::Vector3d errorBody = R.transpose() * errorWorld;
         // PID on body-frame linear errors
-        ctrlData->velocityDesired(0) = -pidX_.Compute(0, errorBody.x());
-        ctrlData->velocityDesired(1) = -pidY_.Compute(0, errorBody.y());
-        ctrlData->velocityDesired(2) = -pidZ_.Compute(0, errorBody.z());
+        ctrlData->velocityDesiredLocal(0) = -pidX_.Compute(0, errorBody.x());
+        ctrlData->velocityDesiredLocal(1) = -pidY_.Compute(0, errorBody.y());
+        ctrlData->velocityDesiredLocal(2) = -pidZ_.Compute(0, errorBody.z());
 
 
         // PID on angular errors for body-frame angular velocities
@@ -232,9 +232,9 @@ fsm::retval PathFollowingState::Execute() noexcept {
         wDesired[1] = -pidPitch_.Compute(0, pitchError_);
         wDesired[2] = -pidYaw_.Compute(0, yawError_);
         // Assign body-frame angular velocities directly
-        ctrlData->velocityDesired(3) = wDesired[0];
-        ctrlData->velocityDesired(4) = wDesired[1];
-        ctrlData->velocityDesired(5) = wDesired[2];
+        ctrlData->velocityDesiredLocal(3) = wDesired[0];
+        ctrlData->velocityDesiredLocal(4) = wDesired[1];
+        ctrlData->velocityDesiredLocal(5) = wDesired[2];
 
         Eigen::Vector3d currentPosDot = path->Derivate(1, closestPointAbscissa_).front();
         Eigen::Vector3d goalPosDot = path->Derivate(1, goalAbscissa).front();

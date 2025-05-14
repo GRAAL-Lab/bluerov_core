@@ -33,6 +33,7 @@ find_package(PkgConfig REQUIRED)
 find_library(SISL_LIBRARY NAMES sisl_toolbox)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
 # Add files in the tree of "Projects" view in QtCreator
 file(GLOB_RECURSE SOURCE_FILES
@@ -126,6 +127,7 @@ foreach(target kinematic_control_layer_node)
     auv_core_helper
     rclcpp_lifecycle
     nav_msgs
+    std_srvs
   )
   target_link_libraries(${target}
     ${FSM_LIBRARY}

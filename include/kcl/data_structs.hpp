@@ -25,9 +25,28 @@ struct ControlData {
     // ------------------------------
     // Desired State
     // ------------------------------
-    Eigen::VectorXd desiredPose_LatLong = Eigen::VectorXd(2); ///< Desired pose goal in 2D (x, y).
-    Eigen::VectorXd velocityDesired = Eigen::VectorXd(6); ///< Desired linear and angular velocities.
-    Eigen::VectorXd poseGoal = Eigen::VectorXd(6); ///< Desired pose goal.
+    // ------------------------------
+    // LOCAL
+    // ------------------------------
+    Eigen::VectorXd poseGoalLocal = Eigen::VectorXd(6); ///< Desired pose goal.
+    Eigen::VectorXd velocityDesiredLocal = Eigen::VectorXd(6); ///< Desired linear and angular velocities.
+    
+
+    // ------------------------------
+    // GLOBAL
+    // ------------------------------
+    Eigen::VectorXd poseGoalGlobal = Eigen::VectorXd(6); ///< Desired pose goal in global coordinates.
+    Eigen::VectorXd velocityDesiredGlobal = Eigen::VectorXd(6); ///< Desired linear and angular velocities in global coordinates.
+
+
+    // ------------------------------
+    // FLIGHT MODE PARAMETERS
+    // ------------------------------
+    bool armed_desired = false;
+    bool armed_actual = false;
+    std::string flightMode_desired = "MANUAL"; 
+    std::string flightMode_actual = "MANUAL"; 
+
 
     // ------------------------------
     // Path Planning Parameters
@@ -85,8 +104,8 @@ struct ControlData {
         poseActual.setZero();
         velocityActual.setZero();
         accelerationActual.setZero();
-        velocityDesired.setZero();
-        poseGoal.setZero();
+        velocityDesiredLocal.setZero();
+        poseGoalLocal.setZero();
         maxVelocity.setConstant(1.0); // Default maximum velocities.
         minVelocity.setConstant(0.0); // Default minimum velocities.
     }

@@ -29,35 +29,28 @@ KCL::KCL()
 
 
     // Create subscriptions
-    poseActualSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(
-        auv_core_helper::topicnames::pose_actual_local, 1,
-        std::bind(&KCL::PoseActualCallback, this, std::placeholders::_1));
+    poseActualSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_local, 1,std::bind(&KCL::PoseActualCallback, this, std::placeholders::_1));
 
-    velocityActualSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(
-        auv_core_helper::topicnames::velocity_actual_local, 1,
-        std::bind(&KCL::VelocityActualCallback, this, std::placeholders::_1));
+    velocityActualSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_actual_local, 1,std::bind(&KCL::VelocityActualCallback, this, std::placeholders::_1));
 
-    accelerationActualSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(
-        auv_core_helper::topicnames::acceleration_actual_local, 1,
+    accelerationActualSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::acceleration_actual_local, 1,
         std::bind(&KCL::AccelerationActualCallback, this, std::placeholders::_1));
 
-    // Create publishers
-    poseGoalPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(
+    // Create local publishers
+    poseGoalLocalPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(
         auv_core_helper::topicnames::pose_goal_local, 1);
 
-    velocityDesiredPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(
+    velocityLocalDesiredPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(
         auv_core_helper::topicnames::velocity_desired_local, 1);
 
-    statePublisher_ = this->create_publisher<std_msgs::msg::String>(
-        auv_core_helper::topicnames::kcl_state, 1);
+    statePublisher_ = this->create_publisher<std_msgs::msg::String>(auv_core_helper::topicnames::kcl_state, 1);
 
-    pathPublisher_ = this->create_publisher<nav_msgs::msg::Path>("planned_path", 1);
+    // Create global publishers
+    poseGoalGlobalPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_desired_global, 1);
+    velocityDesiredGlobalPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired_global, 1);
 
-    // Create service for control commands
-    // controlCommandService_ = this->create_service<auv_core_helper::srv::ControlCommand>(
-    //     auv_core_helper::topicnames::control_cmd_service,
-    //     std::bind(&KCL::HandleControlCommand, this, std::placeholders::_1, std::placeholders::_2));
-    
+    // pathPublisher_ = this->create_publisher<nav_msgs::msg::Path>("planned_path", 1);
+
     // Create action server for KCL
     KCLSetter_ = rclcpp_action::create_server<auv_core_helper::action::SetKCL>(
     this,
@@ -67,6 +60,19 @@ KCL::KCL()
     std::bind(&KCL::HandleSetKCL, this, std::placeholders::_1)
     );
 
+    // Create clients
+    armingClient_ = this->create_client<std_srvs::srv::SetBool>(auv_core_helper::topicnames::arming_service);
+    flightModeClient_ = this->create_client<auv_core_helper::srv::SetFlightMode>(auv_core_helper::topicnames::flight_mode_service);
+
+    // Wait for arming service
+    while (!armingClient_->wait_for_service(std::chrono::seconds(1))) {
+        RCLCPP_INFO(this->get_logger(), "Waiting for arming service...");
+    }
+
+    // Wait for flight mode service
+    while (!flightModeClient_->wait_for_service(std::chrono::seconds(1))) {
+        RCLCPP_INFO(this->get_logger(), "Waiting for flight mode service...");
+    }
 
 }
 
@@ -107,20 +113,21 @@ rclcpp_action::CancelResponse KCL::HandleCancel(
 }
 
 
-void KCL::HandleSetKCL(
-    const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> goal_handle)
+void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> goal_handle)
 {
     const auto goal = goal_handle->get_goal();
 
     // Store in member variables
     desiredState_ = goal->desired_state;
-    ctrlData_->desiredPose_LatLong(0) = goal->data.latitude;
-    ctrlData_->desiredPose_LatLong(1) = goal->data.longitude;
+
+    ctrlData_->poseGoalGlobal(0) = goal->data.latitude;
+    ctrlData_->poseGoalGlobal(1) = goal->data.longitude;
+    ctrlData_->poseGoalGlobal(2) = -1.0; // needs to be controlled
 
     // Print to console
     RCLCPP_INFO(this->get_logger(), "Received desired_state: %s", desiredState_.c_str());
-    RCLCPP_INFO(this->get_logger(), "Received latitude: %f", ctrlData_->desiredPose_LatLong[0]);
-    RCLCPP_INFO(this->get_logger(), "Received longitude: %f", ctrlData_->desiredPose_LatLong[1]);
+    RCLCPP_INFO(this->get_logger(), "Received latitude: %f", ctrlData_->poseGoalGlobal[0]);
+    RCLCPP_INFO(this->get_logger(), "Received longitude: %f", ctrlData_->poseGoalGlobal[1]);
 
 
     if (fsm_.SetNextState(desiredState_) == fsm::ok && fsm_.SwitchState() == fsm::ok) {
@@ -187,6 +194,39 @@ void KCL::SetupTransitions() {
     RCLCPP_INFO(this->get_logger(), "FSM transitions set up.");
 }
 
+
+void KCL::CallArmingService(bool arm)
+{
+    auto request = std::make_shared<std_srvs::srv::SetBool::Request>();
+    request->data = arm;
+
+    auto future = armingClient_->async_send_request(request,
+        [this](rclcpp::Client<std_srvs::srv::SetBool>::SharedFuture result) {
+            if (result.get()->success) {
+                RCLCPP_INFO(this->get_logger(), "Arming succeeded: %s", result.get()->message.c_str());
+                ctrlData_->armed_actual = ctrlData_->armed_desired;
+            } else {
+                RCLCPP_WARN(this->get_logger(), "Arming failed: %s", result.get()->message.c_str());
+            }
+        });
+}
+
+void KCL::CallFlightModeService(const std::string &mode)
+{
+    auto request = std::make_shared<auv_core_helper::srv::SetFlightMode::Request>();
+    request->mode = mode;
+
+    auto future = flightModeClient_->async_send_request(request,
+        [this](rclcpp::Client<auv_core_helper::srv::SetFlightMode>::SharedFuture result) {
+            if (result.get()->success) {
+                RCLCPP_INFO(this->get_logger(), "Flight mode set: %s", result.get()->message.c_str());
+                ctrlData_->flightMode_actual = ctrlData_->flightMode_desired;
+            } else {
+                RCLCPP_WARN(this->get_logger(), "Flight mode failed: %s", result.get()->message.c_str());
+            }
+        });
+}
+
 void KCL::ExecuteFSM() {
 
     // MIGHT NEED SOME MODIFICATIONS
@@ -202,14 +242,23 @@ void KCL::ExecuteFSM() {
     statePublisher_->publish(stateMsg);
 
     // Publish goal pose
-    PublishEigenPose(poseGoalPublisher_, ctrlData_->poseGoal, this->get_clock()->now());
+    PublishEigenPose(poseGoalGlobalPublisher_, ctrlData_->poseGoalGlobal, this->get_clock()->now());
 
     // Scale desired velocity within limits
-    rml::SaturateVector(ctrlData_->maxVelocity, ctrlData_->minVelocity, ctrlData_->velocityDesired);
+    // rml::SaturateVector(ctrlData_->maxVelocity, ctrlData_->minVelocity, ctrlData_->velocityDesired);
 
     // Publish desired velocity
-    PublishEigenVelocity(velocityDesiredPublisher_, ctrlData_->velocityDesired);
+    // PublishEigenVelocity(velocityLocalDesiredPublisher_, ctrlData_->velocityDesired);
 
-    // Publish the planned path
-    pathPublisher_->publish(ctrlData_->plannedPath);
+    // // Publish the planned path
+    // pathPublisher_->publish(ctrlData_->plannedPath);
+
+
+    //do clinet call if desired != actual
+    if (ctrlData_->armed_desired != ctrlData_->armed_actual) {
+        CallArmingService(ctrlData_->armed_desired);
+    }
+    if (ctrlData_->flightMode_desired != ctrlData_->flightMode_actual) {
+        CallFlightModeService(ctrlData_->flightMode_desired);
+    }
 }

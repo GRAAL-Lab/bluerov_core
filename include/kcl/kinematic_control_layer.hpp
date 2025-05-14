@@ -31,6 +31,10 @@
 // AUV-specific message types between mission control and the AUV
 #include "auv_core_helper/action/set_kcl.hpp"
 
+// AUV service types
+#include "std_srvs/srv/set_bool.hpp"             
+#include "auv_core_helper/srv/set_flight_mode.hpp" 
+
 // Graal library 
 #include "fsm/fsm.h"
 #include "rml/Functions.h"
@@ -63,10 +67,15 @@ private:
     // --------------------
     // ROS 2 Publishers
     // --------------------
-    rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr poseGoalPublisher_;
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocityDesiredPublisher_;
+    // LOCAL
+    rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr poseGoalLocalPublisher_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocityLocalDesiredPublisher_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr statePublisher_;
-    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pathPublisher_;
+    // GLOBAL
+    rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr poseGoalGlobalPublisher_;
+    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocityDesiredGlobalPublisher_;
+
+    // rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pathPublisher_;
 
     // --------------------
     // ROS 2 Subscriptions
@@ -78,7 +87,9 @@ private:
     // --------------------
     // ROS 2 Services
     // --------------------
-    // rclcpp::Service<auv_core_helper::srv::ControlCommand>::SharedPtr controlCommandService_;
+    rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr armingClient_;
+    rclcpp::Client<auv_core_helper::srv::SetFlightMode>::SharedPtr flightModeClient_;
+
 
     // --------------------
     // ROS 2 Action Server
@@ -117,6 +128,11 @@ private:
 
     /// Callback for control command service.
     void HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> goal_handle);
+
+    /// Call the arming service.
+    void CallArmingService(bool arm);
+    /// Call the flight mode service.
+    void CallFlightModeService(const std::string &mode);
 
     
 

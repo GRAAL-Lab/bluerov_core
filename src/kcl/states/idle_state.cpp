@@ -18,11 +18,15 @@ fsm::retval IdleState::OnEntry() noexcept {
 
     RCLCPP_INFO(rclcpp::get_logger("IdleState"), "Entering IDLE state");
 
-    // Reset desired velocities to zero
-    ctrlData->velocityDesired.setZero();
+    //disarm vehicle
+    ctrlData->armed_desired = false;
+    ctrlData->flightMode_desired = "MANUAL"; // Set flight mode to manual
 
-    // Reset the goal pose to zero
-    ctrlData->poseGoal.setZero();
+    // // Reset desired velocities to zero
+    // ctrlData->velocityDesired.setZero();
+
+    // // Reset the goal pose to zero
+    // ctrlData->poseGoal.setZero();
 
     return fsm::ok;
 }

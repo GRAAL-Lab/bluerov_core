@@ -8,6 +8,9 @@ SurfaceState::SurfaceState(fsm::FSM* fsm)
 
 // OnEntry
 fsm::retval SurfaceState::OnEntry() {
+    //arm
+    ctrlData->armed_desired = true;
+    ctrlData->flightMode_desired = "SURFACE"; // Set flight mode to surface
     return fsm::ok;
 }
 

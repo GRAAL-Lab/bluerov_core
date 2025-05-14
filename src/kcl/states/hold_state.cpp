@@ -17,6 +17,8 @@ fsm::retval HoldState::OnEntry() noexcept {
     }
 
     //arm vechicle
+    ctrlData->armed_desired = true;
+    ctrlData->flightMode_desired = "POSHOLD"; // Set flight mode to position hold
     //set vehicle to hold mode
     RCLCPP_INFO(rclcpp::get_logger("HoldState"), "Entering HOLD state");
 

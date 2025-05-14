@@ -9,8 +9,8 @@ WayPointNavigationState::WayPointNavigationState(fsm::FSM* fsm)
 
 // OnEntry: Initialize joystick state
 fsm::retval WayPointNavigationState::OnEntry() noexcept {
-    //ARM
-    //SETGUIDED MODE
+    ctrlData->armed_desired = true;
+    ctrlData->flightMode_desired = "GUIDED";
     //set waipoint desired
     RCLCPP_INFO(rclcpp::get_logger("WayPointNavigationState"), "Entering WAYPOINT_NAVIGATION state");
     return fsm::ok;
@@ -20,9 +20,9 @@ fsm::retval WayPointNavigationState::OnEntry() noexcept {
 fsm::retval WayPointNavigationState::Execute() noexcept {
     //calulate heading diesred
     //set heading desired
+    // heading should be in radians as its yaw.
+    // where it is computed between the current postion to goal postion but in global frame 
     RCLCPP_INFO(rclcpp::get_logger("WayPointNavigationState"), "Executing WAYPOINT_NAVIGATION state");
-
-    
 }
 
 // OnExit: Cleanup
