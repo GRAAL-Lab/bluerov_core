@@ -33,6 +33,7 @@ find_package(rclcpp_lifecycle REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(PkgConfig REQUIRED)
 find_package(mavlink REQUIRED)
+find_package(std_srvs REQUIRED)
 
 pkg_check_modules(LIBCONFIGPP REQUIRED libconfig++)
 
@@ -97,6 +98,7 @@ ament_target_dependencies(bridge_node
   rclcpp_lifecycle
   nav_msgs
   mavlink
+  std_srvs
 )
 
 target_link_libraries(bridge_node
