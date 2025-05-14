@@ -29,9 +29,14 @@ The package defines the following message types:
 - `PoseStamped`: Used for pose-related information.
 - `ControlCommand`: Custom service for control commands.
 
+# System Architecture
+See the [Architecture Diagram](sw.md).
+
 
 ## Author Details
 
+- [RAMI 2025 Team](https://www.graal.dibris.unige.it/studentcompetition)
+#### Team Leader
 - **LinkedIn**: [Youssef Attia](https://www.linkedin.com/)
 - **Email**: youssef.attia@edu.unige.it
 

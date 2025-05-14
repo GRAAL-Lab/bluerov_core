@@ -85,7 +85,3 @@ Legend for arrows color in Mission planner FSM:
 - green = TBM1
 - orange = TBM2
 - black = TBM3
-
-TODO?
-- add interface between mission planner and bridge?
-- add connection between bridge and ardusub?
