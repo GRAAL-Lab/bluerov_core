@@ -13,7 +13,8 @@ const std::string obstacles = "/auv/perception/obstacles";
 // CTRL
 const std::string pose_desired_local = "/auv/local/pose_desired";
 const std::string velocity_desired_local = "/auv/local/velocity_desired";
-const std::string acceleration_desired_local = "/auv/local/acceleration_desired";
+const std::string pose_desired_global = "/auv/global/pose_desired";
+const std::string velocity_desired_global = "/auv/global/velocity_desired";
 const std::string pose_goal_local= "/auv/local/pose_goal";
 
 
