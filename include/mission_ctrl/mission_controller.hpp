@@ -9,6 +9,9 @@
 #include "mission_ctrl/states/state_homing.hpp"
 #include "mission_ctrl/states/state_search_object.hpp"
 #include "mission_ctrl/states/state_cross_gate.hpp"
+#include "mission_ctrl/states/state_search_buoy_area.hpp"
+#include "mission_ctrl/states/state_inspect_buoy.hpp"
+#include "mission_ctrl/states/state_inspect_pipes.hpp"
 
 #include "auv_core_helper/msg/obstacle_list.hpp"
 #include "auv_core_helper/topicnames.hpp"
@@ -31,6 +34,9 @@ class MissionController : public rclcpp::Node {
     std::shared_ptr<states::StateSearchObject> stateSearchObject_;
     std::shared_ptr<states::StateCrossGate> stateCrossGate_;
     std::shared_ptr<states::StateHoming> stateHoming_;
+    std::shared_ptr<states::StateSearchBuoyArea> stateSearchBuoyArea_;
+    std::shared_ptr<states::StateInspectBuoy> stateInspectBuoy_;
+    std::shared_ptr<states::StateInspectPipes> stateInspectPipes_;
     std::unordered_map<std::string, std::shared_ptr<states::StateBase>> statesMap_;
 
     auv_core_helper::msg::ObstacleList obstacles_;

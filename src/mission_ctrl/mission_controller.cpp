@@ -21,12 +21,18 @@ MissionController::MissionController(std::string conf_filename)
     stateLatLong_ = std::make_shared<states::StateLatLong>();
     stateSearchObject_ = std::make_shared<states::StateSearchObject>();
     stateCrossGate_ = std::make_shared<states::StateCrossGate>();
+    stateSearchBuoyArea_ = std::make_shared<states::StateSearchBuoyArea>();
+    stateInspectBuoy_ = std::make_shared<states::StateInspectBuoy>();
+    stateInspectPipes_ = std::make_shared<states::StateInspectPipes>();
 
     statesMap_.insert({ states::ID::init, stateInit_ });
     statesMap_.insert({ states::ID::homing, stateHoming_ });
     statesMap_.insert({ states::ID::moveToWp, stateLatLong_ });
     statesMap_.insert({ states::ID::searchForObject, stateSearchObject_ });
     statesMap_.insert({ states::ID::crossGate, stateCrossGate_ });
+    statesMap_.insert({ states::ID::searchBuoyArea, stateSearchBuoyArea_ });
+    statesMap_.insert({ states::ID::inspectBuoy, stateInspectBuoy_ });
+    statesMap_.insert({ states::ID::inspectPipes, stateInspectPipes_ });
 
 
     obstaclesSub_ = this->create_subscription<auv_core_helper::msg::ObstacleList>(
