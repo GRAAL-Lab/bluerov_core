@@ -13,7 +13,10 @@
 #include "std_msgs/msg/bool.hpp"                     
 #include "std_msgs/msg/float64.hpp"                  
 #include "std_msgs/msg/int8.hpp"                     
-#include "std_msgs/msg/int32.hpp"                                   
+#include "std_msgs/msg/int32.hpp"     
+#include "auv_core_helper/msg/battery_status.hpp"
+#include "tf2/LinearMath/Quaternion.h"
+
 
 // ROS 2 service headers
 #include "std_srvs/srv/set_bool.hpp"             
@@ -51,7 +54,7 @@ private:
     // ROS Publishers, Subscribers & Services
     //--------------------------------------------------------------------------
     rclcpp::Publisher<auv_core_helper::msg::HeartBeat>::SharedPtr heartBeatPublisher_;
-    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr batteryStatusPublisher_;
+    rclcpp::Publisher<auv_core_helper::msg::BatteryStatus>::SharedPtr batteryStatusPublisher_;
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr localPoseActualPublisher_;
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseActualPublisher_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr localVelocityActualPublisher_;
@@ -94,7 +97,7 @@ private:
     mavlink_set_position_target_global_int_t position_target_global_;
     mavlink_set_attitude_target_t attitude_target_;
 
-    const uint16_t MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_POSITION = 0b00000000000000000000000000000001;
+    /*const uint16_t MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_POSITION = 0b00000000000000000000000000000001;
     const uint16_t MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_VELOCITY = 0b00000000000000000000000000000010;
     const uint16_t MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_YAW = 0b00000000000000000000000000000100;
     const uint16_t MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_YAW_RATE = 0b00000000000000000000000000001000;
@@ -106,7 +109,7 @@ private:
     const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_ANGULAR_VELOCITY = 0b00000000000000000000000000010000;
     const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_ANGULAR_VELOCITY_BODY = 0b00000000000000000000000000100000;
     const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_FORCE_BODY = 0b00000000000000000000000001000000;
-    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_FORCE_NED = 0b00000000000000000000000010000000;
+    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_FORCE_NED = 0b00000000000000000000000010000000;*/
      
     //--------------------------------------------------------------------------
     // Waypoint Navigation Variables
