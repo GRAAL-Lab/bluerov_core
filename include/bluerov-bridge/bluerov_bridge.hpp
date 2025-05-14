@@ -185,7 +185,6 @@ private:
 
     /**
      * @brief Handle LOCAL_VELOCITY_NED message
-    /**
      * @brief Handle ATTITUDE message
      * @param msg The received MAVLink message
      */

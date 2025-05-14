@@ -487,14 +487,28 @@ void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg)
 // armingServiceCallback
 // Service callback to arm or disarm the vehicle.
 //=============================================================================
-void BlueROVBridge::armingServiceCallback(
-    const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
-    std::shared_ptr<std_srvs::srv::SetBool::Response> response)
+void BlueROVBridge::armingServiceCallback(const std::shared_ptr<std_srvs::srv::SetBool::Request> request, std::shared_ptr<std_srvs::srv::SetBool::Response> response)
 {
   RCLCPP_INFO(this->get_logger(), "Arming service called: %s", request->data ? "ARM" : "DISARM");
   setArmState(request->data);                                     // True to arm, false to disarm
-  response->success = true;                                      
-  response->message = request->data ? "Arm command sent." : "Disarm command sent.";
+  if(ack.command == MAV_CMD_COMPONENT_ARM_DISARM) {
+    if (ack.result == MAV_RESULT_ACCEPTED) {
+      response->success = true;
+      response->message = request->data ? "Arm command sent." : "Disarm command sent.";  
+    } else {
+      const char* error_str = "Unknown";
+      switch (ack.result) {
+        case MAV_RESULT_DENIED: error_str = "Arming vehicle DENIED"; break;
+        case MAV_RESULT_FAILED: error_str = "Arming vehicle FAILED"; break;
+        case MAV_RESULT_TEMPORARILY_REJECTED: error_str = "Arming vehicle TEMPORARILY_REJECTED"; break;
+        case MAV_RESULT_CANCELLED: error_str = "Arming vehicle CANCELLED"; break;
+        default: error_str = "UNKNOWN"; break;
+        response->success = false;
+        response->message = error_str;
+      }
+      RCLCPP_WARN(this->get_logger(), "Arming vehicle FAILED: %s", error_str);
+    }
+  }
 }
 
 //=============================================================================
@@ -506,9 +520,25 @@ void BlueROVBridge::flightModeServiceCallback(
     std::shared_ptr<auv_core_helper::srv::SetFlightMode::Response> response)
 {
   RCLCPP_INFO(this->get_logger(), "Flight mode service called: %s", request->mode.c_str());
+  if (ack.command == MAV_CMD_DO_SET_MODE) {
+    if (ack.result == MAV_RESULT_ACCEPTED) {
+      response->success = true;
+      response->message = "Flight mode command sent.";
+    } else {
+      const char* error_str = "Unknown";
+      switch (ack.result) {
+        case MAV_RESULT_DENIED: error_str = "Setting Flight Mode DENIED"; break;
+        case MAV_RESULT_UNSUPPORTED: error_str = "Flight Mode UNSUPPORTED"; break;
+        case MAV_RESULT_FAILED: error_str = "Setting Flight Mode FAILED"; break;
+        case MAV_RESULT_TEMPORARILY_REJECTED: error_str = "Setting Flight Mode TEMPORARILY_REJECTED"; break;
+        default: error_str = "UNKNOWN"; break;
+      }
+      response->success = false;
+      response->message = error_str;
+      RCLCPP_WARN(this->get_logger(), "Setting Flight Mode FAILED: %s", error_str);
+    }
+  }
   setFlightMode(request->mode);
-  response->success = true; // Assuming setFlightMode handles logging/errors
-  response->message = "Set flight mode command sent to '" + request->mode + "'.";
 }
 
 //=============================================================================
@@ -720,7 +750,7 @@ void BlueROVBridge::localPoseDesiredCallback(const auv_core_helper::msg::PoseSta
 //=============================================================================
 void BlueROVBridge::localVelocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
 {
-  RCLCPP_INFO(this->get_logger(), "Velocity desired received");
+  // RCLCPP_INFO(this->get_logger(), "Velocity desired received");
   if (!got_heartbeat_) {
     RCLCPP_WARN(this->get_logger(), 
         "Cannot set velocity yet; no autopilot heartbeat discovered!");
