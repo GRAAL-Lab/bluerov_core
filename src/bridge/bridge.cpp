@@ -51,6 +51,10 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options)
     std::bind(&BlueROVBridge::localPoseDesiredCallback, this, std::placeholders::_1));
   localVelocityDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired_local,10,
     std::bind(&BlueROVBridge::localVelocityDesiredCallback, this, std::placeholders::_1));
+  globalPoseDesiredSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_desired_global,10,
+    std::bind(&BlueROVBridge::globalPoseDesiredCallback, this, std::placeholders::_1));
+  globalVelocityDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired_global,10,
+    std::bind(&BlueROVBridge::globalVelocityDesiredCallback, this, std::placeholders::_1));
   rcChannelValuesDesiredSubscription_ = this->create_subscription<auv_core_helper::msg::RCChannels>(auv_core_helper::topicnames::rc_channel_values_desired,10,
     std::bind(&BlueROVBridge::rcChannelValuesDesiredCallback, this, std::placeholders::_1));
   
@@ -668,12 +672,12 @@ void BlueROVBridge::localPoseDesiredCallback(const auv_core_helper::msg::PoseSta
     return;
   }
 
-// make a topic for feedbacking error status 
-  if (hb.custom_mode != MAV_MODE_GUIDED_ARMED) {
+  // make a topic for feedbacking error status 
+  /*if (hb.custom_mode != MAV_MODE_GUIDED_ARMED) {
     RCLCPP_WARN(this->get_logger(), 
         "Vehicle is not in GUIDED mode and Armed. Cannot set local pose.");
     return;
-  }
+  }*/
   
   RCLCPP_INFO(this->get_logger(), "Local pose desired received");
   RCLCPP_INFO(this->get_logger(), "x: %f, y: %f, z: %f, yaw: %f", position_target_.x, position_target_.y, position_target_.z, position_target_.yaw);
@@ -683,8 +687,8 @@ void BlueROVBridge::localPoseDesiredCallback(const auv_core_helper::msg::PoseSta
   position_target_.target_component = target_component_;
   position_target_.coordinate_frame = MAV_FRAME_LOCAL_NED;
   position_target_.type_mask = POSITION_TARGET_TYPEMASK_AX_IGNORE | 
-                                POSITION_TARGET_TYPEMASK_AY_IGNORE | 
-                                POSITION_TARGET_TYPEMASK_AZ_IGNORE ;
+                               POSITION_TARGET_TYPEMASK_AY_IGNORE | 
+                               POSITION_TARGET_TYPEMASK_AZ_IGNORE ;
   position_target_.x = msg->x;
   position_target_.y = msg->y;
   position_target_.z = msg->z;
@@ -723,11 +727,11 @@ void BlueROVBridge::localVelocityDesiredCallback(const geometry_msgs::msg::Twist
     return;
   }
   
-  if (hb.custom_mode != MAV_MODE_GUIDED_ARMED) {
+  /*if (hb.custom_mode != MAV_MODE_GUIDED_ARMED) {
     RCLCPP_WARN(this->get_logger(), 
         "Vehicle is not in GUIDED mode and Armed. Cannot set velocity.");
     return;
-  }
+  }*/
   
   position_target_.vx = msg->linear.x;
   position_target_.vy = msg->linear.y;
@@ -765,91 +769,80 @@ void BlueROVBridge::SetPositionTargetLocalNED(const mavlink_set_position_target_
   sendMavlinkMessage(msg);
   
   RCLCPP_INFO(this->get_logger(), 
-      "Sent waypoint to ArduPilot: NED(%.2f, %.2f, %.2f)",
+      "Sent waypoint to ArduSub: NED(%.2f, %.2f, %.2f)",
       position_target_.x, position_target_.y, position_target_.z);
 }
 
 //=============================================================================
-// prepareGlobalPositionTarget
-// Prepares a MAVLink SET_POSITION_TARGET_GLOBAL_INT structure
+// globalPoseDesiredCallback
 //=============================================================================
-/*void BlueROVBridge::prepareGlobalPositionTarget(int32_t lat_int, int32_t lon_int, float alt, 
-                                              mavlink_set_position_target_global_int_t& global_target)
+void BlueROVBridge::globalPoseDesiredCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg)
 {
-  // Clear the structure
-  memset(&global_target, 0, sizeof(global_target));
-  
-  // Set header information
-  global_target.time_boot_ms = static_cast<uint32_t>(this->now().nanoseconds() / 1000000);
-  global_target.target_system = target_system_;
-  global_target.target_component = target_component_;
-  
-  // Set coordinate frame
-  global_target.coordinate_frame = MAV_FRAME_GLOBAL_INT;  // Or MAV_FRAME_GLOBAL_RELATIVE_ALT_INT
-  
-  // Create type_mask - ignore velocity and acceleration
-  // bit set to 1 means "ignore this dimension"
-  global_target.type_mask = 0b0000111111000000;  // Ignore velocity, acceleration, yaw, yaw rate
-  
-  // Set position (lat/lon in degrees*1e7, altitude in meters)
-  global_target.lat_int = lat_int;
-  global_target.lon_int = lon_int;
-  global_target.alt = alt;
-  
-  // Set velocities and accelerations to zero (not used with the defined type_mask)
-  global_target.vx = 0.0f;
-  global_target.vy = 0.0f;
-  global_target.vz = 0.0f;
-  global_target.afx = 0.0f;
-  global_target.afy = 0.0f;
-  global_target.afz = 0.0f;
-  global_target.yaw = 0.0f;
-  global_target.yaw_rate = 0.0f;
-}*/
+  if (!got_heartbeat_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Cannot set global pose yet; no autopilot heartbeat discovered!");
+    return;
+  }
 
+  position_target_global_.time_boot_ms = static_cast<uint32_t>(this->now().nanoseconds() / 1000000);
+  position_target_global_.target_system = target_system_;
+  position_target_global_.target_component = target_component_;
+  position_target_global_.coordinate_frame = MAV_FRAME_GLOBAL;
+  position_target_global_.type_mask = POSITION_TARGET_TYPEMASK_AX_IGNORE | 
+                                      POSITION_TARGET_TYPEMASK_AY_IGNORE | 
+                                      POSITION_TARGET_TYPEMASK_AZ_IGNORE ;
+  position_target_global_.lat_int = msg->x;
+  position_target_global_.lon_int = msg->y;
+  position_target_global_.alt = msg->z;
+  position_target_global_.yaw = msg->yaw;
+  
+  SetPositionTargetGlobalInt(position_target_global_);
+
+}
+
+//=============================================================================
+// globalVelocityDesiredCallback
+//=============================================================================
+void BlueROVBridge::globalVelocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
+{
+  if (!got_heartbeat_) {
+    RCLCPP_WARN(this->get_logger(), 
+        "Cannot set global velocity yet; no autopilot heartbeat discovered!");
+    return;
+  }
+  position_target_global_.vx = msg->linear.x;
+  position_target_global_.vy = msg->linear.y;
+  position_target_global_.vz = msg->linear.z;
+  position_target_global_.yaw_rate = msg->angular.z;
+  SetPositionTargetGlobalInt(position_target_global_);
+  
+}
 //=============================================================================
 // sendGlobalWaypoint
 // Sends a waypoint using SET_POSITION_TARGET_GLOBAL_INT message
 //=============================================================================
-/*void BlueROVBridge::sendGlobalWaypoint(int32_t lat_int, int32_t lon_int, float alt)
+void BlueROVBridge::SetPositionTargetGlobalInt(const mavlink_set_position_target_global_int_t& position_target_global_)
 {
   if (!got_heartbeat_) {
     RCLCPP_WARN(this->get_logger(), 
         "Cannot send global waypoint; no autopilot heartbeat discovered!");
     return;
   }
-  
-  // Ensure we're in GUIDED mode
-  if (!guided_mode_active_ && !mode_change_requested_) {
-    RCLCPP_WARN(this->get_logger(), 
-        "Vehicle not in GUIDED mode. Setting GUIDED mode before sending global waypoint.");
-    setFlightMode("GUIDED");
-    return;
-  }
-  
-  RCLCPP_INFO(this->get_logger(),
-      "Sending global waypoint: lat=%d, lon=%d, alt=%.2f", 
-      lat_int, lon_int, alt);
-  
-  // Create the position target message
-  mavlink_set_position_target_global_int_t global_target;
-  prepareGlobalPositionTarget(lat_int, lon_int, alt, global_target);
-  
-  // Create the MAVLink message
+    
   mavlink_message_t msg;
   mavlink_msg_set_position_target_global_int_encode(
       system_id_,
       component_id_,
       &msg,
-      &global_target
+      &position_target_global_
   );
   
-  // Send the message
   sendMavlinkMessage(msg);
   
   RCLCPP_INFO(this->get_logger(), 
-      "Global waypoint sent successfully.");
-}*/
+      "Sent global waypoint to ArduSub: lat=%d, lon=%d, alt=%.2f", 
+      position_target_global_.lat_int, position_target_global_.lon_int, position_target_global_.alt);
+}
 
 //=============================================================================
 // sendAttitudeTarget

@@ -63,6 +63,8 @@ private:
     
     rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr localPoseDesiredSubscription_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr localVelocityDesiredSubscription_;
+    rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseDesiredSubscription_;
+    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr globalVelocityDesiredSubscription_;
     rclcpp::Subscription<auv_core_helper::msg::RCChannels>::SharedPtr rcChannelValuesDesiredSubscription_;
 
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr armingService_;
@@ -96,20 +98,6 @@ private:
     mavlink_set_position_target_local_ned_t position_target_;
     mavlink_set_position_target_global_int_t position_target_global_;
     mavlink_set_attitude_target_t attitude_target_;
-
-    /*const uint16_t MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_POSITION = 0b00000000000000000000000000000001;
-    const uint16_t MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_VELOCITY = 0b00000000000000000000000000000010;
-    const uint16_t MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_YAW = 0b00000000000000000000000000000100;
-    const uint16_t MAVLINK_POSITION_TARGET_LOCAL_NED_TYPE_MASK_YAW_RATE = 0b00000000000000000000000000001000;
-    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_YAW_ANGLE = 0b00000000000000000000000000000001;
-    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_YAW_RATE = 0b00000000000000000000000000000010;
-    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_BODY_RATE_OUTPUT = 0b00000000000000000000000000000100;
-    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_THRUST = 0b00000000000000000000000000001000;
-    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_FORCE = 0b00000000000000000000000000001000;
-    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_ANGULAR_VELOCITY = 0b00000000000000000000000000010000;
-    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_ANGULAR_VELOCITY_BODY = 0b00000000000000000000000000100000;
-    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_FORCE_BODY = 0b00000000000000000000000001000000;
-    const uint16_t MAVLINK_SET_ATTITUDE_TARGET_TYPE_MASK_FORCE_NED = 0b00000000000000000000000010000000;*/
      
     //--------------------------------------------------------------------------
     // Waypoint Navigation Variables
@@ -190,6 +178,14 @@ private:
     void handleGlobalPositionInt(const mavlink_message_t& msg);
 
     /**
+     * @brief Handle GLOBAL_POSITION_INT message
+     * @param msg The received MAVLink message
+     */
+    void handleGlobalVelocityInt(const mavlink_message_t& msg);
+
+    /**
+     * @brief Handle LOCAL_VELOCITY_NED message
+    /**
      * @brief Handle ATTITUDE message
      * @param msg The received MAVLink message
      */
@@ -265,11 +261,22 @@ private:
      */
     void localVelocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
     
-
     /**
      * @brief Send waypoint to ArduSub in NED coordinates
      */
     void SetPositionTargetLocalNED(const mavlink_set_position_target_local_ned_t& position_target_);
+    
+    /**
+     * @brief Callback for receiving desired global pose
+     * @param msg The received PoseStamped message for global coordinates
+     */
+    void globalPoseDesiredCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
+
+    /**
+     * @brief Callback for receiving desired global velocity
+     * @param msg The received Twist message for global coordinates
+     */
+    void globalVelocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
     
     /**
      * @brief Send a waypoint in global coordinates
@@ -277,22 +284,14 @@ private:
      * Sends waypoint using SET_POSITION_TARGET_GLOBAL_INT message to enable
      * global positioning and navigation.
      * 
-     * @param lat_int Latitude (degrees * 1e7)
-     * @param lon_int Longitude (degrees * 1e7)
-     * @param alt Altitude in meters (negative for below sea level)
      */
-    void sendGlobalWaypoint(int32_t lat_int, int32_t lon_int, float alt);
-    
+    void SetPositionTargetGlobalInt(const mavlink_set_position_target_global_int_t& position_target_global_);
+
     /**
-     * @brief Convert a global waypoint to MAVLink SET_POSITION_TARGET_GLOBAL_INT message
-     * 
-     * @param lat_int Latitude (degrees * 1e7)
-     * @param lon_int Longitude (degrees * 1e7)
-     * @param alt Altitude in meters
-     * @param global_target Output structure for MAVLink message
+     * @brief Set the attitude target
+     * @param attitude_target The desired attitude target
      */
-    void prepareGlobalPositionTarget(int32_t lat_int, int32_t lon_int, float alt, 
-                                    mavlink_set_position_target_global_int_t& global_target);
+    void SetAttitudeTarget(const mavlink_set_attitude_target_t& attitude_target_);
 
     /**
      * @brief Send MAV_CMD_CONDITION_YAW command to set vehicle heading
@@ -306,12 +305,6 @@ private:
      * @param angular_rate Angular rate for rotation (degrees/second)
      */
     void sendConditionYaw(float heading_deg, bool is_relative = false, int direction = 0, float angular_rate = 0.0f);                                
-
-    /**
-     * @brief Set the attitude target
-     * @param attitude_target The desired attitude target
-     */
-    void SetAttitudeTarget(const mavlink_set_attitude_target_t& attitude_target_);
 
     /**
      * @brief Send MAV_CMD_DO_SET_HOME command to set the home position
