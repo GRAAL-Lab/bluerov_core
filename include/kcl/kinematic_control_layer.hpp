@@ -12,7 +12,6 @@
 
 // AUV-specific headers
 #include "kcl/data_structs.hpp"
-#include "auv_core_helper/srv/control_command.hpp"
 #include "auv_core_helper/msg/pose_stamped.hpp"
 #include "auv_core_helper/helper_lib.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
@@ -27,7 +26,7 @@
 #include "states/commands.hpp"
 
 // AUV-specific topic names
-#include "auv_msgs_ros2/topicnames.hpp"
+#include "auv_core_helper/topicnames.hpp"
 
 // AUV-specific message types between mission control and the AUV
 #include "auv_core_helper/action/set_kcl.hpp"

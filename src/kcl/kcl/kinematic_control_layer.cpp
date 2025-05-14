@@ -30,23 +30,23 @@ KCL::KCL()
 
     // Create subscriptions
     poseActualSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(
-        auv_core_helper::topicnames::pose_actual, 1,
+        auv_core_helper::topicnames::pose_actual_local, 1,
         std::bind(&KCL::PoseActualCallback, this, std::placeholders::_1));
 
     velocityActualSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(
-        auv_core_helper::topicnames::velocity_actual, 1,
+        auv_core_helper::topicnames::velocity_actual_local, 1,
         std::bind(&KCL::VelocityActualCallback, this, std::placeholders::_1));
 
     accelerationActualSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(
-        auv_core_helper::topicnames::acceleration_actual, 1,
+        auv_core_helper::topicnames::acceleration_actual_local, 1,
         std::bind(&KCL::AccelerationActualCallback, this, std::placeholders::_1));
 
     // Create publishers
     poseGoalPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(
-        auv_core_helper::topicnames::pose_goal, 1);
+        auv_core_helper::topicnames::pose_goal_local, 1);
 
     velocityDesiredPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(
-        auv_core_helper::topicnames::velocity_desired, 1);
+        auv_core_helper::topicnames::velocity_desired_local, 1);
 
     statePublisher_ = this->create_publisher<std_msgs::msg::String>(
         auv_core_helper::topicnames::kcl_state, 1);

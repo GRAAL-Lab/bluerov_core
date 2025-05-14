@@ -26,7 +26,6 @@
 // -------------------------
 #include "kcl/data_structs.hpp"
 #include "auv_core_helper/helper_lib.hpp"
-#include "auv_core_helper/srv/control_command.hpp"
 #include "auv_core_helper/msg/pose_stamped.hpp"
 #include "states/commands.hpp"
 #include "ctrl_toolbox/pid/DigitalPID.h"
