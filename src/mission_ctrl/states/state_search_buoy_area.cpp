@@ -1,4 +1,4 @@
-#include "state_search_buoy_area.hpp"
+#include "mission_ctrl/states/state_search_buoy_area.hpp"
 
 namespace mission {
 
@@ -15,11 +15,12 @@ namespace states {
         return fsm::ok;        
     }
 
-    fsm::retval StateInit::Execute(){
+    fsm::retval StateSearchBuoyArea::Execute(){
         
+        return fsm::ok;       
     }
 
-    fsm::retval StateInit::OnExit(){
+    fsm::retval StateSearchBuoyArea::OnExit(){
         
         return fsm::ok;
     }

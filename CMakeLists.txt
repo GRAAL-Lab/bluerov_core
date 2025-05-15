@@ -35,6 +35,10 @@ set(MISSION_CTRL_SRCS
   src/mission_ctrl/states/state_homing.cpp
   src/mission_ctrl/states/state_search_object.cpp
   src/mission_ctrl/states/state_cross_gate.cpp
+  src/mission_ctrl/states/state_inspect_buoy.cpp
+  src/mission_ctrl/states/state_inspect_pipes.cpp
+  src/mission_ctrl/states/state_search_buoy_area.cpp
+
 )
 # --- Library target ---
 add_library(mission_ctrl_lib ${MISSION_CTRL_SRCS})

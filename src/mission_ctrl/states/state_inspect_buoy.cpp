@@ -1,24 +1,27 @@
-#include "state_inspect_buoy.hpp"
+#include "mission_ctrl/states/state_inspect_buoy.hpp"
 
 namespace mission {
 
 namespace states {
 
-    StateInspectBuoy:StateInspectBuoy(){
+    StateInspectBuoy::StateInspectBuoy(){
     }
 
     StateInspectBuoy::~StateInspectBuoy() {
     }
 
-    fsm::retval StateInspectBuoy::OnEntry(){           
+    fsm::retval StateInspectBuoy::OnEntry(){       
+
         return fsm::ok;        
     }
 
-    fsm::retval StateInit::Execute(){
+    fsm::retval StateInspectBuoy::Execute(){
         
+        return fsm::ok;       
     }
 
-    fsm::retval StateInit::OnExit(){
+    fsm::retval StateInspectBuoy::OnExit(){
+        
         return fsm::ok;
     }
 }

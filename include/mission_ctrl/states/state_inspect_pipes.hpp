@@ -4,7 +4,7 @@ namespace mission {
 
 namespace states {
 
-    class StateInspectPipes : public StateInspectPipes {
+    class StateInspectPipes : public StateBase {
     public:
         StateInspectPipes();
         ~StateInspectPipes() override;

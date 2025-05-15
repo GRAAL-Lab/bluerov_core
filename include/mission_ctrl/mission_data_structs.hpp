@@ -78,7 +78,7 @@ struct GateBuoy : public Buoy {
 
 struct DtcBuoy : public Buoy {
     DtcBuoy(ctb::LatLong pos, BuoyColor color)
-        : Buoy { pos, 0.1, color }
+        : Buoy { pos, 0.15, color }
     {
     }
 };
@@ -218,7 +218,7 @@ protected:
             PipelinePipe pipe;
             if (!ctb::GetParam(pipelinePipeSetting, pipe.number, "number"))
                 return false;
-            if (!ctb::GetParam(pipelinePipeSetting, pipe.angleWithNorth, "angleWithNorth"))
+            if (!ctb::GetParam(pipelinePipeSetting, pipe.angleWithNorth, "orientation"))
                 return false;
             if (!LatLongFromConfig(pipelinePipeSetting, pipe.position, "centroid"))
                 return false;

@@ -12,6 +12,7 @@ namespace states {
 
     fsm::retval StateInspectPipes::OnEntry(){
 
+        return fsm::ok;       
     }
 
     fsm::retval StateInspectPipes::Execute(){
