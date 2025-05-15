@@ -54,7 +54,7 @@ private:
     // ROS Publishers, Subscribers & Services
     //--------------------------------------------------------------------------
     rclcpp::Publisher<auv_core_helper::msg::HeartBeat>::SharedPtr heartBeatPublisher_;
-    //rclcpp::Publisher<auv_core_helper::msg::BatteryStatus>::SharedPtr batteryStatusPublisher_;
+    rclcpp::Publisher<auv_core_helper::msg::BatteryStatus>::SharedPtr batteryStatusPublisher_;
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr localPoseActualPublisher_;
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseActualPublisher_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr localVelocityActualPublisher_;
