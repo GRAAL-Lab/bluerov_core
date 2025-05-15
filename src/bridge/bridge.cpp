@@ -29,7 +29,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options)
 
   // Setup ROS pubs/subs
   heartBeatPublisher_ = this->create_publisher<auv_core_helper::msg::HeartBeat>(auv_core_helper::topicnames::heart_beat,1);
-  // batteryStatusPublisher_ = this->create_publisher<auv_core_helper::msg::BatteryStatus>(auv_core_helper::topicnames::battery_status,1);
+  batteryStatusPublisher_ = this->create_publisher<auv_core_helper::msg::BatteryStatus>(auv_core_helper::topicnames::battery_status,1);
   localPoseActualPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_local,1);
   globalPoseActualPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_global_,1);
   localVelocityActualPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_actual_local,1);
@@ -204,9 +204,9 @@ void BlueROVBridge::receiveData()
             handleCommandAck(msg);
             break;
 
-          // case MAVLINK_MSG_ID_BATTERY_STATUS:
-          //   handleBatteryStatus(msg);
-          //   break;
+          case MAVLINK_MSG_ID_BATTERY_STATUS:
+            handleBatteryStatus(msg);
+            break;
             
           default:
             break;
@@ -344,20 +344,23 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
 // //=============================================================================
 // // Handler for Publishing Battery Status
 // //=============================================================================
- /*{
+void BlueROVBridge::handleBatteryStatus(const mavlink_message_t& msg)
+{
    mavlink_battery_status_t battery_status;
    mavlink_msg_battery_status_decode(&msg, &battery_status);
 
-   auto battery_status_msg = std::make_unique<auv_core_helper::msg::BatteryStatus>();
-   battery_status_msg->temperature = battery_status.temperature;
-   battery_status_msg->voltages = battery_status.voltages;
-   battery_status_msg->current_battery = battery_status.current_battery;
-   battery_status_msg->current_consume = battery_status.current_consumed;
-   battery_status_msg->energy_consumed = battery_status.energy_consumed;
-   battery_status_msg->battery_percentage = battery_status.battery_percentage;
+   auto battery_status_ = std::make_unique<auv_core_helper::msg::BatteryStatus>();
+   battery_status_->temperature = battery_status.temperature;
+   for (size_t i = 0; i < 10; i++) {
+     battery_status_->voltages[i] = battery_status.voltages[i];
+   }
+   battery_status_->current_battery = battery_status.current_battery;
+   battery_status_->current_consumed = battery_status.current_consumed;
+   battery_status_->energy_consumed = battery_status.energy_consumed;
+   battery_status_->battery_percentage = battery_status.battery_remaining;
 
-   batteryStatusPublisher_->publish(*battery_status_msg);
- }*/  
+   batteryStatusPublisher_->publish(*battery_status_);
+ }
 
 //=============================================================================
 // Handler for Publishing Local Position and Velocity represented in the Local NED frame
@@ -458,7 +461,7 @@ void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg)
   
   mavlink_msg_command_ack_decode(&msg, &ack);
 
-  if (ack.command == MAV_CMD_COMPONENT_ARM_DISARM) {
+/*  if (ack.command == MAV_CMD_COMPONENT_ARM_DISARM) {
     if (ack.result == MAV_RESULT_ACCEPTED) {
       RCLCPP_INFO(this->get_logger(), "Arming vehicle");
     } else {
@@ -488,7 +491,7 @@ void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg)
       }
       RCLCPP_WARN(this->get_logger(), "Setting Flight Mode FAILED: %s", error_str);
     }
-  }
+  }*/
 }
 
 //=============================================================================
