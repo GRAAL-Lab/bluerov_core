@@ -17,7 +17,8 @@ struct ControlData {
     // State Information
     // ------------------------------
 
-    Eigen::VectorXd poseActual = Eigen::VectorXd(6); ///< Current AUV pose (x, y, z, roll, pitch, yaw).
+    Eigen::VectorXd poseActualGlobal = Eigen::VectorXd(6); ///< Current AUV pose (lat, long, z, roll, pitch, yaw) in global coordinates.
+    Eigen::VectorXd poseActualLocal = Eigen::VectorXd(6); ///<  Current AUV pose (x, y, z, roll, pitch, yaw).
     rclcpp::Time timeActual;               ///< Timestamp for the current pose.
     Eigen::VectorXd velocityActual = Eigen::VectorXd(6); ///< Current linear and angular velocities.
     Eigen::VectorXd accelerationActual = Eigen::VectorXd(6); ///< Current linear and angular accelerations.
@@ -101,7 +102,7 @@ struct ControlData {
     // ------------------------------
     ControlData() {
         // Initialize Eigen matrices and vectors with default values
-        poseActual.setZero();
+        poseActualGlobal.setZero();
         velocityActual.setZero();
         accelerationActual.setZero();
         velocityDesiredLocal.setZero();

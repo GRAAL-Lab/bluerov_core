@@ -118,12 +118,12 @@ fsm::retval PathFollowingState::Execute() noexcept {
         ctrlData->poseGoalLocal = poseGoalLocal;
 
         // Compute errors (world frame)
-        positionXError_ = ctrlData->poseGoalLocal(0) - ctrlData->poseActual(0);
-        positionYError_ = ctrlData->poseGoalLocal(1) - ctrlData->poseActual(1);
-        positionZError_ = ctrlData->poseGoalLocal(2) - ctrlData->poseActual(2);
-        rollError_      =  ctb::AngleDifference(ctrlData->poseGoalLocal(3), ctrlData->poseActual(3));
-        pitchError_     =  ctb::AngleDifference(ctrlData->poseGoalLocal(4), ctrlData->poseActual(4));
-        yawError_       =  ctb::AngleDifference(ctrlData->poseGoalLocal(5), ctrlData->poseActual(5));
+        positionXError_ = ctrlData->poseGoalLocal(0) - ctrlData->poseActualLocal(0);
+        positionYError_ = ctrlData->poseGoalLocal(1) - ctrlData->poseActualLocal(1);
+        positionZError_ = ctrlData->poseGoalLocal(2) - ctrlData->poseActualLocal(2);
+        rollError_      =  ctb::AngleDifference(ctrlData->poseGoalLocal(3), ctrlData->poseActualLocal(3));
+        pitchError_     =  ctb::AngleDifference(ctrlData->poseGoalLocal(4), ctrlData->poseActualLocal(4));
+        yawError_       =  ctb::AngleDifference(ctrlData->poseGoalLocal(5), ctrlData->poseActualLocal(5));
 
         // // Normalize orientation errors for safety
         // ctb::NormalizeAngle(rollError_);
@@ -131,7 +131,7 @@ fsm::retval PathFollowingState::Execute() noexcept {
         // ctb::NormalizeAngle(pitchError_);
 
         // Convert linear position errors to body frame
-        rml::EulerRPY rpy(ctrlData->poseActual(3), ctrlData->poseActual(4), ctrlData->poseActual(5));
+        rml::EulerRPY rpy(ctrlData->poseActualLocal(3), ctrlData->poseActualLocal(4), ctrlData->poseActualLocal(5));
         Eigen::Matrix3d R = rpy.ToRotationMatrix().matrix();
 
         Eigen::Vector3d errorWorld(positionXError_, positionYError_, positionZError_);
@@ -165,7 +165,7 @@ fsm::retval PathFollowingState::Execute() noexcept {
     } else {
         double intervalEnd = std::min(currentAbscissa_ + delta_, path->EndParameter());
 
-        closestPointAbscissa_ = path->FindAbscissaClosestPointOnInterval(ctrlData->poseActual.head(3), currentAbscissa_, intervalEnd);
+        closestPointAbscissa_ = path->FindAbscissaClosestPointOnInterval(ctrlData->poseActualLocal.head(3), currentAbscissa_, intervalEnd);
 
         Eigen::Vector3d currentPoint = path->At(closestPointAbscissa_);
         double goalAbscissa = closestPointAbscissa_ + delta_; 
@@ -180,7 +180,7 @@ fsm::retval PathFollowingState::Execute() noexcept {
         double theta_psi_d = pi_p;
 
         bool alosSuccess = alosController_->ALOS3D(
-            ctrlData->poseActual.head(3),
+            ctrlData->poseActualLocal.head(3),
             nextPoint,
             currentPoint,
             delta_,
@@ -204,19 +204,19 @@ fsm::retval PathFollowingState::Execute() noexcept {
         ctrlData->poseGoalLocal(5) = psi_d;
 
         // Compute errors in world frame
-        positionXError_ = ctrlData->poseGoalLocal(0) - ctrlData->poseActual(0);
-        positionYError_ = ctrlData->poseGoalLocal(1) - ctrlData->poseActual(1);
-        positionZError_ = ctrlData->poseGoalLocal(2) - ctrlData->poseActual(2);
-        rollError_      =  ctb::AngleDifference(ctrlData->poseGoalLocal(3), ctrlData->poseActual(3));
-        pitchError_     =  ctb::AngleDifference(ctrlData->poseGoalLocal(4), ctrlData->poseActual(4));
-        yawError_       =  ctb::AngleDifference(ctrlData->poseGoalLocal(5), ctrlData->poseActual(5));
+        positionXError_ = ctrlData->poseGoalLocal(0) - ctrlData->poseActualLocal(0);
+        positionYError_ = ctrlData->poseGoalLocal(1) - ctrlData->poseActualLocal(1);
+        positionZError_ = ctrlData->poseGoalLocal(2) - ctrlData->poseActualLocal(2);
+        rollError_      =  ctb::AngleDifference(ctrlData->poseGoalLocal(3), ctrlData->poseActualLocal(3));
+        pitchError_     =  ctb::AngleDifference(ctrlData->poseGoalLocal(4), ctrlData->poseActualLocal(4));
+        yawError_       =  ctb::AngleDifference(ctrlData->poseGoalLocal(5), ctrlData->poseActualLocal(5));
 
         // ctb::NormalizeAngle(rollError_);
         // ctb::NormalizeAngle(yawError_);
         // ctb::NormalizeAngle(pitchError_);
 
         // Convert position error to body frame
-        rml::EulerRPY rpy(ctrlData->poseActual(3), ctrlData->poseActual(4), ctrlData->poseActual(5));
+        rml::EulerRPY rpy(ctrlData->poseActualLocal(3), ctrlData->poseActualLocal(4), ctrlData->poseActualLocal(5));
         Eigen::Matrix3d R = rpy.ToRotationMatrix().matrix();
         Eigen::Vector3d errorWorld(positionXError_, positionYError_, positionZError_);
         Eigen::Vector3d errorBody = R.transpose() * errorWorld;

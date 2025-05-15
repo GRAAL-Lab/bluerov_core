@@ -29,7 +29,7 @@ KCL::KCL()
 
 
     // Create subscriptions
-    poseActualSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_local, 1,std::bind(&KCL::PoseActualCallback, this, std::placeholders::_1));
+    poseActualGlobalSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_global_, 1,std::bind(&KCL::PoseActualglobalCallback, this, std::placeholders::_1));
 
     velocityActualSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_actual_local, 1,std::bind(&KCL::VelocityActualCallback, this, std::placeholders::_1));
 
@@ -76,10 +76,12 @@ KCL::KCL()
 
 }
 
-void KCL::PoseActualCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg) {
+void KCL::PoseActualglobalCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg) {
     // Update actual pose in control data
-    ctrlData_->poseActual << msg->x, msg->y, msg->z, msg->roll, msg->pitch, msg->yaw;
+    ctrlData_->poseActualGlobal << msg->x, msg->y, msg->z, msg->roll, msg->pitch, msg->yaw;
     ctrlData_->timeActual = msg->header.stamp;
+    //print
+    RCLCPP_INFO(this->get_logger(), "Pose Actual: %f, %f, %f, %f, %f, %f", msg->x, msg->y, msg->z, msg->roll, msg->pitch, msg->yaw);
 }
 
 void KCL::VelocityActualCallback(const geometry_msgs::msg::Twist::SharedPtr msg) {
@@ -95,17 +97,14 @@ void KCL::AccelerationActualCallback(const geometry_msgs::msg::Twist::SharedPtr 
 }
 
 
-rclcpp_action::GoalResponse KCL::HandleGoal(
-    const rclcpp_action::GoalUUID &, 
-    std::shared_ptr<const auv_core_helper::action::SetKCL::Goal> goal)
+rclcpp_action::GoalResponse KCL::HandleGoal(const rclcpp_action::GoalUUID &, std::shared_ptr<const auv_core_helper::action::SetKCL::Goal> goal)
 {
     RCLCPP_INFO(this->get_logger(), "Received goal request with state: %s", goal->desired_state.c_str());
     // TODO: Validate the goal here
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
-rclcpp_action::CancelResponse KCL::HandleCancel(
-    const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>>)
+rclcpp_action::CancelResponse KCL::HandleCancel(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>>)
 {
     RCLCPP_INFO(this->get_logger(), "Received request to cancel goal");
     // TODO: Handle cancel request

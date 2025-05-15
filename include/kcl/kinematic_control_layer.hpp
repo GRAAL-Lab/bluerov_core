@@ -38,6 +38,7 @@
 // Graal library 
 #include "fsm/fsm.h"
 #include "rml/Functions.h"
+#include "ctrl_toolbox/ctrl_toolbox.hpp"
 
 class KCL : public rclcpp::Node {
 public:
@@ -80,7 +81,7 @@ private:
     // --------------------
     // ROS 2 Subscriptions
     // --------------------
-    rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr poseActualSubscription_;
+    rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr poseActualGlobalSubscription_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr velocityActualSubscription_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr accelerationActualSubscription_;
 
@@ -118,7 +119,7 @@ private:
     void SetupTransitions();
 
     /// Callback for actual pose data.
-    void PoseActualCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
+    void PoseActualglobalCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
     
     /// Callback for actual velocity data.
     void VelocityActualCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
