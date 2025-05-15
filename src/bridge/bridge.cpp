@@ -68,6 +68,9 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options)
   // Timers
   data_timer_ = this->create_wall_timer(std::chrono::milliseconds(125), std::bind(&BlueROVBridge::receiveData, this)); // ~8Hz
 
+
+  mainTimer_ = this->create_wall_timer(std::chrono::milliseconds(125),std::bind(&BlueROVBridge::Execute, this)); // ~8Hz
+
 }
 
 //=============================================================================
@@ -212,6 +215,20 @@ void BlueROVBridge::receiveData()
     }
   }
 }
+
+
+void BlueROVBridge::Execute()
+{
+  // Wait until global_pose_msg and global_velocity_msg are initialized (i.e., data received from MAVLink)
+  if (global_pose_msg && global_velocity_msg) {
+    globalPoseActualPublisher_->publish(*global_pose_msg);
+    globalVelocityActualPublisher_->publish(*global_velocity_msg);
+  } else {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+      "Waiting for MAVLink global position/velocity data...");
+  }
+}
+
 
 //=============================================================================
 // sendMavlinkMessage
@@ -374,20 +391,15 @@ void BlueROVBridge::handleGlobalPositionInt(const mavlink_message_t& msg)
   mavlink_global_position_int_t pos_int;
   mavlink_msg_global_position_int_decode(&msg, &pos_int);
 
-  auto global_pose_msg = std::make_unique<auv_core_helper::msg::PoseStamped>();
   global_pose_msg->header.stamp = this->now();
   global_pose_msg->header.frame_id = "Global WGS84";
-  global_pose_msg->x = pos_int.lat ;          //Lat in degE7  
-  global_pose_msg->y = pos_int.lon ;          //Lon in degE7
-  global_pose_msg->z = -pos_int.alt ;         //Alt in mm
+  global_pose_msg->x = pos_int.lat / 1e7;  // Convert to degrees
+  global_pose_msg->y = pos_int.lon / 1e7;  // Convert to degrees
+  global_pose_msg->z = -pos_int.alt / 1000.0;  // mm → meters
 
-  auto global_velocity_msg = std::make_unique<geometry_msgs::msg::Twist>();
-  global_velocity_msg->linear.x = pos_int.vx;  //Vx in cm/s
-  global_velocity_msg->linear.y = pos_int.vy;  //Vy in cm/s
-  global_velocity_msg->linear.z = pos_int.vz;  //Vz in cm/s
-
-  globalPoseActualPublisher_->publish(std::move(global_pose_msg));  
-  globalVelocityActualPublisher_->publish(std::move(global_velocity_msg));
+  global_velocity_msg->linear.x = pos_int.vx / 100.0;  // cm/s → m/s
+  global_velocity_msg->linear.y = pos_int.vy / 100.0;
+  global_velocity_msg->linear.z = pos_int.vz / 100.0;
 }
 
 //=============================================================================
@@ -413,18 +425,14 @@ void BlueROVBridge::handleAttitude(const mavlink_message_t& msg)
   
   
   
-  auto global_pose_msg = std::make_unique<auv_core_helper::msg::PoseStamped>();
   global_pose_msg->roll = attitude.roll;            //Roll in rad
   global_pose_msg->pitch = attitude.pitch;         //Pitch in rad
   global_pose_msg->yaw = attitude.yaw;             //Yaw in rad
 
-  auto global_velocity_msg = std::make_unique<geometry_msgs::msg::Twist>();
   global_velocity_msg->angular.x = attitude.rollspeed;          //Roll rate in rad/s
   global_velocity_msg->angular.y = attitude.pitchspeed;        //Pitch rate in rad/s
   global_velocity_msg->angular.z = attitude.yawspeed;           //Yaw rate in rad/s
   
-  globalPoseActualPublisher_->publish(std::move(global_pose_msg));
-  globalVelocityActualPublisher_->publish(std::move(global_velocity_msg));
 }
 
 //=============================================================================
@@ -821,10 +829,10 @@ void BlueROVBridge::globalPoseDesiredCallback(const auv_core_helper::msg::PoseSt
   position_target_global_.type_mask = POSITION_TARGET_TYPEMASK_AX_IGNORE | 
                                       POSITION_TARGET_TYPEMASK_AY_IGNORE | 
                                       POSITION_TARGET_TYPEMASK_AZ_IGNORE ;
-  position_target_global_.lat_int = msg->x;
-  position_target_global_.lon_int = msg->y;
-  position_target_global_.alt = msg->z;
-  position_target_global_.yaw = msg->yaw;
+  position_target_global_.lat_int = static_cast<int32_t>(msg->x * 1e7); 
+  position_target_global_.lon_int = static_cast<int32_t>(msg->y * 1e7);
+  position_target_global_.alt = msg->z; //in meters
+  position_target_global_.yaw = msg->yaw; //in radians
   
   SetPositionTargetGlobalInt(position_target_global_);
 

@@ -74,6 +74,7 @@ private:
     // Timers
     //--------------------------------------------------------------------------
     rclcpp::TimerBase::SharedPtr data_timer_;         // Timer for MAVLink data reception
+    rclcpp::TimerBase::SharedPtr mainTimer_;         // Timer for main loop
 
     //--------------------------------------------------------------------------
     // MAVLink Socket / Connection
@@ -127,7 +128,11 @@ private:
     /// Position hold at last waypoint when queue is empty
     bool position_hold_active_{false};              // Vehicle is in POSHOLD mode
     geometry_msgs::msg::PoseStamped position_hold_waypoint_; // Position being held
-    
+
+    std::unique_ptr<auv_core_helper::msg::PoseStamped> global_pose_msg = std::make_unique<auv_core_helper::msg::PoseStamped>();
+    std::unique_ptr<geometry_msgs::msg::Twist> global_velocity_msg = std::make_unique<geometry_msgs::msg::Twist>();
+
+
 
     //--------------------------------------------------------------------------
     // Internal Methods
@@ -328,4 +333,9 @@ private:
      * @param continue_cmd If true, the vehicle will continue executing mission after reaching position
      */
     void sendOverrideGoto(const geometry_msgs::msg::Point& position, bool continue_cmd = false);
+
+    /**
+     * @brief Main loop for processing MAVLink messages and ROS callbacks
+     */
+    void Execute();
 };
