@@ -46,6 +46,8 @@ class MarineTrackingROS2 : public rclcpp::Node {
     double t0_ = 0.0;
 
     double trackingDt_ = 0.1;
+    bool enableDbgPrint_ = false;
+    double tLastDbgPrint_ = 0;
 
     bool firstRun_ = true;
     bool isFirstMsg_ = true;

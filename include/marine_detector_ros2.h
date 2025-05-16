@@ -35,6 +35,8 @@ public:
         const std::string& bagPath, 
         const bool isSim
     );
+    bool enableDbgPrint_ = false;
+    double tLastDbgPrint_ = 0;
 
 private:
     void Init(const std::string& bagPath, bool isSim);
