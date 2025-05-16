@@ -38,7 +38,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   DEPENDENCIES std_msgs geometry_msgs builtin_interfaces action_msgs
 )
 
-
 # Define the helper library
 add_library(${PROJECT_NAME}_lib SHARED
   src/helper_lib.cpp

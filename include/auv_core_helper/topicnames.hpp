@@ -7,8 +7,11 @@ namespace auv_core_helper {
 
 namespace topicnames {
 
+// MISSION
+const std::string mission_status = "/auv/mission/status";
+
 // PERCEPTION
-const std::string obstacles = "/auv/perception/obstacles";
+const std::string objects = "/auv/perception/objects";
 
 // CTRL
 const std::string pose_desired_local = "/auv/local/pose_desired";
