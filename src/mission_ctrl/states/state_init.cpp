@@ -16,6 +16,7 @@ namespace states {
 
         while(!taskData_->taskPhases.empty()) taskData_->taskPhases.pop();
         if(taskData_->taskType == taskBenchmarks::INSPECTION) {
+            taskData_->taskPhases.push(std::make_pair(states::ID::init, "")); // just to be clear
             taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, opis::uavWaypoint));
             taskData_->taskPhases.push(std::make_pair(states::ID::searchForObject, opis::gate));
             taskData_->taskPhases.push(std::make_pair(states::ID::crossGate, ""));
@@ -33,13 +34,13 @@ namespace states {
     }
 
     fsm::retval StateInit::Execute()
-    {
-        // std::cerr << "\n\nInit with tasks: \n";
-        // for (const auto& task : taskData_->taskPhases) {
-        //     std::cerr << task.first << " - " << task.second << std::endl;
-        // }
-        std::cerr << "Next state: " << taskData_->taskPhases.front().first << std::endl;
-        return fsm_->SetNextState(taskData_->taskPhases.front().first);
+    {   
+        if(ctrlData->perceptionData.isAlive){
+            return this->SetNextMissionState();
+        }else{
+            return fsm::ok;
+        }
+        
     }
 
     fsm::retval StateInit::OnExit()

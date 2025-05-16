@@ -12,6 +12,7 @@ endif()
 # --- Ament / ROS 2 dependencies ---
 find_package(ament_cmake        REQUIRED)
 find_package(rclcpp             REQUIRED)
+find_package(rclcpp_action             REQUIRED)
 find_package(std_msgs           REQUIRED)
 find_package(ament_index_cpp    REQUIRED)
 
@@ -52,7 +53,7 @@ target_include_directories(mission_ctrl_lib
 )
 
 ament_target_dependencies(mission_ctrl_lib
-  rclcpp std_msgs ament_index_cpp auv_core_helper
+  rclcpp rclcpp_action std_msgs ament_index_cpp auv_core_helper
 )
 
 target_link_libraries(mission_ctrl_lib
@@ -76,7 +77,7 @@ target_include_directories(controller_node
 )
 
 ament_target_dependencies(controller_node
-  rclcpp ament_index_cpp auv_core_helper
+  rclcpp rclcpp_action ament_index_cpp auv_core_helper
 )
 
 target_link_libraries(controller_node

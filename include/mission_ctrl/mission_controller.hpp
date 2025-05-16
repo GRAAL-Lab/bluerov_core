@@ -1,6 +1,6 @@
 
 #include "rclcpp/rclcpp.hpp"
-
+#include "rclcpp_action/rclcpp_action.hpp"
 
 #include "mission_ctrl/mission_data_structs.hpp"
 #include "mission_ctrl/states/state_base.hpp"
@@ -13,10 +13,11 @@
 #include "mission_ctrl/states/state_inspect_buoy.hpp"
 #include "mission_ctrl/states/state_inspect_pipes.hpp"
 
-#include "auv_core_helper/msg/obstacle_list.hpp"
-#include "auv_core_helper/topicnames.hpp"
 
-// #include "auv_core_helper/msg/pose_stamped.hpp"
+#include "auv_core_helper/topicnames.hpp"
+#include "auv_core_helper/action/set_kcl.hpp"
+#include "auv_core_helper/msg/mission_status.hpp"
+#include "auv_core_helper/msg/dtc_list.hpp"
 
 namespace mission {
 
@@ -39,19 +40,28 @@ class MissionController : public rclcpp::Node {
     std::shared_ptr<states::StateInspectPipes> stateInspectPipes_;
     std::unordered_map<std::string, std::shared_ptr<states::StateBase>> statesMap_;
 
-    auv_core_helper::msg::ObstacleList obstacles_;
-    rclcpp::Subscription<auv_core_helper::msg::ObstacleList>::SharedPtr obstaclesSub_;
+    rclcpp::Publisher<auv_core_helper::msg::MissionStatus>::SharedPtr missionStatusPub_;
+    rclcpp_action::Client<auv_core_helper::action::SetKCL>::SharedPtr setKCLClient_;
+    
+    //auv_core_helper::msg::ObstacleList obstacles_;
+    rclcpp::Subscription<auv_core_helper::msg::DtcList>::SharedPtr perceptionSub_;
 
     rclcpp::TimerBase::SharedPtr runTimer_; // Main function timer
+
+    rclcpp::Time lastPerceptionTime_;
+    //rclcpp::Time lastKCLTime_;
 
     bool LoadConfiguration(std::shared_ptr<TaskBenchmarkSettings>& conf);
 
     void SetUpFSM();
 
+    void Run();
+
+    void PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg);
+
 public:
     MissionController(std::string conf_filename);
 
-    void Run();
 };
 
 }

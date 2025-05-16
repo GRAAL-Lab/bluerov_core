@@ -13,12 +13,14 @@
   <depend>auv_core_helper</depend>
 
   <build_depend>rclcpp</build_depend>
+  <build_depend>rclcpp_action</build_depend>
   <build_depend>std_msgs</build_depend>
   <build_depend>rml</build_depend>
   <build_depend>fsm</build_depend>
   <build_depend>ctrl_toolbox</build_depend>
 
   <exec_depend>rclcpp</exec_depend>
+  <exec_depend>rclcpp_action</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>rml</exec_depend>
   <exec_depend>fsm</exec_depend>

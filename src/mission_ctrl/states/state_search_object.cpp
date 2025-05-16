@@ -30,10 +30,8 @@ namespace states {
     fsm::retval StateSearchObject::Execute()
     {
         if (found) {
-            taskData_->taskPhases.pop();
             std::cerr << "Found!\n";
-            std::cerr << "Next state: " << taskData_->taskPhases.front().first << std::endl;
-            return fsm_->SetNextState(taskData_->taskPhases.front().first);
+            return this->SetNextMissionState();
         }
         double delta = std::fmod((ctrlData->bodyF_angularPosition.Yaw() - previous_bodyF_angularPosition.Yaw()) + 180, 360) - 180;
         cumulativeAngle += delta;

@@ -12,6 +12,9 @@ namespace states {
         fsm::retval OnEntry() override;
         fsm::retval Execute() override;
         fsm::retval OnExit() override;
+
+        uint numberOfBuoys;
+        uint numberOfBuoysInspected;
     };
 
 }

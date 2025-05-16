@@ -34,32 +34,96 @@ MissionController::MissionController(std::string conf_filename)
     statesMap_.insert({ states::ID::inspectBuoy, stateInspectBuoy_ });
     statesMap_.insert({ states::ID::inspectPipes, stateInspectPipes_ });
 
+    missionStatusPub_ = this->create_publisher<auv_core_helper::msg::MissionStatus>(
+        auv_core_helper::topicnames::mission_status, rclcpp::SystemDefaultsQoS());
 
-    obstaclesSub_ = this->create_subscription<auv_core_helper::msg::ObstacleList>(
-        auv_core_helper::topicnames::obstacles, rclcpp::SystemDefaultsQoS(),
-        [this](auv_core_helper::msg::ObstacleList::SharedPtr msg) {
-            obstacles_ = *msg;
-            RCLCPP_INFO(this->get_logger(), "Received obstacle list with %zu obstacles.", obstacles_.data.size());
-        });
-    auv_core_helper::msg::ObstacleList obstacles_;
-    rclcpp::Subscription<auv_core_helper::msg::ObstacleList>::SharedPtr obtaclesSub_;
+    setKCLClient_ = rclcpp_action::create_client<auv_core_helper::action::SetKCL>(
+        this, "set_kcl");
 
+    if (this->get_clock()->get_clock_type() == 1) {
+        lastPerceptionTime_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+    } else {
+        lastPerceptionTime_ = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
+    }
+    // lastPerceptionTime_ = this->get_clock()->now();
+    perceptionSub_ = this->create_subscription<auv_core_helper::msg::DtcList>(
+        auv_core_helper::topicnames::objects, rclcpp::SystemDefaultsQoS(),
+        std::bind(&MissionController::PerceptionCB, this, std::placeholders::_1));
+    
+         
     SetUpFSM();
 
-    double controlLoopRate = 0.5;
+    double controlLoopRate = 1.0; // Hz
     int msRunPeriod = 1.0 / (controlLoopRate) * 1000;
     // std::cout << "Controller Rate: " << conf_->controlLoopRate << "Hz" << std::endl;
     runTimer_ = this->create_wall_timer(std::chrono::milliseconds(msRunPeriod), std::bind(&MissionController::Run, this));
 };
 
 void MissionController::Run()
-{   
+{
+
+#ifndef DEBUG
+    rclcpp::Time now = this->get_clock()->now();
+    if (lastPerceptionTime_ > (now - rclcpp::Duration::from_seconds(5.0))) {
+        ctrlData_->perceptionData.isAlive = true;
+    } else {
+        ctrlData_->perceptionData.isAlive = false;
+    }
+#else
+    ctrlData_->perceptionData.isAlive = true;
+#endif
+
     // Switch State (if something happens)
     rFsm_.SwitchState();
     // Process Events
     rFsm_.ProcessEventQueue();
     // Execute current state
     rFsm_.ExecuteState();
+
+    // MISSION STATUS
+    auv_core_helper::msg::MissionStatus status;
+    status.stamp = this->now();
+    status.task_benchmark = taskData_->taskType;
+    if (rFsm_.GetCurrentStateName() == states::ID::init) {
+        status.state = states::ID::init;
+    } else {
+        status.state = taskData_->taskPhases.front().first; // rFsm_.GetCurrentStateName();
+        status.state_object = taskData_->taskPhases.front().second;
+    }
+    status.requests.obstacles = ctrlData_->perceptionData.enableDtcObstacles;
+    status.requests.buoys = ctrlData_->perceptionData.enableDtcBuoys;
+
+    missionStatusPub_->publish(status);
+
+    // KCL COMMAND
+    if (ctrlData_->kclData.newCommand) {
+        ctrlData_->kclData.newCommand = false;
+        ctrlData_->kclData.executingCommand = true;
+
+#ifndef DEBUG
+        if (!setKCLClient_->wait_for_action_server(std::chrono::seconds(3))) {
+            // HUGE FAIL
+            RCLCPP_WARN(this->get_logger(), "Action server not available.");
+            return;
+        }
+#endif
+
+        auto options = rclcpp_action::Client<auv_core_helper::action::SetKCL>::SendGoalOptions();
+        options.result_callback = [this](const rclcpp_action::ClientGoalHandle<auv_core_helper::action::SetKCL>::WrappedResult& result) {
+            if (result.code != rclcpp_action::ResultCode::SUCCEEDED) {
+                // HUGE FAIL
+                RCLCPP_ERROR(this->get_logger(), "Command execution failed.");
+            }
+            ctrlData_->kclData.executingCommand = false;
+        };
+
+        auv_core_helper::action::SetKCL::Goal cmd;
+        cmd.desired_state = "WAYPOINT_NAVIGATION";
+        cmd.data = ctrlData_->kclData.kcl_command;
+        std::cout << "Sending command: ros2 action send_goal /set_kcl_state auv_core_helper/action/SetKCL \"{desired_state: '"
+                  << cmd.desired_state << "', data: {latitude: " << cmd.data.latitude << ", longitude: " << cmd.data.longitude << "}}\"" << std::endl;
+        setKCLClient_->async_send_goal(cmd, options);
+    }
 };
 
 void MissionController::SetUpFSM()
@@ -86,6 +150,35 @@ void MissionController::SetUpFSM()
     }
 
     rFsm_.SetInitState(mission::states::ID::init);
+}
+
+void MissionController::PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg)
+{
+    lastPerceptionTime_ = this->get_clock()->now();
+    // Update perception data
+    // for(auto& obstacle : msg->obstacles) {
+        
+    // }
+    for(auto& buoy : msg->buoys) {
+        Buoy b;
+        b.detectionId = buoy.id;
+        b.position.latitude = buoy.position.latitude;
+        b.position.longitude = buoy.position.longitude;
+        b.radius = buoy.radius;
+        b.color = buoy.color;
+        b.colorConfidence = buoy.color_confidence;
+
+        ctrlData_->perceptionData.detectedBuoys[buoy.id] = b;
+    }
+
+//     LatLong position
+// string color
+// float64 color_confidence
+
+
+// GenericObstacle[] obstacles
+// Buoy[]  buoys
+
 }
 
 bool MissionController::LoadConfiguration(std::shared_ptr<TaskBenchmarkSettings>& conf)

@@ -3,6 +3,8 @@
 
 #include <string>
 
+#define DEBUG
+
 namespace mission {
 
 namespace taskBenchmarks {
@@ -24,7 +26,6 @@ namespace states {
         const std::string interventionOnConsole = "InterventionOnConsole";
         const std::string homing = "Homing";
         const std::string halt = "Halt";
-
     }
 }
 
@@ -37,5 +38,4 @@ namespace opis {
 }
 
 }
-
 #endif // MISSION_CTRL_DEFINES_HPP

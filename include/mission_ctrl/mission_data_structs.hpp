@@ -9,96 +9,107 @@
 #include "mission_ctrl/mission_ctrl_defines.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+#include "auv_core_helper/msg/mission_ctrl_kcl.hpp"
+
 namespace mission {
+
+// === Forward declarations ===
+
+struct DtcBuoy;
+struct GateBuoy;
+struct PerceptionData;
+struct KinematicData;
+struct ControlData;
+
+struct Buoy;
+struct Gate;
+struct BuoysArea;
+struct PipelinePipe;
+struct PipelineStructure;
+
+struct TaskBenchmarkSettings;
+struct Inspection;
+struct Intervention;
+struct InspectionAndIntervention;
+
+// ===========================
+
+struct BuoyActionColorMap{
+    std::string clockWiseRotationColor;
+    std::string counterClockWiseRotationColor;
+    std::string goUpColor;
+    std::string goDownColor;
+    friend std::ostream& operator<<(std::ostream& os, BuoyActionColorMap const& map)
+    {
+        os << "BuoyActionColorMap {\n";
+        os << "  ClockWiseRotation: " << map.clockWiseRotationColor << "\n";
+        os << "  CounterClockWiseRotation: " << map.counterClockWiseRotationColor << "\n";
+        os << "  GoUp: " << map.goUpColor << "\n";
+        os << "  GoDown: " << map.goDownColor << "\n";
+        os << "}\n";
+        return os;
+    }
+};
+
+struct Buoy {
+    std::string detectionId;
+    ctb::LatLong position;
+    double radius; // 0.1m for gate buoys, 0.15m for dtc buoys
+    std::string color;
+    double colorConfidence;
+};
+
+struct Gate {
+    Buoy buoy1;
+    Buoy buoy2;
+    double distanceTolerance = 0.5;
+    double expectedDistance = 2.0;
+
+    bool SetGateBuoys(const Buoy& b1, const Buoy& b2)
+    {
+        Eigen::Vector3d distanceVector;
+        ctb::LatLong2LocalNED(b1.position, 0, b2.position, distanceVector);
+        if (distanceVector.norm() > expectedDistance + distanceTolerance || distanceVector.norm() < expectedDistance - distanceTolerance) {
+            return false;
+        }
+        buoy1 = b1;
+        buoy2 = b2;
+        return true;
+    }
+};
+
+struct MissionData {
+    std::vector<Buoy> inspectedBuoys;
+    Gate gate;
+};
+
+struct PerceptionData {
+    bool isAlive;
+    std::string state;
+
+    bool enableDtcObstacles;
+    bool enableDtcBuoys;
+
+    std::map<std::string, Buoy> detectedBuoys;
+};
+
+struct KinematicData {
+    bool isAlive;
+    std::string state;
+
+    bool newCommand;
+    bool executingCommand;
+    auv_core_helper::msg::MissionCtrlKCL kcl_command;
+};
 
 struct ControlData {
     ctb::LatLong inertialF_linearPosition;
     double depth;
     rml::EulerRPY bodyF_angularPosition;
-};
 
-enum BuoyAction {
-    ClockWiseRotation = 0,
-    CounterClockWiseRotation = 1,
-    GoUp = 2,
-    GoDown = 3
-};
-inline std::string BuoyActionToString(BuoyAction action)
-{
-    switch (action) {
-    case ClockWiseRotation:
-        return "ClockWiseRotation";
-    case CounterClockWiseRotation:
-        return "CounterClockWiseRotation";
-    case GoUp:
-        return "GoUp";
-    case GoDown:
-        return "GoDown";
-    default:
-        return "Unknown";
-    }
-}
-enum BuoyColor {
-    White = 0,
-    Yellow = 1,
-    Red = 2,
-    Black = 3,
-    Orange = 4
-};
-inline std::string BuoyColorToString(BuoyColor color)
-{
-    switch (color) {
-    case White:
-        return "White";
-    case Yellow:
-        return "Yellow";
-    case Red:
-        return "Red";
-    case Black:
-        return "Black";
-    case Orange:
-        return "Orange";
-    default:
-        return "Unknown";
-    }
-}
-
-struct Buoy {
-    ctb::LatLong position;
-    double radius;
-    BuoyColor color;
-};
-
-struct GateBuoy : public Buoy {
-    GateBuoy(ctb::LatLong pos)
-        : Buoy { pos, 0.1, BuoyColor::Orange }
-    {
-    }
-};
-
-struct DtcBuoy : public Buoy {
-    DtcBuoy(ctb::LatLong pos, BuoyColor color)
-        : Buoy { pos, 0.15, color }
-    {
-    }
-};
-
-struct Gate {
-    GateBuoy buoy1;
-    GateBuoy buoy2;
-    double distanceTolerance = 0.5;
-    double expectedDistance = 2.0;
-
-    Gate(GateBuoy& b1, GateBuoy& b2)
-        : buoy1(b1)
-        , buoy2(b2)
-    {
-        Eigen::Vector3d distanceVector;
-        ctb::LatLong2LocalNED(b1.position, 0, b2.position, distanceVector);
-        if (distanceVector.norm() > expectedDistance + distanceTolerance || distanceVector.norm() < expectedDistance - distanceTolerance) {
-            throw std::runtime_error("Gate buoys are too far apart!");
-        }
-    }
+    KinematicData kclData;
+    PerceptionData perceptionData;
+    MissionData missionData;
 };
 
 struct BuoysArea {
@@ -227,23 +238,27 @@ protected:
         return true;
     }
 
-    bool GetBuoysActionsFromFile(libconfig::Config& confObj, std::map<BuoyAction, BuoyColor>& buoysActionsMap)
+    bool GetBuoysActionsFromFile(libconfig::Config& confObj, BuoyActionColorMap& buoysActionsMap)
     {
         const libconfig::Setting& root = confObj.getRoot();
         const libconfig::Setting& buoysActions = root["buoysActions"];
-        uint color;
+        std::string color;
         if (!ctb::GetParam(buoysActions, color, "clockWiseRotation"))
             return false;
-        buoysActionsMap.emplace(ClockWiseRotation, static_cast<BuoyColor>(color));
+        buoysActionsMap.clockWiseRotationColor = color;
+        //buoysActionsMap.emplace(ClockWiseRotation, static_cast<BuoyColor>(color));
         if (!ctb::GetParam(buoysActions, color, "counterClockWiseRotation"))
             return false;
-        buoysActionsMap.emplace(CounterClockWiseRotation, static_cast<BuoyColor>(color));
+        buoysActionsMap.counterClockWiseRotationColor = color;
+        //buoysActionsMap.emplace(CounterClockWiseRotation, static_cast<BuoyColor>(color));
         if (!ctb::GetParam(buoysActions, color, "goUp"))
             return false;
-        buoysActionsMap.emplace(GoUp, static_cast<BuoyColor>(color));
+        buoysActionsMap.goUpColor = color;
+        //buoysActionsMap.emplace(GoUp, static_cast<BuoyColor>(color));
         if (!ctb::GetParam(buoysActions, color, "goDown"))
             return false;
-        buoysActionsMap.emplace(GoDown, static_cast<BuoyColor>(color));
+        buoysActionsMap.goDownColor = color;
+        //buoysActionsMap.emplace(GoDown, static_cast<BuoyColor>(color));
         return true;
     }
 
@@ -268,7 +283,7 @@ protected:
 struct Inspection : public TaskBenchmarkSettings {
     ctb::LatLong uavWaypoint;
     uint numberOfBuoys;
-    std::map<BuoyAction, BuoyColor> buoysActions;
+    BuoyActionColorMap buoysActions;
     std::vector<PipelinePipe> pipelinePipes;
 
     Inspection()
@@ -298,10 +313,7 @@ struct Inspection : public TaskBenchmarkSettings {
         os << "\n";
         os << "UavWaypoint: (" << uavWaypoint.latitude << ", " << uavWaypoint.longitude << ")\n";
         os << "NumberOfBuoys: " << numberOfBuoys << "\n";
-        os << "BuoysActions:\n";
-        for (auto const& a : buoysActions)
-            os << "  " << BuoyActionToString(a.first)
-               << " -> " << BuoyColorToString(a.second) << "\n";
+        os << buoysActions;
         os << "PipelinePipes:\n";
         for (auto const& p : pipelinePipes)
             os << p;
@@ -351,7 +363,7 @@ struct Intervention : public TaskBenchmarkSettings {
 struct InspectionAndIntervention : public TaskBenchmarkSettings {
     uint numberOfMainPipeDamageMarkers;
     uint numberOfBuoys;
-    std::map<BuoyAction, BuoyColor> buoysActions;
+    BuoyActionColorMap buoysActions;
     std::vector<PipelinePipe> pipelinePipes;
 
     InspectionAndIntervention()
@@ -379,11 +391,7 @@ struct InspectionAndIntervention : public TaskBenchmarkSettings {
         os << "\n";
         os << "NumberOfMainPipeDamageMarkers: " << numberOfMainPipeDamageMarkers << "\n";
         os << "NumberOfBuoys: " << numberOfBuoys << "\n";
-        os << "BuoysActions:\n";
-        for (const auto& action : buoysActions) {
-            os << "  Action: " << BuoyActionToString(action.first)
-               << " -> Color: " << BuoyColorToString(action.second) << "\n";
-        }
+        os << buoysActions;
         os << "PipelinePipes:\n";
         for (const auto& pipe : pipelinePipes) {
             os << pipe;
