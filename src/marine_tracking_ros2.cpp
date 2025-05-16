@@ -27,7 +27,6 @@ MarineTrackingROS2::MarineTrackingROS2(const std::string& bagPath, const bool is
     tracker_.Meas2Track().Print();
     tracker_.enableTrackPointChange = false;
     tracker_.enableFGR = false;
-    tracker_.enableEnforcePoints = false;
     tracker_.enableAdvTrackingPrint = false;
     runTimer_ = this->create_wall_timer(
         std::chrono::duration<double>(trackingDt_),
