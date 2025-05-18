@@ -3,6 +3,7 @@
 #include <chrono>
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
+#include "auv_core_helper/msg/lat_long.hpp"
 #include <json_utils.hpp>
 #include <memory>
 

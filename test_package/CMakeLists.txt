@@ -4,6 +4,7 @@ project(test_package)
 include_directories("${CMAKE_SOURCE_DIR}/include/jsoncons/include")
 include_directories("${CMAKE_SOURCE_DIR}/include/ctrl_toolbox/include/")
 include_directories("${CMAKE_SOURCE_DIR}/include/json_utils")
+include_directories("${CMAKE_SOURCE_DIR}/include")
 
 # Default to C99
 if(NOT CMAKE_C_STANDARD)
@@ -23,6 +24,9 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(auv_core_helper REQUIRED)
+find_package(ament_index_cpp REQUIRED)
+
 
 # uncomment the following section in order to fill in
 # further dependencies manually.
@@ -40,14 +44,23 @@ target_include_directories(json_utils PUBLIC
 
 # Executable target
 add_executable(my_test src/test_node.cpp)
+add_executable(my_terminal src/terminal.cpp)
+
 # Link against the json_utils library
 target_link_libraries(my_test
   json_utils
 )
 
-ament_target_dependencies(my_test rclcpp std_msgs)
+target_link_libraries(my_terminal config++) 
 
-install(TARGETS my_test DESTINATION lib/${PROJECT_NAME})
+ament_target_dependencies(my_test rclcpp std_msgs auv_core_helper)
+ament_target_dependencies(my_terminal rclcpp std_msgs auv_core_helper ament_index_cpp)
+
+install(TARGETS my_test my_terminal DESTINATION lib/${PROJECT_NAME})
+
+install(DIRECTORY conf/
+  DESTINATION share/${PROJECT_NAME}/conf
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
