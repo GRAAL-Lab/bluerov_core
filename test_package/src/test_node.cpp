@@ -3,6 +3,7 @@
 #include <chrono>
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/string.hpp"
+#include "std_msgs/msg/float64.hpp"
 #include "auv_core_helper/msg/lat_long.hpp"
 #include <json_utils.hpp>
 #include <memory>
@@ -46,8 +47,8 @@ public:
   : Node("minimal_publisher"), count_(0)
   {
      
-    pub_lat = this->create_publisher<std_msgs::msg::String>("latitude", 10);
-    pub_long = this->create_publisher<std_msgs::msg::String>("longitude", 10);
+    pub_lat = this->create_publisher<std_msgs::msg::Float64>("latitude", 10);
+    pub_long = this->create_publisher<std_msgs::msg::Float64>("longitude", 10);
     
     // Creazione socket
     if ((sockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
@@ -107,13 +108,13 @@ private:
     
     if (lat_long!=nullptr)
     {	
-    	auto message_lat = std_msgs::msg::String();
-	message_lat.data = "Latitude:\n" + std::to_string(lat_long[0]);
-	RCLCPP_INFO(this->get_logger(), "Publishing: '%s'", message_lat.data.c_str());
+    	auto message_lat = std_msgs::msg::Float64();
+	message_lat.data = lat_long[0];
+	RCLCPP_INFO(this->get_logger(), "Publishing: '%s'", message_lat.data);
 	
-	auto message_long = std_msgs::msg::String();
-	message_long.data = "Longitude:\n" + std::to_string(lat_long[1]);
-	RCLCPP_INFO(this->get_logger(), "Publishing: '%s'", message_long.data.c_str());
+	auto message_long = std_msgs::msg::Float64();
+	message_long.data = lat_long[1];
+	RCLCPP_INFO(this->get_logger(), "Publishing: '%s'", message_long.data);
 	
 	pub_lat->publish(message_lat);
 	pub_long->publish(message_long);
@@ -152,8 +153,8 @@ private:
   }
 
   rclcpp::TimerBase::SharedPtr timer_;
-  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_lat;
-  rclcpp::Publisher<std_msgs::msg::String>::SharedPtr pub_long;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_lat;
+  rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_long;
   size_t count_;
 };
 

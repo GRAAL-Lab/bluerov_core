@@ -14,6 +14,9 @@
 #include "auv_core_helper/msg/pipeline_pipe.hpp"
 
 #include <mission_ctrl/mission_data_structs.hpp>
+#include "std_msgs/msg/string.hpp"
+#include "std_msgs/msg/float64.hpp"
+
 
 using MissionCommand = auv_core_helper::srv::MissionCommand;
 using namespace mission;
@@ -21,11 +24,13 @@ using namespace mission;
 class TBMConfigLoaderNode : public rclcpp::Node
 {
 public:
+    std::shared_ptr<TaskBenchmarkSettings> conf;
+    
     TBMConfigLoaderNode() : Node("terminal")
     {
         RCLCPP_INFO(this->get_logger(), "Starting TBM Configuration Loader Node");
 
-        std::shared_ptr<TaskBenchmarkSettings> conf;
+        
         if (LoadConfiguration(conf)) {
             RCLCPP_INFO(this->get_logger(), "Configuration loaded successfully");
 
@@ -58,6 +63,7 @@ public:
 		RCLCPP_INFO(this->get_logger(), "  Orientation: %.2f", conf->buoysArea.orientation);
 	    }
 	    
+	    //Stampa dettagli specifici Inspection
 	    if (auto inspection = std::dynamic_pointer_cast<Inspection>(conf)) {
 	    	auto c = std::dynamic_pointer_cast<Inspection>(conf);
 		RCLCPP_INFO(this->get_logger(), "UAV Waypoint: [%.6f, %.6f]", c->uavWaypoint.latitude, c->uavWaypoint.longitude);
@@ -73,25 +79,72 @@ public:
 		for (const auto& pipe : c->pipelinePipes) {
 		    RCLCPP_INFO(this->get_logger(), "  - Number: %d", pipe.number);
 		    RCLCPP_INFO(this->get_logger(), "    Angle: %.2f", pipe.angleWithNorth);
-		    RCLCPP_INFO(this->get_logger(), "    Centroid: [%.6f, %.6f]", pipe.latitude, pipe.longitude);
+		    RCLCPP_INFO(this->get_logger(), "    Centroid: [%.6f, %.6f]", pipe.position.latitude, pipe.position.longitude);
 		}
+	    //Stampa dettagli specifici Intervention
             } else if (auto intervention = std::dynamic_pointer_cast<Intervention>(conf)) {
-                RCLCPP_INFO(this->get_logger(), "Loaded TBM: Intervention");
+                 auto c = std::dynamic_pointer_cast<Intervention>(conf);
+                 RCLCPP_INFO(this->get_logger(), "Number of Main Pipe Damage Markers: %d", c->numberOfMainPipeDamageMarkers);
+		 RCLCPP_INFO(this->get_logger(), "Damaged Pipe On Pipeline:");
+		 RCLCPP_INFO(this->get_logger(), "  - Number: %d", c->damagedPipeOnPipeline.number);
+		 RCLCPP_INFO(this->get_logger(), "  - Angle: %.2f", c->damagedPipeOnPipeline.angleWithNorth);
+		 RCLCPP_INFO(this->get_logger(), "  - Position: [%.6f, %.6f]", c->damagedPipeOnPipeline.position.latitude, c->damagedPipeOnPipeline.position.longitude);
+            
+            //Stampa dettagli specifici Inspection + Intervention
             } else if (auto combo = std::dynamic_pointer_cast<InspectionAndIntervention>(conf)) {
-                RCLCPP_INFO(this->get_logger(), "Loaded TBM: Inspection + Intervention");
-            } else {
-                RCLCPP_WARN(this->get_logger(), "Unknown TBM type");
+            	    auto c = std::dynamic_pointer_cast<InspectionAndIntervention>(conf);
+                    RCLCPP_INFO(this->get_logger(), "[TBM] Type: Inspection + Intervention");
+
+		    RCLCPP_INFO(this->get_logger(), "Number of Main Pipe Damage Markers: %d", c->numberOfMainPipeDamageMarkers);
+		    RCLCPP_INFO(this->get_logger(), "Number of Buoys: %d", c->numberOfBuoys);
+
+		    RCLCPP_INFO(this->get_logger(), "Buoys Actions:");
+		    for (const auto& kv : c->buoysActions) {
+			std::string action_str = mission::BuoyActionToString(kv.first);
+			std::string color_str = mission::BuoyColorToString(kv.second);
+			RCLCPP_INFO(this->get_logger(), "  %s -> %s", action_str.c_str(), color_str.c_str());
+		    }
+
+		    RCLCPP_INFO(this->get_logger(), "Pipeline Pipes:");
+		    for (const auto& pipe : c->pipelinePipes) {
+			RCLCPP_INFO(this->get_logger(), "  - Number: %d", pipe.number);
+			RCLCPP_INFO(this->get_logger(), "    Angle: %.2f", pipe.angleWithNorth);
+			RCLCPP_INFO(this->get_logger(), "    Position: [%.6f, %.6f]", pipe.position.latitude, pipe.position.longitude);
+		    }  
             }
-	    
-	    
-	    
-	    
         } else {
             RCLCPP_ERROR(this->get_logger(), "Failed to load TBM configuration");
         }
+        
+        //Inizializzazione subscription
+        
+        latitude_sub_ = this->create_subscription<std_msgs::msg::Float64>("/latitude", 10, std::bind(&TBMConfigLoaderNode::latitudeCallback, this, std::placeholders::_1));
+
+        longitude_sub_ = this->create_subscription<std_msgs::msg::Float64>("/longitude", 10, std::bind(&TBMConfigLoaderNode::longitudeCallback, this, std::placeholders::_1));
+
     }
 
 private:
+    
+    rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr latitude_sub_;
+    rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr longitude_sub_;
+
+    double last_latitude_ = 0.0;
+    double last_longitude_ = 0.0;
+    
+    void latitudeCallback(const std_msgs::msg::Float64::SharedPtr msg)
+    {
+        last_latitude_ = msg->data;
+        RCLCPP_INFO(this->get_logger(), "[/latitude] Received: %.6f", last_latitude_);
+    }
+
+    void longitudeCallback(const std_msgs::msg::Float64::SharedPtr msg)
+    {
+        last_longitude_ = msg->data;
+        RCLCPP_INFO(this->get_logger(), "[/longitude] Received: %.6f", last_longitude_);
+    }
+
+
     bool LoadConfiguration(std::shared_ptr<TaskBenchmarkSettings>& conf)
     {
         std::string fileName_ = "tasks.conf";
@@ -136,20 +189,22 @@ private:
         }
     }
     
-    std::string BuoyActionToString(mission::BuoyAction action) {
+    std::string BuoyActionToString(mission::BuoyAction action)
+    {
 	    switch (action) {
-		case mission::BuoyAction::ROTATE_CW:
-		    return "ROTATE_CW";
-		case mission::BuoyAction::ROTATE_CCW:
-		    return "ROTATE_CCW";
-		case mission::BuoyAction::UP:
-		    return "UP";
-		case mission::BuoyAction::DOWN:
-		    return "DOWN";
+		case mission::ClockWiseRotation:
+		    return "ClockWiseRotation";
+		case mission::CounterClockWiseRotation:
+		    return "CounterClockWiseRotation";
+		case mission::GoUp:
+		    return "GoUp";
+		case mission::GoDown:
+		    return "GoDown";
 		default:
-		    return "UNKNOWN";
+		    return "Unknown";
 	    }
-}
+    }
+
 
 };
 
