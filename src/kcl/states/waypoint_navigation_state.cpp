@@ -30,15 +30,18 @@ fsm::retval WayPointNavigationState::Execute() noexcept {
     RCLCPP_INFO(rclcpp::get_logger("WayPointNavigationState"), "Heading to goal: %f", headingToGoal);
 
 
-    if (isFacingGoal_) {
+    if (!isFacingGoal_) {
         //set the desired heading by publish on pose desired global only in z and yaw
         ctrlData->poseGoalGlobal(0) = ctrlData->poseActualGlobal(0);
         ctrlData->poseGoalGlobal(1) = ctrlData->poseActualGlobal(1);
         ctrlData->poseGoalGlobal(2) = 0;
         ctrlData->poseGoalGlobal(3) = 0;
         ctrlData->poseGoalGlobal(4) = 0;
-        ctrlData->poseGoalGlobal(5) = -headingToGoal;
-        if (-headingToGoal == ctrlData->poseActualGlobal(5)) {
+        ctb::NormalizeAngle(headingToGoal);   
+        ctrlData->poseGoalGlobal(5) = headingToGoal;
+
+              
+        if (std::fabs(ctb::AngleDifference(ctrlData->poseActualGlobal(5), headingToGoal)) < 0.05) {
             isFacingGoal_ = true;
         }
     } else {
@@ -61,5 +64,6 @@ fsm::retval WayPointNavigationState::Execute() noexcept {
 fsm::retval WayPointNavigationState::OnExit() noexcept {
     RCLCPP_INFO(rclcpp::get_logger("WayPointNavigationState"), "Exiting WAYPOINT_NAVIGATION state");
     //put vechile in hold mode/ position hold set fsm in hold state
+    isFacingGoal_ = false;
     return fsm::ok;
 }
