@@ -814,31 +814,51 @@ void BlueROVBridge::SetPositionTargetLocalNED(const mavlink_set_position_target_
       position_target_.x, position_target_.y, position_target_.z);
 }
 
-//=============================================================================
-// globalPoseDesiredCallback
-//=============================================================================
-void BlueROVBridge::globalPoseDesiredCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg)
+// ────────────────────────────────────────────────────────────────
+// globalPoseDesiredCallback – send global waypoint + heading
+// ────────────────────────────────────────────────────────────────
+void BlueROVBridge::globalPoseDesiredCallback(
+    const auv_core_helper::msg::PoseStamped::SharedPtr msg)
 {
   if (!got_heartbeat_) {
-    RCLCPP_WARN(this->get_logger(), 
-        "Cannot set global pose yet; no autopilot heartbeat discovered!");
+    RCLCPP_WARN(this->get_logger(),
+                "Cannot set global pose yet; no autopilot heartbeat discovered!");
     return;
   }
 
-  position_target_global_.time_boot_ms = static_cast<uint32_t>(this->now().nanoseconds() / 1000000);
-  position_target_global_.target_system = target_system_;
-  position_target_global_.target_component = target_component_;
-  position_target_global_.coordinate_frame = MAV_FRAME_GLOBAL;
-  position_target_global_.type_mask = POSITION_TARGET_TYPEMASK_AX_IGNORE | 
-                                      POSITION_TARGET_TYPEMASK_AY_IGNORE | 
-                                      POSITION_TARGET_TYPEMASK_AZ_IGNORE ;
-  position_target_global_.lat_int = static_cast<int32_t>(msg->x * 1e7); 
-  position_target_global_.lon_int = static_cast<int32_t>(msg->y * 1e7);
-  position_target_global_.alt = msg->z; //in meters
-  position_target_global_.yaw = msg->yaw; //in radians
-  
-  SetPositionTargetGlobalInt(position_target_global_);
+  mavlink_set_position_target_global_int_t& pt = position_target_global_;
+  std::memset(&pt, 0, sizeof(pt));
 
+  /* header ---------------------------------------------------- */
+  pt.time_boot_ms     = static_cast<uint32_t>(this->now().nanoseconds() / 1e6);
+  pt.target_system    = target_system_;
+  pt.target_component = target_component_;
+  pt.coordinate_frame = MAV_FRAME_GLOBAL_INT;            // *_INT frame
+
+  /* type-mask: keep position + yaw only ----------------------- */
+  pt.type_mask =
+      POSITION_TARGET_TYPEMASK_VX_IGNORE  |
+      POSITION_TARGET_TYPEMASK_VY_IGNORE  |
+      POSITION_TARGET_TYPEMASK_VZ_IGNORE  |
+      POSITION_TARGET_TYPEMASK_AX_IGNORE  |
+      POSITION_TARGET_TYPEMASK_AY_IGNORE  |
+      POSITION_TARGET_TYPEMASK_AZ_IGNORE  |
+      POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE;
+
+  /* payload --------------------------------------------------- */
+  pt.lat_int = static_cast<int32_t>(msg->x * 1e7);       // deg → 1e-7°
+  pt.lon_int = static_cast<int32_t>(msg->y * 1e7);
+  pt.alt     = msg->z;
+
+  pt.yaw      = static_cast<float>(msg->yaw);            // KCL already wrapped
+  pt.yaw_rate = 0.0f;                                    // ignored
+
+  /* optional debug line -------------------------------------- */
+  RCLCPP_INFO(this->get_logger(),
+      "SEND GBL SP  lat=%.7f lon=%.7f alt=%.2f yaw=%.2f",
+      pt.lat_int / 1e7, pt.lon_int / 1e7, pt.alt, pt.yaw);
+
+  SetPositionTargetGlobalInt(pt);
 }
 
 //=============================================================================
