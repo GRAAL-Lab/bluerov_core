@@ -6,16 +6,6 @@ MissionController::MissionController(std::string conf_filename)
 {
     ctrlData_ = std::make_shared<ControlData>();
 
-    fileName_ = conf_filename;
-    if (!LoadConfiguration(taskData_)) {
-        std::cerr << "Failed to load configuration from file" << std::endl;
-        return;
-    }
-
-    // Print configuration
-    std::cerr << "===== TaskBenchMark " << taskData_->taskType << " =====" << std::endl;
-    std::cerr << *taskData_ << std::endl;
-
     stateInit_ = std::make_shared<states::StateInit>();
     stateHoming_ = std::make_shared<states::StateHoming>();
     stateLatLong_ = std::make_shared<states::StateLatLong>();
@@ -49,15 +39,48 @@ MissionController::MissionController(std::string conf_filename)
     perceptionSub_ = this->create_subscription<auv_core_helper::msg::DtcList>(
         auv_core_helper::topicnames::objects, rclcpp::SystemDefaultsQoS(),
         std::bind(&MissionController::PerceptionCB, this, std::placeholders::_1));
-    
-         
+
+    missionCommandService_ = this->create_service<auv_core_helper::srv::MissionCommand>(
+        "mission_command",
+        std::bind(&MissionController::MissionCommandCB, this, std::placeholders::_1, std::placeholders::_2));
+
     SetUpFSM();
 
     double controlLoopRate = 1.0; // Hz
     int msRunPeriod = 1.0 / (controlLoopRate) * 1000;
     // std::cout << "Controller Rate: " << conf_->controlLoopRate << "Hz" << std::endl;
     runTimer_ = this->create_wall_timer(std::chrono::milliseconds(msRunPeriod), std::bind(&MissionController::Run, this));
+
+#ifdef NO_CTRL_STATION
+    fileName_ = conf_filename;
+    if (!LoadConfiguration()) {
+        std::cerr << "Failed to load configuration from file" << std::endl;
+        return;
+    }
+    // Print configuration
+    std::cerr << "===== TaskBenchMark " << taskData_->taskType << " =====" << std::endl;
+    std::cerr << *taskData_ << std::endl;
+    UpdateFSM();
+#endif
 };
+
+void MissionController::StatusPub()
+{
+    // MISSION STATUS
+    auv_core_helper::msg::MissionStatus status;
+    status.stamp = this->now();
+    status.task_benchmark = taskData_->taskType;
+    if (rFsm_.GetCurrentStateName() == states::ID::init) {
+        status.state = states::ID::init;
+    } else {
+        status.state = taskData_->taskPhases.front().first; // rFsm_.GetCurrentStateName();
+        status.state_object = taskData_->taskPhases.front().second;
+    }
+    status.requests.obstacles = ctrlData_->perceptionData.enableDtcObstacles;
+    status.requests.buoys = ctrlData_->perceptionData.enableDtcBuoys;
+
+    missionStatusPub_->publish(status);
+}
 
 void MissionController::Run()
 {
@@ -80,20 +103,11 @@ void MissionController::Run()
     // Execute current state
     rFsm_.ExecuteState();
 
-    // MISSION STATUS
-    auv_core_helper::msg::MissionStatus status;
-    status.stamp = this->now();
-    status.task_benchmark = taskData_->taskType;
-    if (rFsm_.GetCurrentStateName() == states::ID::init) {
-        status.state = states::ID::init;
-    } else {
-        status.state = taskData_->taskPhases.front().first; // rFsm_.GetCurrentStateName();
-        status.state_object = taskData_->taskPhases.front().second;
+    if (taskData_ == nullptr) {
+        return;
     }
-    status.requests.obstacles = ctrlData_->perceptionData.enableDtcObstacles;
-    status.requests.buoys = ctrlData_->perceptionData.enableDtcBuoys;
 
-    missionStatusPub_->publish(status);
+    StatusPub();
 
     // KCL COMMAND
     if (ctrlData_->kclData.newCommand) {
@@ -132,7 +146,7 @@ void MissionController::SetUpFSM()
     // Set the fsm and the structure that the states need.
     for (auto& state : statesMap_) {
         state.second->ctrlData = ctrlData_;
-        state.second->taskData_ = taskData_;
+        // state.second->taskData_ = taskData_;
         state.second->SetFSM(&rFsm_);
     }
 
@@ -152,14 +166,21 @@ void MissionController::SetUpFSM()
     rFsm_.SetInitState(mission::states::ID::init);
 }
 
+void MissionController::UpdateFSM()
+{
+    for (auto& state : statesMap_) {
+        state.second->taskData_ = taskData_;
+    }
+}
+
 void MissionController::PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg)
 {
     lastPerceptionTime_ = this->get_clock()->now();
     // Update perception data
     // for(auto& obstacle : msg->obstacles) {
-        
+
     // }
-    for(auto& buoy : msg->buoys) {
+    for (auto& buoy : msg->buoys) {
         Buoy b;
         b.detectionId = buoy.id;
         b.position.latitude = buoy.position.latitude;
@@ -171,17 +192,39 @@ void MissionController::PerceptionCB(const auv_core_helper::msg::DtcList::Shared
         ctrlData_->perceptionData.detectedBuoys[buoy.id] = b;
     }
 
-//     LatLong position
-// string color
-// float64 color_confidence
+    //     LatLong position
+    // string color
+    // float64 color_confidence
 
-
-// GenericObstacle[] obstacles
-// Buoy[]  buoys
-
+    // GenericObstacle[] obstacles
+    // Buoy[]  buoys
 }
 
-bool MissionController::LoadConfiguration(std::shared_ptr<TaskBenchmarkSettings>& conf)
+void MissionController::MissionCommandCB(
+    const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request,
+    std::shared_ptr<auv_core_helper::srv::MissionCommand::Response> response)
+{
+    if (request->tbm_id == 1) {
+        taskData_ = std::make_shared<Inspection>();
+    } else if (request->tbm_id == 2) {
+        taskData_ = std::make_shared<Intervention>();
+    } else if (request->tbm_id == 3) {
+        taskData_ = std::make_shared<InspectionAndIntervention>();
+    } else {
+        response->res = false;
+        response->text = "Invalid tbm id: " + std::to_string(request->tbm_id);
+        return;
+    }
+
+    if (!taskData_->ConfigureFromSrv(request)) {
+        response->res = false;
+        response->text = "Failed to configure task data from request";
+        return;
+    }
+    UpdateFSM();
+}
+
+bool MissionController::LoadConfiguration()
 {
     libconfig::Config confObj;
     std::string package_share_directory = ament_index_cpp::get_package_share_directory("mission_ctrl");
@@ -194,19 +237,19 @@ bool MissionController::LoadConfiguration(std::shared_ptr<TaskBenchmarkSettings>
             return false;
         switch (tbm_id) {
         case 1:
-            conf = std::make_shared<Inspection>();
+            taskData_ = std::make_shared<Inspection>();
             break;
         case 2:
-            conf = std::make_shared<Intervention>();
+            taskData_ = std::make_shared<Intervention>();
             break;
         case 3:
-            conf = std::make_shared<InspectionAndIntervention>();
+            taskData_ = std::make_shared<InspectionAndIntervention>();
             break;
         default:
             std::cerr << "Invalid tbm id: " << tbm_id << std::endl;
             return false;
         }
-        return conf->ConfigureFromFile(confObj);
+        return taskData_->ConfigureFromFile(confObj);
     } catch (const libconfig::FileIOException& fioex) {
         std::cerr << "I/O error while reading file: " << fioex.what() << std::endl;
         std::cerr << "  Path: '" << confPath << "'. Make sure the file exists and is readable." << std::endl;
@@ -216,5 +259,4 @@ bool MissionController::LoadConfiguration(std::shared_ptr<TaskBenchmarkSettings>
         return false;
     }
 }
-
 }

@@ -16,6 +16,7 @@
 
 #include "auv_core_helper/topicnames.hpp"
 #include "auv_core_helper/action/set_kcl.hpp"
+#include "auv_core_helper/srv/mission_command.hpp"
 #include "auv_core_helper/msg/mission_status.hpp"
 #include "auv_core_helper/msg/dtc_list.hpp"
 
@@ -42,6 +43,7 @@ class MissionController : public rclcpp::Node {
 
     rclcpp::Publisher<auv_core_helper::msg::MissionStatus>::SharedPtr missionStatusPub_;
     rclcpp_action::Client<auv_core_helper::action::SetKCL>::SharedPtr setKCLClient_;
+    rclcpp::Service<auv_core_helper::srv::MissionCommand>::SharedPtr missionCommandService_;
     
     //auv_core_helper::msg::ObstacleList obstacles_;
     rclcpp::Subscription<auv_core_helper::msg::DtcList>::SharedPtr perceptionSub_;
@@ -51,13 +53,19 @@ class MissionController : public rclcpp::Node {
     rclcpp::Time lastPerceptionTime_;
     //rclcpp::Time lastKCLTime_;
 
-    bool LoadConfiguration(std::shared_ptr<TaskBenchmarkSettings>& conf);
+    bool LoadConfiguration();
 
     void SetUpFSM();
+    void UpdateFSM();
 
     void Run();
 
+    void StatusPub();
+
     void PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg);
+
+    void MissionCommandCB(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request,
+                           std::shared_ptr<auv_core_helper::srv::MissionCommand::Response> response);
 
 public:
     MissionController(std::string conf_filename);

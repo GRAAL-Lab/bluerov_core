@@ -10,6 +10,7 @@
 #include "rclcpp/rclcpp.hpp"
 
 #include "auv_core_helper/msg/mission_ctrl_kcl.hpp"
+#include "auv_core_helper/srv/mission_command.hpp"
 
 namespace mission {
 
@@ -34,7 +35,7 @@ struct InspectionAndIntervention;
 
 // ===========================
 
-struct BuoyActionColorMap{
+struct BuoyActionColorMap {
     std::string clockWiseRotationColor;
     std::string counterClockWiseRotationColor;
     std::string goUpColor;
@@ -175,6 +176,30 @@ struct TaskBenchmarkSettings {
 
     TaskBenchmarkSettings() = default;
 
+    virtual bool ConfigureFromSrv(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request)
+    {
+        try {
+            auto pipelineStructures = request->pipeline_structures;
+            for (size_t i = 0; i < pipelineStructures.size(); ++i) {
+                PipelineStructure pStruct;
+                pStruct.id = static_cast<uint>(i + 1);
+                pStruct.centroid.latitude = pipelineStructures[i].latitude;
+                pStruct.centroid.longitude = pipelineStructures[i].longitude;
+                this->pipelineStructures.push_back(pStruct);
+            }
+            this->selectedPipelineStructureId = request->selected_pipeline_structure_id;
+            this->buoysArea.enabled = true;
+            this->buoysArea.centroid.latitude = request->buoys_area.centroid.latitude;
+            this->buoysArea.centroid.longitude = request->buoys_area.centroid.longitude;
+            this->buoysArea.size.push_back(request->buoys_area.size[0]);
+            this->buoysArea.size.push_back(request->buoys_area.size[1]);
+            this->buoysArea.orientation = request->buoys_area.orientation;
+        } catch (...) {
+            return false;
+        }
+        return true;
+    }
+
     virtual bool ConfigureFromFile(libconfig::Config& confObj)
     {
         const libconfig::Setting& root = confObj.getRoot();
@@ -220,6 +245,24 @@ protected:
         return true;
     }
 
+    bool GetPipelinePipesFromSrv(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request, std::vector<PipelinePipe>& pPipes)
+    {
+        try {
+            auto pipelinePipes = request->pipes;
+            for (size_t i = 0; i < pipelinePipes.size(); ++i) {
+                PipelinePipe pipe;
+                pipe.number = static_cast<uint>(i + 1);
+                pipe.angleWithNorth = pipelinePipes[i].orientation;
+                pipe.position.latitude = pipelinePipes[i].centroid.latitude;
+                pipe.position.longitude = pipelinePipes[i].centroid.longitude;
+                pPipes.push_back(pipe);
+            }
+        } catch (...) {
+            return false;
+        }
+        return true;
+    }
+
     bool GetPipelinePipesFromFile(libconfig::Config& confObj, std::vector<PipelinePipe>& pipelinePipes)
     {
         const libconfig::Setting& root = confObj.getRoot();
@@ -238,6 +281,19 @@ protected:
         return true;
     }
 
+    bool GetBuoysActionsFromSrv(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request, BuoyActionColorMap& buoysActionsMap)
+    {
+        try {
+            buoysActionsMap.clockWiseRotationColor = request->buoys_action.color_clockwise_rotation;
+            buoysActionsMap.counterClockWiseRotationColor = request->buoys_action.color_counterclockwise_rotation;
+            buoysActionsMap.goUpColor = request->buoys_action.color_go_up;
+            buoysActionsMap.goDownColor = request->buoys_action.color_go_down;
+        } catch (...) {
+            return false;
+        }
+        return true;
+    }
+
     bool GetBuoysActionsFromFile(libconfig::Config& confObj, BuoyActionColorMap& buoysActionsMap)
     {
         const libconfig::Setting& root = confObj.getRoot();
@@ -246,19 +302,19 @@ protected:
         if (!ctb::GetParam(buoysActions, color, "clockWiseRotation"))
             return false;
         buoysActionsMap.clockWiseRotationColor = color;
-        //buoysActionsMap.emplace(ClockWiseRotation, static_cast<BuoyColor>(color));
+        // buoysActionsMap.emplace(ClockWiseRotation, static_cast<BuoyColor>(color));
         if (!ctb::GetParam(buoysActions, color, "counterClockWiseRotation"))
             return false;
         buoysActionsMap.counterClockWiseRotationColor = color;
-        //buoysActionsMap.emplace(CounterClockWiseRotation, static_cast<BuoyColor>(color));
+        // buoysActionsMap.emplace(CounterClockWiseRotation, static_cast<BuoyColor>(color));
         if (!ctb::GetParam(buoysActions, color, "goUp"))
             return false;
         buoysActionsMap.goUpColor = color;
-        //buoysActionsMap.emplace(GoUp, static_cast<BuoyColor>(color));
+        // buoysActionsMap.emplace(GoUp, static_cast<BuoyColor>(color));
         if (!ctb::GetParam(buoysActions, color, "goDown"))
             return false;
         buoysActionsMap.goDownColor = color;
-        //buoysActionsMap.emplace(GoDown, static_cast<BuoyColor>(color));
+        // buoysActionsMap.emplace(GoDown, static_cast<BuoyColor>(color));
         return true;
     }
 
@@ -291,10 +347,28 @@ struct Inspection : public TaskBenchmarkSettings {
         taskType = taskBenchmarks::INSPECTION;
     }
 
+    bool ConfigureFromSrv(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request) override
+    {
+        if (!TaskBenchmarkSettings::ConfigureFromSrv(request))
+            return false;
+        try {
+            uavWaypoint.latitude = request->uav_wp.latitude;
+            uavWaypoint.longitude = request->uav_wp.longitude;
+            numberOfBuoys = request->n_buoys;
+            if (!GetBuoysActionsFromSrv(request, buoysActions))
+                return false;
+            if (!GetPipelinePipesFromSrv(request, pipelinePipes))
+                return false;
+        } catch (...) {
+            return false;
+        }
+        return true;
+    }
+
     bool ConfigureFromFile(libconfig::Config& confObj) override
     {
         if (!TaskBenchmarkSettings::ConfigureFromFile(confObj))
-            return false; // Call the base class code first!
+            return false;
         const libconfig::Setting& root = confObj.getRoot();
         if (!LatLongFromConfig(root, uavWaypoint, "uavWaypoint"))
             return false;
@@ -349,6 +423,22 @@ struct Intervention : public TaskBenchmarkSettings {
         return true;
     }
 
+    bool ConfigureFromSrv(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request) override
+    {
+        if (!TaskBenchmarkSettings::ConfigureFromSrv(request))
+            return false;
+        try {
+            numberOfMainPipeDamageMarkers = request->n_damage_markers;
+            damagedPipeOnPipeline.number = request->damaged_pipe.number;
+            damagedPipeOnPipeline.angleWithNorth = request->damaged_pipe.orientation;
+            damagedPipeOnPipeline.position.latitude = request->damaged_pipe.centroid.latitude;
+            damagedPipeOnPipeline.position.longitude = request->damaged_pipe.centroid.longitude;
+        } catch (...) {
+            return false;
+        }
+        return true;
+    }
+
     void dump(std::ostream& os) const override
     {
         TaskBenchmarkSettings::dump(os);
@@ -385,6 +475,24 @@ struct InspectionAndIntervention : public TaskBenchmarkSettings {
             return false;
         return true;
     }
+
+    bool ConfigureFromSrv(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request) override
+    {
+        if (!TaskBenchmarkSettings::ConfigureFromSrv(request))
+            return false;
+        try {
+            numberOfMainPipeDamageMarkers = request->n_damage_markers;
+            numberOfBuoys = request->n_buoys;
+            if (!GetBuoysActionsFromSrv(request, buoysActions))
+                return false;
+            if (!GetPipelinePipesFromSrv(request, pipelinePipes))
+                return false;
+        } catch (...) {
+            return false;
+        }
+        return true;
+    }
+
     void dump(std::ostream& os) const override
     {
         TaskBenchmarkSettings::dump(os);
