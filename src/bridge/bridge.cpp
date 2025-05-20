@@ -38,7 +38,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
 
   // Timers
   data_timer_ = this->create_wall_timer(std::chrono::milliseconds(125), std::bind(&BlueROVBridge::receiveData, this)); // ~8Hz
-  mainTimer_ = this->create_wall_timer(std::chrono::milliseconds(125),std::bind(&BlueROVBridge::Execute, this)); // ~8Hz
+  mainTimer_ = this->create_wall_timer(std::chrono::milliseconds(200),std::bind(&BlueROVBridge::Execute, this)); // ~8Hz
   
 
   poseGoalGlobal.setZero();
@@ -402,7 +402,7 @@ void BlueROVBridge::armingServiceCallback(const std::shared_ptr<std_srvs::srv::S
 }
 
 void BlueROVBridge::flightModeServiceCallback(const std::shared_ptr<auv_core_helper::srv::SetFlightMode::Request> request,std::shared_ptr<auv_core_helper::srv::SetFlightMode::Response> response){
-  RCLCPP_INFO(this->get_logger(), "Flight mode service called: %s", request->mode.c_str());
+  // RCLCPP_INFO(this->get_logger(), "Flight mode service called: %s", request->mode.c_str());
   if (ack.command == MAV_CMD_DO_SET_MODE) {
     if (ack.result == MAV_RESULT_ACCEPTED) {
       response->success = true;
@@ -495,7 +495,7 @@ void BlueROVBridge::setFlightMode(const std::string& mode)
   );
 
   sendMavlinkMessage(msg);
-  RCLCPP_INFO(this->get_logger(), "Flight mode set to %s", mode.c_str());
+  // RCLCPP_INFO(this->get_logger(), "Flight mode set to %s", mode.c_str());
 }
 
 void BlueROVBridge::rcChannelValuesDesiredCallback(const auv_core_helper::msg::RCChannels::SharedPtr msg)
