@@ -44,6 +44,11 @@ set(MISSION_CTRL_SRCS
 # --- Library target ---
 add_library(mission_ctrl_lib ${MISSION_CTRL_SRCS})
 
+include_directories(
+  ${auv_core_helper_INCLUDE_DIRS}
+)
+link_directories(${CMAKE_INSTALL_PREFIX}/auv_core_helper/lib)
+
 target_include_directories(mission_ctrl_lib
   PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>

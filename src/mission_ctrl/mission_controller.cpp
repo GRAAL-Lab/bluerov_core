@@ -28,7 +28,7 @@ MissionController::MissionController(std::string conf_filename)
         auv_core_helper::topicnames::mission_status, rclcpp::SystemDefaultsQoS());
 
     setKCLClient_ = rclcpp_action::create_client<auv_core_helper::action::SetKCL>(
-        this, "set_kcl");
+        this, auv_core_helper::topicnames::kcl_setter_action);
 
     if (this->get_clock()->get_clock_type() == 1) {
         lastPerceptionTime_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
