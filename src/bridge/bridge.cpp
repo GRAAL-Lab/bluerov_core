@@ -290,8 +290,8 @@ void BlueROVBridge::handleGlobalPositionInt(const mavlink_message_t& msg){
 
   global_pose_msg->header.stamp = this->now();
   global_pose_msg->header.frame_id = "Global WGS84";
-  global_pose_msg->x = pos_int.lat / 1e7;  // Convert to degrees
-  global_pose_msg->y = pos_int.lon / 1e7;  // Convert to degrees
+  global_pose_msg->lati = pos_int.lat / 1e7;  // Convert to degrees
+  global_pose_msg->longi = pos_int.lon / 1e7;  // Convert to degrees
   global_pose_msg->z = -pos_int.alt / 1000.0;  // mm → meters
 
   global_velocity_msg->linear.x = pos_int.vx / 100.0;  // cm/s → m/s
@@ -577,7 +577,7 @@ void BlueROVBridge::setRcChannelPwm(const uint16_t* rc_channel_values)
 
 
 void BlueROVBridge::globalPoseDesiredCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg){
-  poseGoalGlobal << msg->x, msg->y, msg->z, msg->roll, msg->pitch, msg->yaw;
+  poseGoalGlobal << msg->lati, msg->longi, msg->z, msg->roll, msg->pitch, msg->yaw;
 }
 
 void BlueROVBridge::globalVelocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg){
