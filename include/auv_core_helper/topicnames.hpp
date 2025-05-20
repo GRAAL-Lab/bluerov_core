@@ -41,6 +41,12 @@ const std::string kcl_state = "/auv/kcl_state";
 const std::string control_cmd_service = "/auv/service/control_cmd";
 const std::string arming_service = "/auv/service/arming";
 const std::string flight_mode_service = "/auv/service/flight_mode";
+
+
+// Actions
+const std::string kcl_setter_action = "/set_kcl_state";
+
+
 }
 }
 
