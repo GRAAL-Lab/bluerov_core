@@ -15,4 +15,5 @@ PipelinePipe[] pipes #tbm 1, 3
 PipelinePipe damaged_pipe #tbm 2
 
 ---
-string res
+bool res
+string text
