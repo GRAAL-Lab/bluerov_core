@@ -99,7 +99,7 @@ private:
     mavlink_set_position_target_local_ned_t position_target_;
     mavlink_set_position_target_global_int_t position_target_global_;
     mavlink_set_attitude_target_t attitude_target_;
-     
+    
     //--------------------------------------------------------------------------
     // Waypoint Navigation Variables
     //--------------------------------------------------------------------------
@@ -131,8 +131,6 @@ private:
 
     std::unique_ptr<auv_core_helper::msg::PoseStamped> global_pose_msg = std::make_unique<auv_core_helper::msg::PoseStamped>();
     std::unique_ptr<geometry_msgs::msg::Twist> global_velocity_msg = std::make_unique<geometry_msgs::msg::Twist>();
-
-
 
     //--------------------------------------------------------------------------
     // Internal Methods
@@ -206,11 +204,6 @@ private:
      * @param msg The received MAVLink message
      */
     void handleCommandAck(const mavlink_message_t& msg);
-    
-    /**
-     * @brief Process velocity commands from ROS
-     */
-    void velocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
     
     /**
      * @brief Service callback for arming/disarming the vehicle.
@@ -300,15 +293,8 @@ private:
     /**
      * @brief Send MAV_CMD_CONDITION_YAW command to set vehicle heading
      * 
-     * This command sets the heading of the vehicle. It can be used in combination
-     * with waypoints to control the facing direction.
-     * 
-     * @param heading_deg Target heading in degrees
-     * @param is_relative If true, heading is relative to current heading
-     * @param direction Direction to rotate: 1=clockwise, -1=counterclockwise, 0=shortest
-     * @param angular_rate Angular rate for rotation (degrees/second)
      */
-    void sendConditionYaw(float heading_deg, bool is_relative = false, int direction = 0, float angular_rate = 0.0f);                                
+    void sendConditionYaw(const mavlink_command_long_t& condition_yaw_);                                
 
     /**
      * @brief Send MAV_CMD_DO_SET_HOME command to set the home position
