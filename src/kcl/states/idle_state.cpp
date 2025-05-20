@@ -15,19 +15,8 @@ fsm::retval IdleState::OnEntry() noexcept {
         RCLCPP_ERROR(rclcpp::get_logger("IdleState"), "Control data is null!");
         return fsm::fail;
     }
-
-    RCLCPP_INFO(rclcpp::get_logger("IdleState"), "Entering IDLE state");
-
     //disarm vehicle
     ctrlData->armed_desired = false;
-    ctrlData->flightMode_desired = "MANUAL"; // Set flight mode to manual
-
-    // // Reset desired velocities to zero
-    // ctrlData->velocityDesired.setZero();
-
-    // // Reset the goal pose to zero
-    // ctrlData->poseGoal.setZero();
-
     return fsm::ok;
 }
 
@@ -38,15 +27,11 @@ fsm::retval IdleState::Execute() noexcept {
         RCLCPP_ERROR(rclcpp::get_logger("IdleState"), "Control data is null!");
         return fsm::fail;
     }
-    RCLCPP_INFO(rclcpp::get_logger("IdleState"), "Executing IDLE state");
     // The idle state does not perform any operations
     return fsm::ok;
 }
 
 // onExit: Log the state exit
 fsm::retval IdleState::OnExit() noexcept {
-    RCLCPP_INFO(rclcpp::get_logger("IdleState"), "Exiting IDLE state");
-
-    // No specific cleanup is needed for the idle state
     return fsm::ok;
 }

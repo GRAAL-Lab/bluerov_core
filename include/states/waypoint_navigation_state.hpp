@@ -5,24 +5,24 @@
 #include <string>
 #include <memory>
 
-
-class WayPointNavigationState : public BaseAUVState {
+class WayPointNavigationState : public BaseAUVState
+{
 private:
-bool isFacingGoal_{false}; ///< Flag to indicate if the vehicle is heading towards the goal.
-ctb::LatLong current; ///< Current position of the vehicle in latitude and longitude.
-ctb::LatLong goal; ///< Goal position of the vehicle in latitude and longitude.
-double distanceToGoal; ///< Distance to the goal position.
-double headingToGoal; ///< Heading to the goal position in radians.
-double distanceToGoalThreshold = 0.1; ///< Threshold distance to consider the goal reached.
+    bool        isFacingGoal_{false};   ///< true once yaw is aligned
+    bool        waypointSet_{false};    ///< true after OnEntry() copies it
+    ctb::LatLong waypoint_;             ///< immutable mission waypoint
+    ctb::LatLong current_;              ///< live vehicle position
 
+    double distanceToGoal_{0.0};
+    double headingToGoal_{0.0};
 
+    constexpr static double YAW_TOL   = 0.05;  ///< 3 deg
+    constexpr static double DIST_TOL  = 0.10;  ///< 10 cm
 
 public:
     explicit WayPointNavigationState(fsm::FSM* fsm);
 
-    fsm::retval OnEntry() noexcept override;
-    fsm::retval Execute() noexcept override;
-    fsm::retval OnExit() noexcept override;
-
-private:
+    fsm::retval OnEntry()   noexcept override;
+    fsm::retval Execute()   noexcept override;
+    fsm::retval OnExit()    noexcept override;
 };

@@ -1,14 +1,10 @@
 #include "states/surface_state.hpp"
 
-//TO DO
 
-// Constructor
-SurfaceState::SurfaceState(fsm::FSM* fsm)
-    : BaseAUVState(fsm, States::SURFACE) {}
+SurfaceState::SurfaceState(fsm::FSM* fsm): BaseAUVState(fsm, States::SURFACE) {}
 
 // OnEntry
 fsm::retval SurfaceState::OnEntry() {
-    //arm
     ctrlData->armed_desired = true;
     ctrlData->flightMode_desired = "SURFACE"; // Set flight mode to surface
     return fsm::ok;
@@ -16,7 +12,6 @@ fsm::retval SurfaceState::OnEntry() {
 
 // Execute
 fsm::retval SurfaceState::Execute() {
-    
     return fsm::ok;
 }
 

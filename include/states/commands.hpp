@@ -9,6 +9,7 @@ namespace States {
     constexpr char HOLD[] = "HOLD"; ///< AUV is holding its current position.
     constexpr char WAYPOINT_NAVIGATION[] = "WAYPOINT_NAVIGATION"; ///< AUV is navigating to a waypoint.
     constexpr char SURFACE[] = "SURFACE"; ///< AUV is surfacing.
+    constexpr char DIVE[] = "DIVE"; ///< AUV is diving.
     constexpr char PATH_FOLLOWING[] = "PATH_FOLLOWING"; ///< AUV is following a planned path.
 }
 

@@ -1,23 +1,19 @@
 #include "states/path_following_state.hpp"
 
 
-//TO DO: edit for the case of the rami
-
-// Constructor
-PathFollowingState::PathFollowingState(fsm::FSM* fsm) : BaseAUVState(fsm, "PATH_FOLLOWING") {
-}
+PathFollowingState::PathFollowingState(fsm::FSM* fsm) : BaseAUVState(fsm, "PATH_FOLLOWING") {}
 
 fsm::retval PathFollowingState::OnEntry() noexcept {
     RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Entering PATH_FOLLOWING state");
 
+    ctrlData->armed_desired = true;
+    ctrlData->flightMode_desired = "GUIDED";
+
     //Create 2D Serpentine path 
-    RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path Planning Serpentine 2D");
     if (ctrlData->serpentinePolygonVertices.empty()) {
         return fsm::fail;
     }
-    sisl::Path::Direction direction = ctrlData->serpentineDirection
-                                        ? sisl::Path::Direction::Backward
-                                        : sisl::Path::Direction::Forward;
+    sisl::Path::Direction direction = ctrlData->serpentineDirection? sisl::Path::Direction::Backward : sisl::Path::Direction::Forward;
     path = sisl::PathFactory::NewSerpentine(
         ctrlData->serpentineAngle, 
         direction, 
@@ -55,25 +51,8 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
     // ctrlData->plannedPath = nav_path;
 
     isCurveSet_ = true;
-    RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path set and vehicle is ready");
 
-    // Initialize PID controllers
-    ctb::PIDGains gainsX = {ctrlData->gainsX(0), ctrlData->gainsX(1), ctrlData->gainsX(2), ctrlData->gainsX(3), ctrlData->gainsX(4), ctrlData->gainsX(5)};
-    ctb::PIDGains gainsY = {ctrlData->gainsY(0), ctrlData->gainsY(1), ctrlData->gainsY(2), ctrlData->gainsY(3), ctrlData->gainsY(4), ctrlData->gainsY(5)};
-    ctb::PIDGains gainsZ = {ctrlData->gainsZ(0), ctrlData->gainsZ(1), ctrlData->gainsZ(2), ctrlData->gainsZ(3), ctrlData->gainsZ(4), ctrlData->gainsZ(5)};
-    ctb::PIDGains gainsRoll = {ctrlData->gainsRoll(0), ctrlData->gainsRoll(1), ctrlData->gainsRoll(2), ctrlData->gainsRoll(3), ctrlData->gainsRoll(4), ctrlData->gainsRoll(5)};
-    ctb::PIDGains gainsPitch = {ctrlData->gainsPitch(0), ctrlData->gainsPitch(1), ctrlData->gainsPitch(2), ctrlData->gainsPitch(3), ctrlData->gainsPitch(4), ctrlData->gainsPitch(5)};
-    ctb::PIDGains gainsYaw = {ctrlData->gainsYaw(0), ctrlData->gainsYaw(1), ctrlData->gainsYaw(2), ctrlData->gainsYaw(3), ctrlData->gainsYaw(4), ctrlData->gainsYaw(5)};
-
-    pidX_.Initialize(gainsX,    ctrlData->dt, std::max(ctrlData->maxVelocity(0), std::abs(ctrlData->minVelocity(0))));
-    pidY_.Initialize(gainsY,    ctrlData->dt, std::max(ctrlData->maxVelocity(1), std::abs(ctrlData->minVelocity(1))));
-    pidZ_.Initialize(gainsZ,    ctrlData->dt, std::max(ctrlData->maxVelocity(2), std::abs(ctrlData->minVelocity(2))));
-    pidRoll_.Initialize(gainsRoll, ctrlData->dt, std::max(ctrlData->maxVelocity(3), std::abs(ctrlData->minVelocity(3))));
-    pidPitch_.Initialize(gainsPitch, ctrlData->dt, std::max(ctrlData->maxVelocity(4), std::abs(ctrlData->minVelocity(4))));
-    pidYaw_.Initialize(gainsYaw, ctrlData->dt, std::max(ctrlData->maxVelocity(5), std::abs(ctrlData->minVelocity(5))));
-
-    std::string packagePath_ = ament_index_cpp::get_package_share_directory("auv_core_helper");
-    std::string alosPath_ = packagePath_ + "/param/ctrl/alosed_params";
+    std::string alosPath_ = ament_index_cpp::get_package_share_directory("auv_core_helper") + "/param/ctrl/alosed_params";
     dynamic_goal_alos::DynamicGoalBasedALOSParams alosParams = dynamic_goal_alos::LoadALOSParamsFromConf(alosPath_);
     alosController_ = std::make_unique<dynamic_goal_alos::DynamicGoalBasedALOS>(alosParams);
     delta_ = alosParams.deltaMax;

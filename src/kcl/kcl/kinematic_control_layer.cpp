@@ -24,7 +24,7 @@ KCL::KCL()
 
     // Create FSM timer
     fsmTimer_ = this->create_wall_timer(
-        std::chrono::milliseconds(static_cast<int>(ctrlData_->dt * 1000)),
+        std::chrono::milliseconds(1000),
         std::bind(&KCL::ExecuteFSM, this));
 
 
@@ -81,7 +81,7 @@ void KCL::PoseActualglobalCallback(const auv_core_helper::msg::PoseStamped::Shar
     ctrlData_->poseActualGlobal << msg->x, msg->y, msg->z, msg->roll, msg->pitch, msg->yaw;
     ctrlData_->timeActual = msg->header.stamp;
     //print
-    RCLCPP_INFO(this->get_logger(), "Pose Actual: %f, %f, %f, %f, %f, %f", msg->x, msg->y, msg->z, msg->roll, msg->pitch, msg->yaw);
+    // RCLCPP_INFO(this->get_logger(), "Pose Actual: %f, %f, %f, %f, %f, %f", msg->x, msg->y, msg->z, msg->roll, msg->pitch, msg->yaw);
 }
 
 void KCL::VelocityActualCallback(const geometry_msgs::msg::Twist::SharedPtr msg) {
@@ -150,7 +150,9 @@ void KCL::SetupTransitions() {
     holdState_ = std::make_unique<HoldState>(&fsm_);
     wayPointNavigationState_ = std::make_unique<WayPointNavigationState>(&fsm_);
     surfaceState_ = std::make_unique<SurfaceState>(&fsm_);
+    diveState_ = std::make_unique<DiveState>(&fsm_);
     pathFollowingState_ = std::make_unique<PathFollowingState>(&fsm_);
+
     
 
     // Share control data with states
@@ -158,6 +160,7 @@ void KCL::SetupTransitions() {
     holdState_->ctrlData = ctrlData_;
     wayPointNavigationState_->ctrlData = ctrlData_;
     surfaceState_->ctrlData = ctrlData_;
+    diveState_->ctrlData = ctrlData_;
     pathFollowingState_->ctrlData = ctrlData_;
 
     // Add states and enable transitions
@@ -165,6 +168,7 @@ void KCL::SetupTransitions() {
     fsm_.AddState(States::HOLD, holdState_.get());
     fsm_.AddState(States::WAYPOINT_NAVIGATION, wayPointNavigationState_.get());
     fsm_.AddState(States::SURFACE, surfaceState_.get());
+    fsm_.AddState(States::DIVE, diveState_.get());
     fsm_.AddState(States::PATH_FOLLOWING, pathFollowingState_.get());
 
 
@@ -172,21 +176,41 @@ void KCL::SetupTransitions() {
     fsm_.EnableTransition(States::IDLE, States::HOLD, true);
     fsm_.EnableTransition(States::IDLE, States::WAYPOINT_NAVIGATION, true);
     fsm_.EnableTransition(States::IDLE, States::SURFACE, true);
+    fsm_.EnableTransition(States::IDLE, States::DIVE, true);
     fsm_.EnableTransition(States::IDLE, States::PATH_FOLLOWING, true);
 
     fsm_.EnableTransition(States::HOLD, States::IDLE, true);
     fsm_.EnableTransition(States::HOLD, States::WAYPOINT_NAVIGATION, true);
     fsm_.EnableTransition(States::HOLD, States::SURFACE, true);
+    fsm_.EnableTransition(States::HOLD, States::DIVE, true);
     fsm_.EnableTransition(States::HOLD, States::PATH_FOLLOWING, true);
 
     fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::IDLE, true);
     fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::HOLD, true);
+    fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::PATH_FOLLOWING, true);
+    fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::SURFACE, true);
+    fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::DIVE, true);
 
     fsm_.EnableTransition(States::SURFACE, States::IDLE, true);
     fsm_.EnableTransition(States::SURFACE, States::HOLD, true);
+    fsm_.EnableTransition(States::SURFACE, States::PATH_FOLLOWING, true);
+    fsm_.EnableTransition(States::SURFACE, States::WAYPOINT_NAVIGATION, true);
+    fsm_.EnableTransition(States::SURFACE, States::DIVE, true);
+
+
+    fsm_.EnableTransition(States::DIVE, States::IDLE, true);
+    fsm_.EnableTransition(States::DIVE, States::HOLD, true);
+    fsm_.EnableTransition(States::DIVE, States::PATH_FOLLOWING, true);
+    fsm_.EnableTransition(States::DIVE, States::WAYPOINT_NAVIGATION, true);
+    fsm_.EnableTransition(States::DIVE, States::SURFACE, true);
+
 
     fsm_.EnableTransition(States::PATH_FOLLOWING, States::IDLE, true);
     fsm_.EnableTransition(States::PATH_FOLLOWING, States::HOLD, true);
+    fsm_.EnableTransition(States::PATH_FOLLOWING, States::WAYPOINT_NAVIGATION, true);
+    fsm_.EnableTransition(States::PATH_FOLLOWING, States::SURFACE, true);
+    fsm_.EnableTransition(States::PATH_FOLLOWING, States::DIVE, true);
+
 
     fsm_.SetInitState(States::IDLE);
 
@@ -214,6 +238,8 @@ void KCL::CallFlightModeService(const std::string &mode)
 {
     auto request = std::make_shared<auv_core_helper::srv::SetFlightMode::Request>();
     request->mode = mode;
+    //print
+    RCLCPP_INFO(this->get_logger(), "Flight mode requested: %s", request->mode.c_str());
 
     auto future = flightModeClient_->async_send_request(request,
         [this](rclcpp::Client<auv_core_helper::srv::SetFlightMode>::SharedFuture result) {
@@ -222,6 +248,7 @@ void KCL::CallFlightModeService(const std::string &mode)
                 ctrlData_->flightMode_actual = ctrlData_->flightMode_desired;
             } else {
                 RCLCPP_WARN(this->get_logger(), "Flight mode failed: %s", result.get()->message.c_str());
+                CallFlightModeService(ctrlData_->flightMode_desired);
             }
         });
 }
@@ -258,6 +285,8 @@ void KCL::ExecuteFSM() {
         CallArmingService(ctrlData_->armed_desired);
     }
     if (ctrlData_->flightMode_desired != ctrlData_->flightMode_actual) {
+        //print
+        RCLCPP_INFO(this->get_logger(), "Flight mode desired: %s", ctrlData_->flightMode_desired.c_str());
         CallFlightModeService(ctrlData_->flightMode_desired);
     }
 }
