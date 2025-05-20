@@ -216,20 +216,6 @@ void BlueROVBridge::receiveData()
   }
 }
 
-
-void BlueROVBridge::Execute()
-{
-  // Wait until global_pose_msg and global_velocity_msg are initialized (i.e., data received from MAVLink)
-  if (global_pose_msg && global_velocity_msg) {
-    globalPoseActualPublisher_->publish(*global_pose_msg);
-    globalVelocityActualPublisher_->publish(*global_velocity_msg);
-  } else {
-    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
-      "Waiting for MAVLink global position/velocity data...");
-  }
-}
-
-
 //=============================================================================
 // sendMavlinkMessage
 //=============================================================================
@@ -426,8 +412,6 @@ void BlueROVBridge::handleAttitude(const mavlink_message_t& msg)
   localPoseActualPublisher_->publish(std::move(local_pose_msg));      
   localVelocityActualPublisher_->publish(std::move(local_velocity_msg));
   
-  
-  
   global_pose_msg->roll = attitude.roll;            //Roll in rad
   global_pose_msg->pitch = attitude.pitch;         //Pitch in rad
   global_pose_msg->yaw = attitude.yaw;             //Yaw in rad
@@ -436,6 +420,22 @@ void BlueROVBridge::handleAttitude(const mavlink_message_t& msg)
   global_velocity_msg->angular.y = attitude.pitchspeed;        //Pitch rate in rad/s
   global_velocity_msg->angular.z = attitude.yawspeed;           //Yaw rate in rad/s
   
+}
+
+//=============================================================================
+// Execute
+//   Publish global pose and velocity if available
+//=============================================================================
+void BlueROVBridge::Execute()
+{
+  // Wait until global_pose_msg and global_velocity_msg are initialized (i.e., data received from MAVLink)
+  if (global_pose_msg && global_velocity_msg) {
+    globalPoseActualPublisher_->publish(*global_pose_msg);
+    globalVelocityActualPublisher_->publish(*global_velocity_msg);
+  } else {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000,
+      "Waiting for MAVLink global position/velocity data...");
+  }
 }
 
 //=============================================================================
@@ -748,7 +748,10 @@ void BlueROVBridge::localPoseDesiredCallback(const auv_core_helper::msg::PoseSta
   attitude_target_.time_boot_ms = static_cast<uint32_t>(this->now().nanoseconds() / 1000000);
   attitude_target_.target_system = target_system_;
   attitude_target_.target_component = target_component_;
-  attitude_target_.type_mask = ATTITUDE_TARGET_TYPEMASK_THROTTLE_IGNORE;
+  attitude_target_.type_mask = ATTITUDE_TARGET_TYPEMASK_THROTTLE_IGNORE |
+                               ATTITUDE_TARGET_TYPEMASK_BODY_ROLL_RATE_IGNORE | 
+                               ATTITUDE_TARGET_TYPEMASK_BODY_PITCH_RATE_IGNORE |
+                               ATTITUDE_TARGET_TYPEMASK_BODY_YAW_RATE_IGNORE ;
   // Note that ROS uses x,y,z,w order for quaternions, but MAVLink uses w,x,y,z
   attitude_target_.q[0] = q.w();    
   attitude_target_.q[1] = q.x();
@@ -922,12 +925,11 @@ void BlueROVBridge::SetAttitudeTarget(const mavlink_set_attitude_target_t& attit
       attitude_target_.target_component,
       attitude_target_.type_mask, 
       attitude_target_.q, 
-      attitude_target_.body_roll_rate, 
-      attitude_target_.body_pitch_rate, 
-      attitude_target_.body_yaw_rate,  
+      0,           // body_roll_rate (not used)
+      0,           // body_pitch_rate (not used)
+      0,           // body_yaw_rate (not used)
       0,           // thrust (not used)
-      0            // thrust_body (not used)
-  // Note: thrust and thrust_body is not used in this case, but can be set if needed 
+      0            // thrust_body (not used) 
   );
   
   sendMavlinkMessage(msg);
