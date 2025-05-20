@@ -25,7 +25,6 @@
 // AUV-specific topic names
 #include "auv_core_helper/topicnames.hpp"
 
-// We will use Eigen for the NED->ENU transform
 #include <Eigen/Dense>
 
 // Include the MAVLink C headers
@@ -55,14 +54,10 @@ private:
     //--------------------------------------------------------------------------
     rclcpp::Publisher<auv_core_helper::msg::HeartBeat>::SharedPtr heartBeatPublisher_;
     rclcpp::Publisher<auv_core_helper::msg::BatteryStatus>::SharedPtr batteryStatusPublisher_;
-    rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr localPoseActualPublisher_;
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseActualPublisher_;
-    rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr localVelocityActualPublisher_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr globalVelocityActualPublisher_;
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr dvlDistancePublisher_;
     
-    rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr localPoseDesiredSubscription_;
-    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr localVelocityDesiredSubscription_;
     rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseDesiredSubscription_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr globalVelocityDesiredSubscription_;
     rclcpp::Subscription<auv_core_helper::msg::RCChannels>::SharedPtr rcChannelValuesDesiredSubscription_;
@@ -75,6 +70,14 @@ private:
     //--------------------------------------------------------------------------
     rclcpp::TimerBase::SharedPtr data_timer_;         // Timer for MAVLink data reception
     rclcpp::TimerBase::SharedPtr mainTimer_;         // Timer for main loop
+
+
+    Eigen::VectorXd poseGoalGlobal = Eigen::VectorXd(6); ///< Desired pose goal in global coordinates.
+    Eigen::VectorXd velocityDesiredGlobal = Eigen::VectorXd(6); ///< Desired linear and angular velocities in global coordinates.
+    
+
+    //string to hold last flight mode
+    std::string flightMode_actual = "MANUAL";
 
     //--------------------------------------------------------------------------
     // MAVLink Socket / Connection
@@ -96,9 +99,9 @@ private:
     //=============================================================================
     mavlink_heartbeat_t hb;
     mavlink_command_ack_t ack;
-    mavlink_set_position_target_local_ned_t position_target_;
     mavlink_set_position_target_global_int_t position_target_global_;
     mavlink_set_attitude_target_t attitude_target_;
+    mavlink_command_long_t condition_yaw_ ;
     
     //--------------------------------------------------------------------------
     // Waypoint Navigation Variables
@@ -169,12 +172,6 @@ private:
     void handleBatteryStatus(const mavlink_message_t& msg);
     
     /**
-     * @brief Handle LOCAL_POSITION_NED message
-     * @param msg The received MAVLink message
-     */
-    void handleLocalPositionNed(const mavlink_message_t& msg);
-
-    /**
      * @brief Handle GLOBAL_POSITION_INT message
      * @param msg The received MAVLink message
      */
@@ -187,7 +184,6 @@ private:
     void handleGlobalVelocityInt(const mavlink_message_t& msg);
 
     /**
-     * @brief Handle LOCAL_VELOCITY_NED message
      * @brief Handle ATTITUDE message
      * @param msg The received MAVLink message
      */
@@ -245,23 +241,6 @@ private:
      * @brief Set RC channel PWM values
      */
     void setRcChannelPwm(const uint16_t* rc_channel_values);
-    
-    /**
-     * @brief Callback for receiving desired pose
-     * @param msg The received PoseStamped message
-     */
-    void localPoseDesiredCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
-
-    /**
-     * @brief Callback for receiving desired velocity
-     * @param msg The received Twist message
-     */
-    void localVelocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
-    
-    /**
-     * @brief Send waypoint to ArduSub in NED coordinates
-     */
-    void SetPositionTargetLocalNED(const mavlink_set_position_target_local_ned_t& position_target_);
     
     /**
      * @brief Callback for receiving desired global pose
