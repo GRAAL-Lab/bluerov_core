@@ -24,8 +24,8 @@ fsm::retval WayPointNavigationState::Execute() noexcept{
 
 
     if (!isFacingGoal_){
-        ctrlData->poseGoalGlobal(0) = current_.latitude;
-        ctrlData->poseGoalGlobal(1) = current_.longitude;
+        ctrlData->poseGoalGlobal(0) = ctrlData->poseActualGlobal(0);
+        ctrlData->poseGoalGlobal(1) = ctrlData->poseActualGlobal(1);
         ctrlData->poseGoalGlobal(2) = -1;
         ctrlData->poseGoalGlobal(3) = 0;
         ctrlData->poseGoalGlobal(4) = 0;

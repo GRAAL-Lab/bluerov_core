@@ -23,10 +23,9 @@ KCL::KCL()
     SetupTransitions();
 
     // Create FSM timer
-    fsmTimer_ = this->create_wall_timer(
-        std::chrono::milliseconds(1000),
+     fsmTimer_ = this->create_wall_timer(
+        std::chrono::milliseconds(static_cast<int>(ctrlData_->dt * 1000)),
         std::bind(&KCL::ExecuteFSM, this));
-
 
     // Create subscriptions
     poseActualGlobalSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_global_, 1,std::bind(&KCL::PoseActualglobalCallback, this, std::placeholders::_1));
@@ -78,7 +77,7 @@ KCL::KCL()
 
 void KCL::PoseActualglobalCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg) {
     // Update actual pose in control data
-    ctrlData_->poseActualGlobal << msg->x, msg->y, msg->z, msg->roll, msg->pitch, msg->yaw;
+    ctrlData_->poseActualGlobal << msg->lati, msg->longi, msg->z, msg->roll, msg->pitch, msg->yaw;
     ctrlData_->timeActual = msg->header.stamp;
     //print
     // RCLCPP_INFO(this->get_logger(), "Pose Actual: %f, %f, %f, %f, %f, %f", msg->x, msg->y, msg->z, msg->roll, msg->pitch, msg->yaw);
