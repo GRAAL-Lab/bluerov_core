@@ -745,11 +745,6 @@ void BlueROVBridge::globalPoseDesiredCallback(
   pt.yaw      = static_cast<float>(msg->yaw);            // KCL already wrapped
   pt.yaw_rate = 0.0f;                                    // ignored
 
-  /* optional debug line -------------------------------------- */
-  RCLCPP_INFO(this->get_logger(),
-      "SEND GBL SP  lat=%.7f lon=%.7f alt=%.2f yaw=%.2f",
-      pt.lat_int / 1e7, pt.lon_int / 1e7, pt.alt, pt.yaw);
-
   SetPositionTargetGlobalInt(pt);
 }
 
@@ -785,10 +780,6 @@ void BlueROVBridge::SetPositionTargetGlobalInt(const mavlink_set_position_target
   );
   
   sendMavlinkMessage(msg);
-  
-  RCLCPP_INFO(this->get_logger(), 
-      "Sent global waypoint to ArduSub: lat=%d, lon=%d, alt=%.2f", 
-      position_target_global_.lat_int, position_target_global_.lon_int, position_target_global_.alt);
 }
 
 void BlueROVBridge::SetAttitudeTarget(const mavlink_set_attitude_target_t& attitude_target_)
