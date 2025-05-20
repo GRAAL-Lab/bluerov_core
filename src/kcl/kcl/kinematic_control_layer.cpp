@@ -28,7 +28,7 @@ KCL::KCL()
         std::bind(&KCL::ExecuteFSM, this));
 
     // Create subscriptions
-    poseActualGlobalSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_global_, 1,std::bind(&KCL::PoseActualglobalCallback, this, std::placeholders::_1));
+    poseActualGlobalSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_global_, 1,std::bind(&KCL::PoseActualGlobalCallback, this, std::placeholders::_1));
 
     velocityActualSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_actual_local, 1,std::bind(&KCL::VelocityActualCallback, this, std::placeholders::_1));
 
@@ -53,7 +53,7 @@ KCL::KCL()
     // Create action server for KCL
     KCLSetter_ = rclcpp_action::create_server<auv_core_helper::action::SetKCL>(
     this,
-    "set_kcl_state",
+    auv_core_helper::topicnames::kcl_setter_action,
     std::bind(&KCL::HandleGoal, this, std::placeholders::_1, std::placeholders::_2),
     std::bind(&KCL::HandleCancel, this, std::placeholders::_1),
     std::bind(&KCL::HandleSetKCL, this, std::placeholders::_1)
@@ -75,7 +75,7 @@ KCL::KCL()
 
 }
 
-void KCL::PoseActualglobalCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg) {
+void KCL::PoseActualGlobalCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg) {
     // Update actual pose in control data
     ctrlData_->poseActualGlobal << msg->lati, msg->longi, msg->z, msg->roll, msg->pitch, msg->yaw;
     ctrlData_->timeActual = msg->header.stamp;

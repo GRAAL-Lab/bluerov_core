@@ -121,7 +121,7 @@ private:
     void SetupTransitions();
 
     /// Callback for actual pose data.
-    void PoseActualglobalCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
+    void PoseActualGlobalCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
     
     /// Callback for actual velocity data.
     void VelocityActualCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
