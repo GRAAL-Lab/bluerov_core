@@ -21,9 +21,7 @@ namespace states {
     {
         std::cerr << "executing init state" << std::endl;
         if (taskData_ == nullptr) {
-#ifdef DEBUG
-            std::cerr << ".";
-#endif
+
             return fsm::ok;
         }
 

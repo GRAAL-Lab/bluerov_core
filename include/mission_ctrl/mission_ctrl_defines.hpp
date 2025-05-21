@@ -4,6 +4,7 @@
 #include <string>
 
 #define DEBUG //Avoid some checks on perception and kcl heartbeat
+#define NO_KCL
 #define NO_CTRL_STATION //Reads task data from config file instead of ctrl station service
 
 namespace mission {

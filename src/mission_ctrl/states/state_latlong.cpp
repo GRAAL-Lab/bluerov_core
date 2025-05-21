@@ -22,11 +22,11 @@ namespace states {
                   << goalPosition.longitude << std::endl;
 
         ctrlData->kclData.newCommand = true;
+
+#ifdef NO_KCL
         ctrlData->kclData.kcl_command.position.latitude = goalPosition.latitude;
         ctrlData->kclData.kcl_command.position.longitude = goalPosition.longitude;
-
-        // ctrlData->inertialF_linearPosition.latitude = goalPosition.latitude;
-        // ctrlData->inertialF_linearPosition.longitude = goalPosition.longitude;
+#endif
 
         return fsm::ok;
     }
@@ -42,7 +42,7 @@ namespace states {
             std::cerr << "Distance to goal: " << distance << "\n";
         }
 
-#ifdef DEBUG
+#ifdef NO_KCL
         this->SetNextMissionState();
 #endif
 

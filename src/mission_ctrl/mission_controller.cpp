@@ -35,6 +35,10 @@ MissionController::MissionController()
         auv_core_helper::topicnames::objects, rclcpp::SystemDefaultsQoS(),
         std::bind(&MissionController::PerceptionCB, this, std::placeholders::_1));
 
+    poseSub_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_global_,
+        rclcpp::SystemDefaultsQoS(),
+        std::bind(&MissionController::PoseCB, this, std::placeholders::_1));
+
     missionCommandService_ = this->create_service<auv_core_helper::srv::MissionCommand>(
         auv_core_helper::topicnames::mission_cmd_service,
         std::bind(&MissionController::MissionCommandCB, this, std::placeholders::_1, std::placeholders::_2));
@@ -105,7 +109,7 @@ void MissionController::Run()
         ctrlData_->kclData.newCommand = false;
         ctrlData_->kclData.executingCommand = true;
 
-#ifndef DEBUG
+#ifndef NO_KCL
         if (!setKCLClient_->wait_for_action_server(std::chrono::seconds(3))) {
 
             // HUGE FAIL
