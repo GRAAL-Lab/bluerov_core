@@ -155,8 +155,8 @@ void LoadParamsFromConf(const std::string& config_name, Eigen::VectorXd* thruste
 void PublishEigenPose(const rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr& publisher, const Eigen::Matrix<double, 6, 1>& pose, const rclcpp::Time& time) {
     auto message = std::make_unique<auv_core_helper::msg::PoseStamped>();
     message->header.stamp = time;
-    message->x = pose(0);
-    message->y = pose(1);
+    message->lati = pose(0);
+    message->longi = pose(1);
     message->z = pose(2);
     message->roll = pose(3);
     message->pitch = pose(4);
