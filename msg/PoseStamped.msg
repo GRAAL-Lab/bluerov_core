@@ -1,7 +1,6 @@
 std_msgs/Header header
-float64 lati
-float64 longi
-float64 z
+LatLong position
+float64 depth
 float64 roll
 float64 pitch
 float64 yaw

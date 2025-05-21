@@ -1,5 +1,5 @@
 # For waypoint Nav
-float64 latitude
-float64 longitude
+LatLong position
+float64 depth
 
 # Add more for data exhange between missionctrl and KCL
