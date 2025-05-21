@@ -19,8 +19,11 @@ namespace states {
 
     fsm::retval StateInit::Execute()
     {
+        std::cerr << "executing init state" << std::endl;
         if (taskData_ == nullptr) {
+#ifdef DEBUG
             std::cerr << ".";
+#endif
             return fsm::ok;
         }
 
@@ -29,7 +32,7 @@ namespace states {
                 taskData_->taskPhases.pop();
 
             if (taskData_->taskType == taskBenchmarks::INSPECTION) {
-                taskData_->taskPhases.push(std::make_pair(states::ID::init, "")); // just to be clear
+                taskData_->taskPhases.push(std::make_pair(states::ID::init, ""));
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, opis::uavWaypoint));
                 taskData_->taskPhases.push(std::make_pair(states::ID::searchForObject, opis::gate));
                 taskData_->taskPhases.push(std::make_pair(states::ID::crossGate, ""));
@@ -47,7 +50,11 @@ namespace states {
             doneInit = true;
         }
 
-        if (ctrlData->perceptionData.isAlive) {
+#ifdef DEBUG
+        return this->SetNextMissionState();
+#endif
+
+        if (systemStatus_->IsAlive()) {
             return this->SetNextMissionState();
         } else {
             return fsm::ok;

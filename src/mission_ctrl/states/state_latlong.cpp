@@ -22,8 +22,8 @@ namespace states {
                   << goalPosition.longitude << std::endl;
 
         ctrlData->kclData.newCommand = true;
-        ctrlData->kclData.kcl_command.latitude = goalPosition.latitude;
-        ctrlData->kclData.kcl_command.longitude = goalPosition.longitude;
+        ctrlData->kclData.kcl_command.position.latitude = goalPosition.latitude;
+        ctrlData->kclData.kcl_command.position.longitude = goalPosition.longitude;
 
         // ctrlData->inertialF_linearPosition.latitude = goalPosition.latitude;
         // ctrlData->inertialF_linearPosition.longitude = goalPosition.longitude;
@@ -33,13 +33,13 @@ namespace states {
 
     fsm::retval StateLatLong::Execute()
     {
-        double alt;
-        Eigen::Vector3d distanceVector;
-        ctb::LatLong2LocalNED(ctrlData->inertialF_linearPosition, alt, goalPosition, distanceVector);
-        if (distanceVector.norm() < minAcceptanceRadius) {
+
+        double distance, azimuthRad;
+        ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, goalPosition, distance, azimuthRad);
+        if (distance < minAcceptanceRadius) {
             this->SetNextMissionState();
         } else {
-            std::cerr << "Distance to goal: " << distanceVector.norm() << "\n";
+            std::cerr << "Distance to goal: " << distance << "\n";
         }
 
 #ifdef DEBUG

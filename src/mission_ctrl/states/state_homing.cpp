@@ -25,14 +25,13 @@ namespace states {
 
     fsm::retval StateHoming::Execute()
     {
-        double alt;
-        Eigen::Vector3d distanceVector;
-        ctb::LatLong2LocalNED(ctrlData->inertialF_linearPosition, alt, homePosition, distanceVector);
-        if (distanceVector.norm() < minAcceptanceRadius) {
+        double distance, azimuthRad;
+        ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, homePosition, distance, azimuthRad);
+        if (distance < minAcceptanceRadius) {
             std::cerr << "Reached home!\n";
             return fsm_->SetNextState(states::ID::init);
-        }else{
-            std::cerr << "Distance to home: " << distanceVector.norm() << "\n";
+        } else {
+            std::cerr << "Distance to home: " << distance << "\n";
         }
 
         return fsm::ok;

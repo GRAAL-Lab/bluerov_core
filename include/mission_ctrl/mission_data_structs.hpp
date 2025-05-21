@@ -20,6 +20,7 @@ struct DtcBuoy;
 struct GateBuoy;
 struct PerceptionData;
 struct KinematicData;
+struct SystemStatus;
 struct ControlData;
 
 struct Buoy;
@@ -139,14 +140,14 @@ struct BuoysArea {
 
 struct PipelinePipe {
     uint number;
-    double angleWithNorth;
+    double orientation;
     ctb::LatLong position;
 
     friend std::ostream& operator<<(std::ostream& os, const PipelinePipe& pipe)
     {
         os << "PipelinePipe {\n";
         os << "  number: " << pipe.number << "\n";
-        os << "  angleWithNorth: " << pipe.angleWithNorth << "\n";
+        os << "  orientation: " << pipe.orientation << "\n";
         os << "  position: (" << pipe.position.latitude << ", " << pipe.position.longitude << ")\n";
         os << "}\n";
         return os;
@@ -252,7 +253,7 @@ protected:
             for (size_t i = 0; i < pipelinePipes.size(); ++i) {
                 PipelinePipe pipe;
                 pipe.number = static_cast<uint>(i + 1);
-                pipe.angleWithNorth = pipelinePipes[i].orientation;
+                pipe.orientation = pipelinePipes[i].orientation;
                 pipe.position.latitude = pipelinePipes[i].centroid.latitude;
                 pipe.position.longitude = pipelinePipes[i].centroid.longitude;
                 pPipes.push_back(pipe);
@@ -272,7 +273,7 @@ protected:
             PipelinePipe pipe;
             if (!ctb::GetParam(pipelinePipeSetting, pipe.number, "number"))
                 return false;
-            if (!ctb::GetParam(pipelinePipeSetting, pipe.angleWithNorth, "orientation"))
+            if (!ctb::GetParam(pipelinePipeSetting, pipe.orientation, "orientation"))
                 return false;
             if (!LatLongFromConfig(pipelinePipeSetting, pipe.position, "centroid"))
                 return false;
@@ -415,7 +416,7 @@ struct Intervention : public TaskBenchmarkSettings {
         const libconfig::Setting& pipelinePipeSetting = root["damagedPipeOnPipeline"];
         if (!ctb::GetParam(pipelinePipeSetting, damagedPipeOnPipeline.number, "number"))
             return false;
-        if (!ctb::GetParam(pipelinePipeSetting, damagedPipeOnPipeline.angleWithNorth, "angleWithNorth"))
+        if (!ctb::GetParam(pipelinePipeSetting, damagedPipeOnPipeline.orientation, "orientation"))
             return false;
         if (!LatLongFromConfig(pipelinePipeSetting, damagedPipeOnPipeline.position, "centroid"))
             return false;
@@ -430,7 +431,7 @@ struct Intervention : public TaskBenchmarkSettings {
         try {
             numberOfMainPipeDamageMarkers = request->n_damage_markers;
             damagedPipeOnPipeline.number = request->damaged_pipe.number;
-            damagedPipeOnPipeline.angleWithNorth = request->damaged_pipe.orientation;
+            damagedPipeOnPipeline.orientation = request->damaged_pipe.orientation;
             damagedPipeOnPipeline.position.latitude = request->damaged_pipe.centroid.latitude;
             damagedPipeOnPipeline.position.longitude = request->damaged_pipe.centroid.longitude;
         } catch (...) {
@@ -506,6 +507,47 @@ struct InspectionAndIntervention : public TaskBenchmarkSettings {
         }
         os << "==========================================\n";
     }
+};
+
+struct SystemStatus {
+    double timeout = 2.0; //s
+    
+    rclcpp::Time lastBridgeTime;
+    rclcpp::Time lastPerceptionTime;
+    rclcpp::Time lastKCLTime;
+
+    rclcpp::Time lastStateSwitchTime;
+
+    bool perceptionAlive = false;
+    bool kclAlive = false;
+    bool bridgeAlive = false;
+
+    SystemStatus(rcl_clock_type_t clockType)
+    {
+        if (clockType == 1) {
+            lastBridgeTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
+            lastPerceptionTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
+            lastKCLTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
+            lastStateSwitchTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
+        } else {
+            lastBridgeTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
+            lastPerceptionTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
+            lastKCLTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
+            lastStateSwitchTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
+        }
+    }
+
+    bool IsAlive()
+    {
+        return perceptionAlive && kclAlive && bridgeAlive;
+    }
+
+    void UpdateStatus(rclcpp::Time now){
+        perceptionAlive = lastPerceptionTime > (now - rclcpp::Duration::from_seconds(timeout));
+        kclAlive = lastKCLTime > (now - rclcpp::Duration::from_seconds(timeout));
+        bridgeAlive = lastBridgeTime > (now - rclcpp::Duration::from_seconds(timeout));
+    }
+    
 };
 
 }

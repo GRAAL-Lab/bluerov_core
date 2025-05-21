@@ -5,6 +5,7 @@ MissionController::MissionController()
     : Node("mission_control_node")
 {
     ctrlData_ = std::make_shared<ControlData>();
+    systemStatus_ = std::make_shared<SystemStatus>(this->get_clock()->get_clock_type());
 
     stateInit_ = std::make_shared<states::StateInit>();
     stateHoming_ = std::make_shared<states::StateHoming>();
@@ -30,12 +31,6 @@ MissionController::MissionController()
     setKCLClient_ = rclcpp_action::create_client<auv_core_helper::action::SetKCL>(
         this, auv_core_helper::topicnames::kcl_setter_action);
 
-    if (this->get_clock()->get_clock_type() == 1) {
-        lastPerceptionTime_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
-    } else {
-        lastPerceptionTime_ = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
-    }
-    // lastPerceptionTime_ = this->get_clock()->now();
     perceptionSub_ = this->create_subscription<auv_core_helper::msg::DtcList>(
         auv_core_helper::topicnames::objects, rclcpp::SystemDefaultsQoS(),
         std::bind(&MissionController::PerceptionCB, this, std::placeholders::_1));
@@ -46,21 +41,14 @@ MissionController::MissionController()
 
     SetUpFSM();
 
-    double controlLoopRate = 1.0; // Hz
     int msRunPeriod = 1.0 / (controlLoopRate) * 1000;
     // std::cout << "Controller Rate: " << conf_->controlLoopRate << "Hz" << std::endl;
     runTimer_ = this->create_wall_timer(std::chrono::milliseconds(msRunPeriod), std::bind(&MissionController::Run, this));
 
 #ifdef NO_CTRL_STATION
     RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No control station, loading configuration from file");
-    if (!LoadConfiguration()) {
-        std::cerr << "Failed to load configuration from file" << std::endl;
-        return;
-    }
-    // Print configuration
-    std::cerr << "===== TaskBenchMark " << taskData_->taskType << " =====" << std::endl;
-    std::cerr << *taskData_ << std::endl;
-    UpdateFSM();
+    SimulateMissionCmdFromFile();
+    SetTaskDataFSM();
 #endif
 
 #ifdef DEBUG
@@ -88,17 +76,15 @@ void MissionController::StatusPub()
 
 void MissionController::Run()
 {
-
-#ifndef DEBUG
-    rclcpp::Time now = this->get_clock()->now();
-    if (lastPerceptionTime_ > (now - rclcpp::Duration::from_seconds(5.0))) {
-        ctrlData_->perceptionData.isAlive = true;
+    auto now = this->get_clock()->now();
+    if (rFsm_.GetCurrentStateName() != rFsm_.GetNextStateName()) {
+        systemStatus_->lastStateSwitchTime = now;
     } else {
-        ctrlData_->perceptionData.isAlive = false;
+        double timeSinceLastSwitch = now.seconds() - systemStatus_->lastStateSwitchTime.seconds();
+        if (timeSinceLastSwitch > 20.0 && std::fmod(timeSinceLastSwitch, 10.0) < 1.0) {
+            RCLCPP_WARN(this->get_logger(), "FSM in state %s for %i seconds", rFsm_.GetCurrentStateName().c_str(), (int)timeSinceLastSwitch);
+        }
     }
-#else
-    ctrlData_->perceptionData.isAlive = true;
-#endif
 
     // Switch State (if something happens)
     rFsm_.SwitchState();
@@ -107,12 +93,12 @@ void MissionController::Run()
     // Execute current state
     rFsm_.ExecuteState();
 
+    StatusPub();
+
     if (taskData_ == nullptr) {
-        //Did not receive task data yet from control station
+        // Did not receive task data yet from control station
         return;
     }
-
-    StatusPub();
 
     // KCL COMMAND
     if (ctrlData_->kclData.newCommand) {
@@ -121,6 +107,7 @@ void MissionController::Run()
 
 #ifndef DEBUG
         if (!setKCLClient_->wait_for_action_server(std::chrono::seconds(3))) {
+
             // HUGE FAIL
             RCLCPP_WARN(this->get_logger(), "Action server not available.");
             return;
@@ -135,14 +122,13 @@ void MissionController::Run()
             }
             ctrlData_->kclData.executingCommand = false;
         };
-        
 
         auv_core_helper::action::SetKCL::Goal cmd;
-        //cmd.desired_state = "WAYPOINT_NAVIGATION"; this code should be independent of the specific command
+        // cmd.desired_state = "WAYPOINT_NAVIGATION"; this code should be independent of the specific command
         cmd.data = ctrlData_->kclData.kcl_command;
-        //temp
+        // temp
         std::cout << "Sending command: ros2 action send_goal /set_kcl_state auv_core_helper/action/SetKCL \"{desired_state: '"
-                  << cmd.desired_state << "', data: {latitude: " << cmd.data.latitude << ", longitude: " << cmd.data.longitude << "}}\"" << std::endl;
+                  << cmd.desired_state << "', data: {latitude: " << cmd.data.position.latitude << ", longitude: " << cmd.data.position.longitude << "}}\"" << std::endl;
         setKCLClient_->async_send_goal(cmd, options);
     }
 };
@@ -153,6 +139,7 @@ void MissionController::SetUpFSM()
     // Set the fsm and the structure that the states need.
     for (auto& state : statesMap_) {
         state.second->ctrlData = ctrlData_;
+        state.second->systemStatus_ = systemStatus_;
         // state.second->taskData_ = taskData_;
         state.second->SetFSM(&rFsm_);
     }
@@ -173,7 +160,7 @@ void MissionController::SetUpFSM()
     rFsm_.SetInitState(mission::states::ID::init);
 }
 
-void MissionController::UpdateFSM()
+void MissionController::SetTaskDataFSM()
 {
     for (auto& state : statesMap_) {
         state.second->taskData_ = taskData_;
@@ -182,7 +169,7 @@ void MissionController::UpdateFSM()
 
 void MissionController::PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg)
 {
-    lastPerceptionTime_ = this->get_clock()->now();
+    systemStatus_->lastPerceptionTime = this->get_clock()->now();
     // Update perception data
     // for(auto& obstacle : msg->obstacles) {
 
@@ -198,13 +185,6 @@ void MissionController::PerceptionCB(const auv_core_helper::msg::DtcList::Shared
 
         ctrlData_->perceptionData.detectedBuoys[buoy.id] = b;
     }
-
-    //     LatLong position
-    // string color
-    // float64 color_confidence
-
-    // GenericObstacle[] obstacles
-    // Buoy[]  buoys
 }
 
 void MissionController::MissionCommandCB(
@@ -228,10 +208,20 @@ void MissionController::MissionCommandCB(
         response->text = "Failed to configure task data from request";
         return;
     }
-    UpdateFSM();
+    SetTaskDataFSM();
 }
 
-bool MissionController::LoadConfiguration()
+void MissionController::PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg)
+{
+    systemStatus_->lastBridgeTime = this->get_clock()->now();
+    ctrlData_->inertialF_linearPosition.latitude = msg->position.latitude;
+    ctrlData_->inertialF_linearPosition.longitude = msg->position.longitude;
+    ctrlData_->depth = msg->depth;
+    ctrlData_->bodyF_angularPosition.RPY(msg->roll,
+        msg->pitch, msg->yaw);
+}
+
+void MissionController::SimulateMissionCmdFromFile()
 {
     libconfig::Config confObj;
     std::string package_share_directory = ament_index_cpp::get_package_share_directory("mission_ctrl");
@@ -240,8 +230,8 @@ bool MissionController::LoadConfiguration()
     try {
         confObj.readFile(confPath.c_str());
         uint tbm_id;
-        if (!ctb::GetParam(confObj, tbm_id, "tbm"))
-            return false;
+        ctb::GetParam(confObj, tbm_id, "tbm");
+
         switch (tbm_id) {
         case 1:
             taskData_ = std::make_shared<Inspection>();
@@ -254,16 +244,17 @@ bool MissionController::LoadConfiguration()
             break;
         default:
             std::cerr << "Invalid tbm id: " << tbm_id << std::endl;
-            return false;
         }
-        return taskData_->ConfigureFromFile(confObj);
+        taskData_->ConfigureFromFile(confObj);
     } catch (const libconfig::FileIOException& fioex) {
         std::cerr << "I/O error while reading file: " << fioex.what() << std::endl;
         std::cerr << "  Path: '" << confPath << "'. Make sure the file exists and is readable." << std::endl;
-        return false;
     } catch (const libconfig::ParseException& pex) {
         std::cerr << "Parse error at " << pex.getFile() << ":" << pex.getLine() << " - " << pex.getError() << std::endl;
-        return false;
     }
+
+    // Print configuration
+    std::cerr << "===== TaskBenchMark " << taskData_->taskType << " =====" << std::endl;
+    std::cerr << *taskData_ << std::endl;
 }
 }

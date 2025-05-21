@@ -13,8 +13,9 @@ namespace states {
     class StateBase : public fsm::BaseState {
 
     public:
+        std::shared_ptr<mission::SystemStatus> systemStatus_;
         std::shared_ptr<mission::ControlData> ctrlData;
-        std::shared_ptr<TaskBenchmarkSettings> taskData_;
+        std::shared_ptr<mission::TaskBenchmarkSettings> taskData_;
 
         StateBase();
         virtual ~StateBase(void);

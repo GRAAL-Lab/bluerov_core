@@ -1,4 +1,5 @@
 
+#include <cmath>
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 
@@ -19,16 +20,23 @@
 #include "auv_core_helper/srv/mission_command.hpp"
 #include "auv_core_helper/msg/mission_status.hpp"
 #include "auv_core_helper/msg/dtc_list.hpp"
+#include "auv_core_helper/msg/pose_stamped.hpp"
 
 namespace mission {
 
 class MissionController : public rclcpp::Node {
 
+    //TODO conf
+    double stateTimeout = 20.0; // seconds
+    double controlLoopRate = 1.0; // Hz
+
+    std::shared_ptr<SystemStatus> systemStatus_;
     std::shared_ptr<ControlData> ctrlData_;
     std::shared_ptr<TaskBenchmarkSettings> taskData_;
 
+    // FSM
     fsm::FSM rFsm_;
-
+    std::unordered_map<std::string, std::shared_ptr<states::StateBase>> statesMap_;
     std::shared_ptr<states::StateInit> stateInit_;
     std::shared_ptr<states::StateLatLong> stateLatLong_;
     std::shared_ptr<states::StateSearchObject> stateSearchObject_;
@@ -37,37 +45,35 @@ class MissionController : public rclcpp::Node {
     std::shared_ptr<states::StateSearchBuoyArea> stateSearchBuoyArea_;
     std::shared_ptr<states::StateInspectBuoy> stateInspectBuoy_;
     std::shared_ptr<states::StateInspectPipes> stateInspectPipes_;
-    std::unordered_map<std::string, std::shared_ptr<states::StateBase>> statesMap_;
-
+    
+    // Pubs and Subs, action client to KCL and service for mission command
     rclcpp::Publisher<auv_core_helper::msg::MissionStatus>::SharedPtr missionStatusPub_;
+    rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr poseSub_;    
+    rclcpp::Subscription<auv_core_helper::msg::DtcList>::SharedPtr perceptionSub_;
     rclcpp_action::Client<auv_core_helper::action::SetKCL>::SharedPtr setKCLClient_;
     rclcpp::Service<auv_core_helper::srv::MissionCommand>::SharedPtr missionCommandService_;
-    
-    //auv_core_helper::msg::ObstacleList obstacles_;
-    rclcpp::Subscription<auv_core_helper::msg::DtcList>::SharedPtr perceptionSub_;
+       
+    rclcpp::TimerBase::SharedPtr runTimer_; 
 
-    rclcpp::TimerBase::SharedPtr runTimer_; // Main function timer
 
-    rclcpp::Time lastPerceptionTime_;
-    //rclcpp::Time lastKCLTime_;
+    void SimulateMissionCmdFromFile();
 
-    bool LoadConfiguration();
-
+    // FSM
     void SetUpFSM();
-    void UpdateFSM();
-
+    void SetTaskDataFSM();
     void Run();
 
+    // Pubs
     void StatusPub();
 
+    // Callbacks
+    void PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
     void PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg);
-
     void MissionCommandCB(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request,
                            std::shared_ptr<auv_core_helper::srv::MissionCommand::Response> response);
 
 public:
     MissionController();
-
 };
 
 }
