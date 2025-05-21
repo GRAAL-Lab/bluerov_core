@@ -1,7 +1,7 @@
 #include "mission_ctrl/mission_controller.hpp"
 
 namespace mission {
-MissionController::MissionController(std::string conf_filename)
+MissionController::MissionController()
     : Node("mission_control_node")
 {
     ctrlData_ = std::make_shared<ControlData>();
@@ -28,7 +28,7 @@ MissionController::MissionController(std::string conf_filename)
         auv_core_helper::topicnames::mission_status, rclcpp::SystemDefaultsQoS());
 
     setKCLClient_ = rclcpp_action::create_client<auv_core_helper::action::SetKCL>(
-        this, "set_kcl");
+        this, auv_core_helper::topicnames::kcl_setter_action);
 
     if (this->get_clock()->get_clock_type() == 1) {
         lastPerceptionTime_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
@@ -41,7 +41,7 @@ MissionController::MissionController(std::string conf_filename)
         std::bind(&MissionController::PerceptionCB, this, std::placeholders::_1));
 
     missionCommandService_ = this->create_service<auv_core_helper::srv::MissionCommand>(
-        "mission_command",
+        auv_core_helper::topicnames::mission_cmd_service,
         std::bind(&MissionController::MissionCommandCB, this, std::placeholders::_1, std::placeholders::_2));
 
     SetUpFSM();
@@ -52,7 +52,7 @@ MissionController::MissionController(std::string conf_filename)
     runTimer_ = this->create_wall_timer(std::chrono::milliseconds(msRunPeriod), std::bind(&MissionController::Run, this));
 
 #ifdef NO_CTRL_STATION
-    fileName_ = conf_filename;
+    RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No control station, loading configuration from file");
     if (!LoadConfiguration()) {
         std::cerr << "Failed to load configuration from file" << std::endl;
         return;
@@ -61,6 +61,10 @@ MissionController::MissionController(std::string conf_filename)
     std::cerr << "===== TaskBenchMark " << taskData_->taskType << " =====" << std::endl;
     std::cerr << *taskData_ << std::endl;
     UpdateFSM();
+#endif
+
+#ifdef DEBUG
+    RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> Debug mode, perception and kcl heartbeat checks disabled");
 #endif
 };
 
@@ -104,6 +108,7 @@ void MissionController::Run()
     rFsm_.ExecuteState();
 
     if (taskData_ == nullptr) {
+        //Did not receive task data yet from control station
         return;
     }
 
@@ -125,15 +130,17 @@ void MissionController::Run()
         auto options = rclcpp_action::Client<auv_core_helper::action::SetKCL>::SendGoalOptions();
         options.result_callback = [this](const rclcpp_action::ClientGoalHandle<auv_core_helper::action::SetKCL>::WrappedResult& result) {
             if (result.code != rclcpp_action::ResultCode::SUCCEEDED) {
-                // HUGE FAIL
+                // HUGE FAIL TO HANDLE
                 RCLCPP_ERROR(this->get_logger(), "Command execution failed.");
             }
             ctrlData_->kclData.executingCommand = false;
         };
+        
 
         auv_core_helper::action::SetKCL::Goal cmd;
-        cmd.desired_state = "WAYPOINT_NAVIGATION";
+        //cmd.desired_state = "WAYPOINT_NAVIGATION"; this code should be independent of the specific command
         cmd.data = ctrlData_->kclData.kcl_command;
+        //temp
         std::cout << "Sending command: ros2 action send_goal /set_kcl_state auv_core_helper/action/SetKCL \"{desired_state: '"
                   << cmd.desired_state << "', data: {latitude: " << cmd.data.latitude << ", longitude: " << cmd.data.longitude << "}}\"" << std::endl;
         setKCLClient_->async_send_goal(cmd, options);
@@ -228,7 +235,7 @@ bool MissionController::LoadConfiguration()
 {
     libconfig::Config confObj;
     std::string package_share_directory = ament_index_cpp::get_package_share_directory("mission_ctrl");
-    std::string confPath = package_share_directory + "/conf/" + fileName_;
+    std::string confPath = package_share_directory + "/conf/" + "tasks.conf";
 
     try {
         confObj.readFile(confPath.c_str());

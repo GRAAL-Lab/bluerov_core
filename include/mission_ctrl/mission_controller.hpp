@@ -24,8 +24,6 @@ namespace mission {
 
 class MissionController : public rclcpp::Node {
 
-    std::string fileName_;
-
     std::shared_ptr<ControlData> ctrlData_;
     std::shared_ptr<TaskBenchmarkSettings> taskData_;
 
@@ -68,7 +66,7 @@ class MissionController : public rclcpp::Node {
                            std::shared_ptr<auv_core_helper::srv::MissionCommand::Response> response);
 
 public:
-    MissionController(std::string conf_filename);
+    MissionController();
 
 };
 
