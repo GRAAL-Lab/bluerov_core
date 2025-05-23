@@ -46,6 +46,14 @@ MarineDetectorROS2::MarineDetectorROS2 (
     );
 }
 
+void MarineDetectorROS2::MissionStatusCallback(const auv_core_helper::msg::MissionStatus::SharedPtr msg) {
+    // Access the requests object
+    const auto& requests = msg->requests;
+    DtcRequest dtcRequest;
+    dtcRequest.buoys = requests.buoys;
+    dtcRequest.obstacles = requests.obstacles;
+    currentRequest_ = dtcRequest;
+}
 
 Pipe MarineDetectorROS2::GetPipeInfo(const image_pipeline_msgs::msg::PipeDirection::ConstPtr msg) {
     // Process the PipeDirection message
@@ -57,6 +65,7 @@ Pipe MarineDetectorROS2::GetPipeInfo(const image_pipeline_msgs::msg::PipeDirecti
     pipeDirection.normalize();
     auto yaw = rml::ReducedVersorLemma(Eigen::Vector3d(1,0,0), pipeDirection)[2];
     p.wF_pose.RotationMatrix(rml::EulerRPY(0,0,yaw).ToRotationMatrix());
+    p.boxSize = Eigen::Vector3d(msg->size.x, msg->size.y, msg->size.z);
     return p;
 }
 
@@ -70,6 +79,12 @@ void MarineDetectorROS2::Init(const std::string& bagPath, bool isSim) {
 void MarineDetectorROS2::InitSubscribers() {
     std::cerr << std::endl << tc::bluL << "[InitSubscribers] Starting..." << tc::none << std::endl;
     dsc_.Print();
+
+    missionStatusSub_ = this->create_subscription<auv_core_helper::msg::MissionStatus>(
+        "mission_status", 
+        10,  // Queue size
+        std::bind(&MarineDetectorROS2::MissionStatusCallback, this, std::placeholders::_1)
+    );
 
     // Initializing Camera Subscribers
     for (const auto &p : dsc_.cams) {
@@ -124,9 +139,10 @@ bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::Const
 
         bool pipesInfoReceived = false;
 
-        auto lookForBuoys = (state == PerceptionState::ALL) || (state == PerceptionState::BUOYS);
-        auto lookForMainPipe = (state == PerceptionState::ALL) || (state == PerceptionState::PIPES);
-        auto lookForPipes = (state == PerceptionState::ALL) || (state == PerceptionState::MAIN_PIPE);
+        auto lookForBuoys = (state == PerceptionState::ALL) || (state == PerceptionState::BUOYS) || (currentRequest_.buoys) || (currentRequest_.obstacles);
+        auto lookForMainPipe = (state == PerceptionState::ALL) || (state == PerceptionState::PIPES) || (currentRequest_.obstacles);
+        auto lookForPipes = (state == PerceptionState::ALL) || (state == PerceptionState::MAIN_PIPE) || (currentRequest_.obstacles);
+        auto lookForOthers = (state == PerceptionState::ALL) || (currentRequest_.obstacles);
 
         if ((lookForBuoys && !yoloDetectionsReceived) && (lookForPipes && !pipesInfoReceived) && (lookForMainPipe && !mainPipeInfoReceived)) {
             image_pipeline_msgs::msg::Obstacles obstaclesMsg; // empty
@@ -176,6 +192,7 @@ bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::Const
         std::vector<Number> numbers;
         std::vector<Pipe> pipes;
         if (lookForBuoys && yoloDetectionsReceived) {
+            if (enableDbgPrint_)std::cerr <<tc::cyanL<< "3.5" <<tc::none<< std::endl;
             if (enableDbgPrint_)std::cerr << tc::none << "[ObstacleDetectionCallbackRAMI] New vehicle Geopose with fix = " << llh_vehiclePos_.transpose() << tc::none << std::endl;
             std::vector<odtc::BoundingBox<2>> imgBoxes_;
             size_t buoyId = 0;
@@ -189,7 +206,7 @@ bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::Const
                         odtc::Pyramid pyr(b, worldF_T_vehicleF * cam.second.ExtF_TP_imgPlaneF(), Eigen::Vector2d(0,0));
                         auto wF_sphereCenter = pyr.Get3DSphereCentroid(buoyDiameter, false);
                         if (enableDbgPrint_)std::cerr << tc::cyanL << "[ObstacleDetectionCallbackRAMI] Box label is " << b.Description() << " with confidence " << b.Confidence() << ", 3D pos is " <<
-                            wF_sphereCenter.transpose() << std::endl;
+                            wF_sphereCenter.transpose() << tc::none << std::endl;
                         Eigen::TransformationMatrix wF_buoyPose;
                         wF_buoyPose.TranslationVector(wF_sphereCenter);
                         Buoy b;
@@ -207,7 +224,7 @@ bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::Const
         if (lookForPipes && !pipesInfoReceived) {
             // TODO put the multiple pipes repackaging logic here (Mahmoud & Mamo's algorithm)
         }
-        if (lookForMainPipe && !mainPipeInfoReceived) { 
+        if (lookForMainPipe && mainPipeInfoReceived) { 
             auto p = GetPipeInfo(mainPipe_msg);
             p.notes = objectNames::MAINPIPE_NAME;
             pipes.emplace_back(p);

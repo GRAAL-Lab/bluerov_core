@@ -2,7 +2,7 @@
 #include "marine_tracking_ros2.h"
 
 MarineTrackingROS2::MarineTrackingROS2(const std::string& bagPath, const bool isSim) : Node("marine_detector") {
-    filtersPub_ = this->create_publisher<image_pipeline_msgs::msg::ObstacleArray>("/trk/tracks", 10);
+    filtersPub_ = this->create_publisher<auv_core_helper::msg::DtcList>("/trk/tracks", 10);
     std::map<std::string, odtc::IDAssocParams> assocParams;
     odtc::TrackingParams trackingParams;
 
@@ -27,6 +27,7 @@ MarineTrackingROS2::MarineTrackingROS2(const std::string& bagPath, const bool is
     tracker_.Meas2Track().Print();
     tracker_.enableTrackPointChange = false;
     tracker_.enableFGR = false;
+    tracker_.enablePointCoverage = false;
     tracker_.enableAdvTrackingPrint = false;
     runTimer_ = this->create_wall_timer(
         std::chrono::duration<double>(trackingDt_),

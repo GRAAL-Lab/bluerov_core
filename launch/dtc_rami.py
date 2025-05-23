@@ -11,6 +11,15 @@ def generate_launch_description():
             cmd=['rm', '-rf', '/home/graal/.ros/stonefish_rami_results'],
             output='screen'
         ),
+        
+        # Vision node
+        Node(
+            package='image_pipeline_obstacle_tracking',
+            executable='python_yolo_publisher.py',
+            name='marine_detector',
+            output='screen',
+            parameters=[{'use_sim_time': True}]
+        ),
                    
         # Marine detector node
         Node(
@@ -45,7 +54,7 @@ def generate_launch_description():
 
         # Play bag process
         ExecuteProcess(
-            cmd=['ros2', 'bag', 'play', '/media/graal/evodata1/datasets/stonefish_rami/rami/rami.db3', '--clock', '--start-offset', '30'],
+            cmd=['ros2', 'bag', 'play', '/media/graal/evodata1/datasets/stonefish_rami/rami/rami.db3', '--clock', '--start-offset', '35'],
             output='screen'
         )
     ])

@@ -90,10 +90,15 @@ private:
     rclcpp::Publisher<image_pipeline_msgs::msg::Obstacles>::SharedPtr obstaclesPub_;
     std::map<std::string, sensorTopics> sensorsPub_;
 
+    rclcpp::Subscription<auv_core_helper::msg::MissionStatus>::SharedPtr missionStatusSub_;
+    void MissionStatusCallback(const auv_core_helper::msg::MissionStatus::SharedPtr msg);
+
+    DtcRequest currentRequest_;
+
     rclcpp::Time tsRos_;
     bool enableRosDebugPrints_ = false;
 
-    PerceptionState state = PerceptionState::IDLE;
+    PerceptionState state = PerceptionState::ALL;
 };
 
 #endif // MARINE_DETECTOR_ROS2_H

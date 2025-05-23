@@ -360,6 +360,7 @@ Pipe UtilitiesROS2::PipeMsgToPipe(const image_pipeline_msgs::msg::Pipe &msg, con
     pipe.wF_endPose = GeoPoseWithCovarianceToEigen(msg.end_pose, centroid);
     pipe.wF_pose.TranslationVector(Eigen::Vector3d(msg.pose.position.x, msg.pose.position.y, msg.pose.position.z));
     pipe.notes = msg.notes;
+    if (msg.sizes.size() == 3) pipe.boxSize = Eigen::Vector3d(msg.sizes[0], msg.sizes[1], msg.sizes[2] );
 
     // Convert markers
     for (const auto &marker_msg : msg.markers) {
@@ -410,7 +411,8 @@ std::vector<odtc::Obstacle<2>> UtilitiesROS2::ObstacleDataToObstacleVector(const
     }
 
     for (const auto &p : obstacleData.pipes) {
-        odtc::BoundingBox<2> bx; // todo fill when new PipeDirection msg is ready
+        Eigen::Vector2d worldF_pipeCentroidHopefully(p.wF_pose(0,3), p.wF_pose(1,3));
+        odtc::BoundingBox<2> bx(worldF_pipeCentroidHopefully, p.wF_pose.RotationMatrix().block(0,0,2,2), p.boxSize.head(2));
         bx.Id(p.id);
         bx.Description("Main_pipe");
         res.emplace_back(bx);
@@ -559,6 +561,7 @@ image_pipeline_msgs::msg::Pipe UtilitiesROS2::PipeToPipeMsg(const Pipe& pipe, co
     msg.pose.position.y = pipe.wF_pose.TranslationVector()[1];
     msg.pose.position.z = pipe.wF_pose.TranslationVector()[2];
     msg.notes = pipe.notes;
+    msg.sizes = { pipe.boxSize[0], pipe.boxSize[1], pipe.boxSize[2] };
 
     // Convert markers
     for (const auto& marker : pipe.markers) {
@@ -574,9 +577,9 @@ image_pipeline_msgs::msg::Pipe UtilitiesROS2::PipeToPipeMsg(const Pipe& pipe, co
     return msg;
 }
 
-image_pipeline_msgs::msg::ObstacleArray UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &trck, const TrackType trackType, const Eigen::Vector3d &llhCentroid, std::vector<odtc::BoundingBox<2>> boxes) {
+auv_core_helper::msg::DtcList UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &trck, const TrackType trackType, const Eigen::Vector3d &llhCentroid, std::vector<odtc::BoundingBox<2>> boxes) {
 
-    image_pipeline_msgs::msg::ObstacleArray msg;
+    auv_core_helper::msg::DtcList msg;
     msg.header.stamp = t;
     auto measObstacles = trck.ObstacleMeasurements();
     auto filters = trck.Filters();
@@ -593,58 +596,25 @@ image_pipeline_msgs::msg::ObstacleArray UtilitiesROS2::FillObstacleArrayMsg(rclc
         obstacleMsg.class_label = f.second.label;
         obstacleMsg.class_conf = f.second.labelConfidence;
         obstacleMsg.class_area = 0;// infoBox.Volume();
-
-        if (noOccl) {
-            auto cldPtr = measObstacles[key].Points();
-            if (cldPtr != nullptr) {
-                obstacleMsg.meas_id = key;
-                for (int j = 0; j < cldPtr->Size(); j++) {
-                    auto Q = cldPtr->At(j);
-                    if (Q.size() >= 2) {
-                        geometry_msgs::msg::Point P;
-                        P.x = Q[0];
-                        P.y = Q[1];
-                        if (Q.rows() == 3) P.z = Q[2];
-                        else P.z = 0.0;
-                        obstacleMsg.points.emplace_back(P);
-                        //std::cerr << "[FillObstacleArrayMsg] added point..." << std::endl;
-                    }
-                    else {
-                        std::cerr << "[FillObstacleArrayMsg] null point..." << std::endl;
-                    }
-                }
-            }
+        if (f.second.label.find("buoy") != std::string::npos) {
+            // It's a buoy!
+            auv_core_helper::msg::Buoy b;
+            b.id = f.first;
+            Eigen::Matrix3d extF_T_boxF_3D = boxPtr->ExtF_T_BoxF();
+            Eigen::TransformationMatrix extF_T_boxF;
+            extF_T_boxF.block(0,0,2,2) = extF_T_boxF_3D.block(0,0,2,2);
+            extF_T_boxF.block(0,3,2,1) = extF_T_boxF_3D.block(0,2,2,1);
+            ctb::LatLong centroid;
+            centroid.latitude = llhCentroid[0];
+            centroid.longitude = llhCentroid[1];
+            auto buoy_geopose = EigenToGeoPoseWithCovariance(extF_T_boxF, centroid);
+            b.position.latitude = buoy_geopose.pose.position.latitude;
+            b.position.longitude = buoy_geopose.pose.position.longitude;
+            b.color = f.second.label;
+            b.radius = boxPtr->Sizes()[0];
+            msg.buoys.emplace_back(b);
         }
-        msg.obstacles.emplace_back(obstacleMsg);
     }
-    auto idAssocParams = trck.Meas2Track().Params();
-    auto trackingParams = trck.TrckParams();
-    
-    auto iouParams = idAssocParams[odtc::Str(odtc::Metric::IOU)];
-    msg.metrics.emplace_back(odtc::Str(odtc::Metric::IOU));
-    msg.metric_weight.emplace_back(iouParams.weight);
-    msg.metric_max_abs.emplace_back(iouParams.maxAbs);
-    msg.metric_sat.emplace_back(iouParams.maxAbs);
-
-    auto distParams = idAssocParams[odtc::Str(odtc::Metric::DIST)];
-    msg.metrics.emplace_back(odtc::Str(odtc::Metric::DIST));
-    msg.metric_weight.emplace_back(distParams.weight);
-    msg.metric_max_abs.emplace_back(distParams.maxAbs);
-    msg.metric_sat.emplace_back(distParams.maxAbs);
-
-    auto similParams = idAssocParams[odtc::Str(odtc::Metric::SIMILARITY)];
-    msg.metrics.emplace_back(odtc::Str(odtc::Metric::SIMILARITY));
-    msg.metric_weight.emplace_back(similParams.weight);
-    msg.metric_max_abs.emplace_back(similParams.maxAbs);
-    msg.metric_sat.emplace_back(similParams.maxAbs);
-
-    msg.max_occl = trackingParams.maxOccl;
-
-    std::vector<double> QVec(trackingParams.Q.data(), trackingParams.Q.data() + trackingParams.Q.rows() * trackingParams.Q.cols());
-    msg.q = QVec;
-
-    std::vector<double> RVec(trackingParams.R0.data(), trackingParams.R0.data() + trackingParams.R0.rows() * trackingParams.R0.cols());
-    msg.r = RVec;
 
     return msg;
 }

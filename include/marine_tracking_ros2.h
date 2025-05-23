@@ -66,7 +66,7 @@ class MarineTrackingROS2 : public rclcpp::Node {
     void ReadConfigFile(const std::string& dataPath, libconfig::Config& confObj);
 
     // Subscribers
-    rclcpp::Publisher< image_pipeline_msgs::msg::ObstacleArray>::SharedPtr filtersPub_;
+    rclcpp::Publisher< auv_core_helper::msg::DtcList>::SharedPtr filtersPub_;
 
     message_filters::Cache<image_pipeline_msgs::msg::Obstacles> cacheDetections_;
     std::shared_ptr<message_filters::Subscriber<image_pipeline_msgs::msg::Obstacles>> detectionsSub_;

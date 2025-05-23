@@ -35,6 +35,11 @@
 #include <image_pipeline_msgs/msg/obstacle_array.hpp>
 #include <image_pipeline_msgs/msg/obst_detection_settings.hpp>
 #include <image_pipeline_msgs/msg/obst_detection_stats.hpp>
+#include <auv_core_helper/msg/mission_status.hpp>
+#include <auv_core_helper/msg/buoy.hpp>
+#include <auv_core_helper/msg/generic_obstacle.hpp>
+#include <auv_core_helper/msg/dtc_request.hpp>
+#include <auv_core_helper/msg/dtc_list.hpp>
 
 #include <pcl_conversions/pcl_conversions.h>
 
@@ -51,6 +56,21 @@ namespace objectNames {
   const std::string MARKER_NAME = "Marker";
   const std::string NUMBER_NAME = "Number";
 }
+
+// Define the DtcRequest message
+struct DtcRequest {
+  bool obstacles;
+  bool buoys;
+};
+
+// Define the MissionStatus message
+struct MissionStatus {
+  builtin_interfaces::msg::Time stamp;
+  std::string task_benchmark;
+  std::string state;
+  std::string state_object;
+  DtcRequest requests;
+};
 
 struct Buoy {
   size_t id;
@@ -81,6 +101,7 @@ struct Pipe {
   Eigen::TransformationMatrix wF_pose;
   Eigen::TransformationMatrix wF_startPose;
   Eigen::TransformationMatrix wF_endPose;
+  Eigen::Vector3d boxSize;
   std::vector<Number> numbers;
   std::vector<Marker> markers;
   std::string notes;
@@ -130,11 +151,10 @@ class UtilitiesROS2 {
     // Read from cache
     static bool ReadImageFromCache(const message_filters::Cache<sensor_msgs::msg::Image> &imgCache, const rclcpp::Time stamp, sensor_msgs::msg::Image::ConstPtr &imageMsgPtr, const double maxTimeLag_s);
 
-   
     static image_pipeline_msgs::msg::Obstacle FillObstacleMsg(rclcpp::Time t, std::shared_ptr<odtc::BoundingBox<2>> box,
               std::shared_ptr<odtc::TrackData> filterInfo, const std::map<std::string, odtc::IDAssocParams> &assocParams);
-    static image_pipeline_msgs::msg::ObstacleArray FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &obstacles, const TrackType trackType, const Eigen::Vector3d &llhCentroid = Eigen::Vector3d(0,0,0),
-        std::vector<odtc::BoundingBox<2>> boxes = {});
+    static auv_core_helper::msg::DtcList FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &trck, const TrackType trackType,
+              const Eigen::Vector3d &llhCentroid, std::vector<odtc::BoundingBox<2>> boxes = {});
     static image_pipeline_msgs::msg::ObstacleArray FillObstacleArrayMsg(rclcpp::Time t, std::vector<odtc::Obstacle<2>> &obstacles,
       std::vector<odtc::PolarRegion> &excludedRegions, const Eigen::Vector3d &llhCentroid, const Eigen::TransformationMatrix &worldF_T_vehicleF,
       std::map<size_t,std::vector<odtc::DetectionInfo>> di = {});

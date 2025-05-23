@@ -78,30 +78,30 @@ class YOLOImageNode(Node):
     
     def image_callback(self, msg, cam_id):
         """ Callback function to process the incoming image message for a specific camera. """
-        self.get_logger().info(f'Received image message from Camera {cam_id}')
+        #self.get_logger().info(f'Received image message from Camera {cam_id}')
         start_time = time.time()  # Start the timer
 
         try:
             # Convert ROS2 Image message to OpenCV format
             cv_image = self.br.imgmsg_to_cv2(msg, "bgr8")
         except Exception as e:
-            self.get_logger().error(f"Failed to convert image message to OpenCV format for Camera {cam_id}: {e}")
+            #self.get_logger().error(f"Failed to convert image message to OpenCV format for Camera {cam_id}: {e}")
             return
 
         # Verify the cv_image is valid
         if cv_image is None or cv_image.size == 0:
-            self.get_logger().error(f"Empty image received from Camera {cam_id}. Skipping processing.")
+            #self.get_logger().error(f"Empty image received from Camera {cam_id}. Skipping processing.")
             return
         
         cv_imageCopy = cv_image.copy()
 
         # Run YOLO detection on the image
-        self.get_logger().info(f'Running YOLO detection on Camera {cam_id}...')
+        #self.get_logger().info(f'Running YOLO detection on Camera {cam_id}...')
         start_timeYOLO = time.time()  # Start the timer
         results = self.model(cv_image)
         end_timeYOLO = time.time()  # End the timer
         execution_timeYOLO = end_timeYOLO - start_timeYOLO  # Calculate total execution time
-        self.get_logger().info(f'Inference time: {execution_timeYOLO:.4f} seconds')
+        #self.get_logger().info(f'Inference time: {execution_timeYOLO:.4f} seconds')
 
         # Create BoundingBox2DArray message
         box_array_msg = BoundingBox2DArray()
@@ -140,7 +140,7 @@ class YOLOImageNode(Node):
                     bbox.desc = names[box.cls.item()]
 
                     # Add bounding box to array message
-                    print(f'Camera {cam_id} - {bbox}')
+                    #print(f'Camera {cam_id} - {bbox}')
                     box_array_msg.boxes.append(bbox)
 
                     cnt = cnt + 1
@@ -156,25 +156,30 @@ class YOLOImageNode(Node):
         tempYoloSavePathIMG = tempYoloSaveDirIMG + "sim_" +  timeStr + ".png"
         try:
             if not cv2.imwrite(tempYoloSavePath, cv_image):
-                raise ValueError(f"Failed to save image to {tempYoloSavePath}")
-            self.get_logger().info(f"Image saved successfully at {tempYoloSavePath}")
+                pass
+                #raise ValueError(f"Failed to save image to {tempYoloSavePath}")
+            # self.get_logger().info(f"Image saved successfully at {tempYoloSavePath}")
         except Exception as e:
-            self.get_logger().error(f"Error saving image for Camera {cam_id}: {e}")
+            #self.get_logger().error(f"Error saving image for Camera {cam_id}: {e}")
+            pass
         try:
             if not cv2.imwrite(tempYoloSavePathIMG, cv_imageCopy):
-                raise ValueError(f"Failed to save image to {tempYoloSavePath}")
-            self.get_logger().info(f"Image saved successfully at {tempYoloSavePath}")
+                pass
+                #raise ValueError(f"Failed to save image to {tempYoloSavePath}")
+            #self.get_logger().info(f"Image saved successfully at {tempYoloSavePath}")
+            pass
         except Exception as e:
-            self.get_logger().error(f"Error saving image for Camera {cam_id}: {e}")
+            #self.get_logger().error(f"Error saving image for Camera {cam_id}: {e}")
+            pass
 
         # Publish the bounding box array message
         self.publishers_dict[cam_id].publish(box_array_msg)
         end_time = time.time()  # End the timer
         execution_time = end_time - start_time  # Calculate total execution time
-        self.get_logger().info(f'Execution time for image_callback for Camera {cam_id}: {execution_time:.4f} seconds')
+        #self.get_logger().info(f'Execution time for image_callback for Camera {cam_id}: {execution_time:.4f} seconds')
 
         self.get_logger().info(f'Published {len(box_array_msg.boxes)} bounding boxes for Camera {cam_id}.')
-        self.get_logger().info(f'YOLO model loaded successfully on device: {self.model.device}')
+        #self.get_logger().info(f'YOLO model loaded successfully on device: {self.model.device}')
 
         return None
 
