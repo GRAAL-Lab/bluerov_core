@@ -1,6 +1,7 @@
 # Goal
 string desired_state
-MissionCtrlKCL data
+LatLong position
+float64 depth
 
 ---
 # Result
