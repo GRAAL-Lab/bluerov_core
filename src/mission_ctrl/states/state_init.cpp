@@ -19,9 +19,7 @@ namespace states {
 
     fsm::retval StateInit::Execute()
     {
-        std::cerr << "executing init state" << std::endl;
         if (taskData_ == nullptr) {
-
             return fsm::ok;
         }
 
@@ -48,15 +46,7 @@ namespace states {
             doneInit = true;
         }
 
-#ifdef DEBUG
         return this->SetNextMissionState();
-#endif
-
-        if (systemStatus_->IsAlive()) {
-            return this->SetNextMissionState();
-        } else {
-            return fsm::ok;
-        }
     }
 
     fsm::retval StateInit::OnExit()

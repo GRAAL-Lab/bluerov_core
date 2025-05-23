@@ -44,6 +44,7 @@ MissionController::MissionController()
         std::bind(&MissionController::MissionCommandCB, this, std::placeholders::_1, std::placeholders::_2));
 
     SetUpFSM();
+    systemStatus_->lastStateSwitchTime = this->get_clock()->now();
 
     int msRunPeriod = 1.0 / (controlLoopRate) * 1000;
     // std::cout << "Controller Rate: " << conf_->controlLoopRate << "Hz" << std::endl;
@@ -53,10 +54,6 @@ MissionController::MissionController()
     RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No control station, loading configuration from file");
     SimulateMissionCmdFromFile();
     SetTaskDataFSM();
-#endif
-
-#ifdef DEBUG
-    RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> Debug mode, perception and kcl heartbeat checks disabled");
 #endif
 };
 
@@ -80,6 +77,20 @@ void MissionController::StatusPub()
 
 void MissionController::Run()
 {
+    //=== Check if the system is alive ===
+    systemStatus_->UpdateStatus(this->get_clock()->now());
+#ifndef NO_KCL
+    if (!setKCLClient_->wait_for_action_server(std::chrono::seconds(1))) {
+        RCLCPP_WARN(this->get_logger(), "KCL not available.");
+        return;
+    }
+#endif
+    if (!systemStatus_->IsAlive()) {
+        RCLCPP_WARN(this->get_logger(), "System not alive. Perception: %d, KCL: %d, Bridge: %d",
+            systemStatus_->perceptionAlive, systemStatus_->kclAlive, systemStatus_->bridgeAlive);
+        return;
+    }
+    //=== Check if the system is stuck in a state ===
     auto now = this->get_clock()->now();
     if (rFsm_.GetCurrentStateName() != rFsm_.GetNextStateName()) {
         systemStatus_->lastStateSwitchTime = now;
@@ -90,6 +101,7 @@ void MissionController::Run()
         }
     }
 
+    //=== Progress execution ===
     // Switch State (if something happens)
     rFsm_.SwitchState();
     // Process Events
@@ -97,42 +109,30 @@ void MissionController::Run()
     // Execute current state
     rFsm_.ExecuteState();
 
+    // Publish status
     StatusPub();
 
     if (taskData_ == nullptr) {
-        // Did not receive task data yet from control station
+        RCLCPP_WARN(this->get_logger(), "Waiting for task data to be set by ctrl station");
         return;
     }
 
-    // KCL COMMAND
+    //=== Send command to KCL ===
     if (ctrlData_->kclData.newCommand) {
         ctrlData_->kclData.newCommand = false;
         ctrlData_->kclData.executingCommand = true;
 
-#ifndef NO_KCL
-        if (!setKCLClient_->wait_for_action_server(std::chrono::seconds(3))) {
-
-            // HUGE FAIL
-            RCLCPP_WARN(this->get_logger(), "Action server not available.");
-            return;
-        }
-#endif
-
         auto options = rclcpp_action::Client<auv_core_helper::action::SetKCL>::SendGoalOptions();
         options.result_callback = [this](const rclcpp_action::ClientGoalHandle<auv_core_helper::action::SetKCL>::WrappedResult& result) {
-            if (result.code != rclcpp_action::ResultCode::SUCCEEDED) {
-                // HUGE FAIL TO HANDLE
-                RCLCPP_ERROR(this->get_logger(), "Command execution failed.");
-            }
-            ctrlData_->kclData.executingCommand = false;
+            RCLCPP_INFO(this->get_logger(), "Command execution result: %d", static_cast<int>(result.code));
         };
 
         auv_core_helper::action::SetKCL::Goal cmd;
-        // cmd.desired_state = "WAYPOINT_NAVIGATION"; this code should be independent of the specific command
-        cmd.data = ctrlData_->kclData.kcl_command;
-        // temp
-        std::cout << "Sending command: ros2 action send_goal /set_kcl_state auv_core_helper/action/SetKCL \"{desired_state: '"
-                  << cmd.desired_state << "', data: {latitude: " << cmd.data.position.latitude << ", longitude: " << cmd.data.position.longitude << "}}\"" << std::endl;
+        cmd = ctrlData_->kclData.kcl_command;
+#ifdef DEBUG_PRINTS
+        RCLCPP_INFO(this->get_logger(), "Sending command to KCL [%s], %f, %f, %f", cmd.desired_state.c_str(),
+            cmd.position.latitude, cmd.position.longitude, cmd.depth);
+#endif
         setKCLClient_->async_send_goal(cmd, options);
     }
 };

@@ -9,7 +9,7 @@
 #include "mission_ctrl/mission_ctrl_defines.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-#include "auv_core_helper/msg/mission_ctrl_kcl.hpp"
+#include "auv_core_helper/action/set_kcl.hpp"
 #include "auv_core_helper/srv/mission_command.hpp"
 
 namespace mission {
@@ -101,7 +101,7 @@ struct KinematicData {
 
     bool newCommand;
     bool executingCommand;
-    auv_core_helper::msg::MissionCtrlKCL kcl_command;
+    auv_core_helper::action::SetKCL::Goal kcl_command;
 };
 
 struct ControlData {
@@ -546,6 +546,16 @@ struct SystemStatus {
         perceptionAlive = lastPerceptionTime > (now - rclcpp::Duration::from_seconds(timeout));
         kclAlive = lastKCLTime > (now - rclcpp::Duration::from_seconds(timeout));
         bridgeAlive = lastBridgeTime > (now - rclcpp::Duration::from_seconds(timeout));
+
+        #ifdef NO_BRIDGE
+        bridgeAlive = true;
+        #endif
+        #ifdef NO_PERCEPTION
+        perceptionAlive = true;
+        #endif
+        #ifdef NO_KCL
+        kclAlive = true;
+        #endif
     }
     
 };

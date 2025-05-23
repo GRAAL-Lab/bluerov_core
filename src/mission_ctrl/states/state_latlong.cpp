@@ -22,10 +22,13 @@ namespace states {
                   << goalPosition.longitude << std::endl;
 
         ctrlData->kclData.newCommand = true;
-
-#ifdef NO_KCL
+        ctrlData->kclData.kcl_command.desired_state = "WAYPOINT_NAVIGATION";
         ctrlData->kclData.kcl_command.position.latitude = goalPosition.latitude;
         ctrlData->kclData.kcl_command.position.longitude = goalPosition.longitude;
+
+#ifdef NO_KCL
+        ctrlData->inertialF_linearPosition.latitude = goalPosition.latitude;
+        ctrlData->inertialF_linearPosition.longitude = goalPosition.longitude;
 #endif
 
         return fsm::ok;
@@ -39,7 +42,11 @@ namespace states {
         if (distance < minAcceptanceRadius) {
             this->SetNextMissionState();
         } else {
-            std::cerr << "Distance to goal: " << distance << "\n";
+            if(distance > 1000) {
+                std::cerr << "Distance to goal: " << distance << " (undetermined)" << "\n";
+            } else {
+                std::cerr << "Distance to goal: " << distance << "\n";
+            }
         }
 
 #ifdef NO_KCL
