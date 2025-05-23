@@ -174,6 +174,8 @@ struct TaskBenchmarkSettings {
     std::vector<PipelineStructure> pipelineStructures;
     uint selectedPipelineStructureId;
     BuoysArea buoysArea;
+    double surfaceDepth = 0.0;
+    double diveDepth = 1.0;
 
     TaskBenchmarkSettings() = default;
 

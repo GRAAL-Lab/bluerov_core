@@ -15,7 +15,7 @@ namespace states {
         fsm::retval Execute() override;
         fsm::retval OnExit() override;
 
-        ctb::LatLong goalPosition;
+        Eigen::Vector6d goalPose;
     };
 
 }
