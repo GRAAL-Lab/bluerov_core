@@ -42,7 +42,9 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   
 
   poseGoalGlobal.setZero();
+  poseGoalGlobalLast.setConstant(std::numeric_limits<double>::quiet_NaN());
   velocityDesiredGlobal.setZero();
+
 }
 
 BlueROVBridge::~BlueROVBridge(){
@@ -290,9 +292,9 @@ void BlueROVBridge::handleGlobalPositionInt(const mavlink_message_t& msg){
 
   global_pose_msg->header.stamp = this->now();
   global_pose_msg->header.frame_id = "Global WGS84";
-  global_pose_msg->lati = pos_int.lat / 1e7;  // Convert to degrees
-  global_pose_msg->longi = pos_int.lon / 1e7;  // Convert to degrees
-  global_pose_msg->z = -pos_int.alt / 1000.0;  // mm → meters
+  global_pose_msg->position.latitude = pos_int.lat / 1e7;  // Convert to degrees 
+  global_pose_msg->position.longitude = pos_int.lon / 1e7;  // Convert to degrees
+  global_pose_msg->depth = -pos_int.alt / 1000.0;  // mm → meters
 
   global_velocity_msg->linear.x = pos_int.vx / 100.0;  // cm/s → m/s
   global_velocity_msg->linear.y = pos_int.vy / 100.0;
@@ -315,38 +317,41 @@ void BlueROVBridge::handleAttitude(const mavlink_message_t& msg){
 
 void BlueROVBridge::Execute(){
   if (global_pose_msg && global_velocity_msg && got_heartbeat_) {
+    globalPoseActualPublisher_->publish(*global_pose_msg);
+    globalVelocityActualPublisher_->publish(*global_velocity_msg);
     if(flightMode_actual == "GUIDED"){
-      //Pose controller
-      globalPoseActualPublisher_->publish(*global_pose_msg);
-      globalVelocityActualPublisher_->publish(*global_velocity_msg);
+      //Pose controllr
+      if (poseGoalGlobalChanged){
+        condition_yaw_.target_system = target_system_;
+        condition_yaw_.target_component = target_component_;
+        condition_yaw_.param1 = poseGoalGlobal(5)*180.0f/M_PI; 
+
+        sendConditionYaw(condition_yaw_);
 
 
-      condition_yaw_.target_system = target_system_;
-      condition_yaw_.target_component = target_component_;
-      condition_yaw_.param1 = poseGoalGlobal(5)*180.0f/M_PI; 
+        position_target_global_.time_boot_ms     = static_cast<uint32_t>(this->now().nanoseconds() / 1e6);
+        position_target_global_.target_system    = target_system_;
+        position_target_global_.target_component = target_component_;
+        position_target_global_.coordinate_frame = MAV_FRAME_GLOBAL_INT;            
+        position_target_global_.type_mask =
+            POSITION_TARGET_TYPEMASK_VX_IGNORE  |
+            POSITION_TARGET_TYPEMASK_VY_IGNORE  |
+            POSITION_TARGET_TYPEMASK_VZ_IGNORE  |
+            POSITION_TARGET_TYPEMASK_AX_IGNORE  |
+            POSITION_TARGET_TYPEMASK_AY_IGNORE  |
+            POSITION_TARGET_TYPEMASK_AZ_IGNORE  |
+            POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE;
+        position_target_global_.lat_int = static_cast<int32_t>(poseGoalGlobal(0) * 1e7);       // deg → 1e-7°
+        position_target_global_.lon_int = static_cast<int32_t>(poseGoalGlobal(1) * 1e7);
+        position_target_global_.alt     = poseGoalGlobal(2);
 
-      sendConditionYaw(condition_yaw_);
+        position_target_global_.yaw      = static_cast<float>(poseGoalGlobal(5));
+        position_target_global_.yaw_rate = 0.0f;
 
-      position_target_global_.time_boot_ms     = static_cast<uint32_t>(this->now().nanoseconds() / 1e6);
-      position_target_global_.target_system    = target_system_;
-      position_target_global_.target_component = target_component_;
-      position_target_global_.coordinate_frame = MAV_FRAME_GLOBAL_INT;            
-      position_target_global_.type_mask =
-          POSITION_TARGET_TYPEMASK_VX_IGNORE  |
-          POSITION_TARGET_TYPEMASK_VY_IGNORE  |
-          POSITION_TARGET_TYPEMASK_VZ_IGNORE  |
-          POSITION_TARGET_TYPEMASK_AX_IGNORE  |
-          POSITION_TARGET_TYPEMASK_AY_IGNORE  |
-          POSITION_TARGET_TYPEMASK_AZ_IGNORE  |
-          POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE;
-      position_target_global_.lat_int = static_cast<int32_t>(poseGoalGlobal(0) * 1e7);       // deg → 1e-7°
-      position_target_global_.lon_int = static_cast<int32_t>(poseGoalGlobal(1) * 1e7);
-      position_target_global_.alt     = poseGoalGlobal(2);
-
-      position_target_global_.yaw      = static_cast<float>(poseGoalGlobal(5));
-      position_target_global_.yaw_rate = 0.0f;
-
-      SetPositionTargetGlobalInt(position_target_global_);
+        SetPositionTargetGlobalInt(position_target_global_);
+        poseGoalGlobalLast = poseGoalGlobal;
+        poseGoalGlobalChanged     = false;
+      }
     }
     else{
       //Velocity Controller
@@ -576,9 +581,27 @@ void BlueROVBridge::setRcChannelPwm(const uint16_t* rc_channel_values)
 }
 
 
-void BlueROVBridge::globalPoseDesiredCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg){
-  poseGoalGlobal << msg->lati, msg->longi, msg->z, msg->roll, msg->pitch, msg->yaw;
+void BlueROVBridge::globalPoseDesiredCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg)
+{
+  poseGoalGlobal << msg->position.latitude,
+           msg->position.longitude,
+           msg->depth,
+           msg->roll,
+           msg->pitch,
+           msg->yaw;
+
+  auto almost_equal = [this](double a, double b, double eps){
+      return std::fabs(a - b) < eps;
+  };
+
+  poseGoalGlobalChanged =
+        !almost_equal(poseGoalGlobal(0), poseGoalGlobalLast(0), LAT_LON_EPS) ||
+        !almost_equal(poseGoalGlobal(1), poseGoalGlobalLast(1), LAT_LON_EPS) ||
+        !almost_equal(poseGoalGlobal(2), poseGoalGlobalLast(2), DEPTH_EPS)   ||
+        !almost_equal(poseGoalGlobal(5), poseGoalGlobalLast(5), YAW_EPS);
+
 }
+
 
 void BlueROVBridge::globalVelocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg){
   velocityDesiredGlobal << msg->linear.x, msg->linear.y, msg->linear.z, msg->angular.x, msg->angular.y, msg->angular.z;  

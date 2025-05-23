@@ -73,6 +73,12 @@ private:
 
 
     Eigen::VectorXd poseGoalGlobal = Eigen::VectorXd(6); ///< Desired pose goal in global coordinates.
+    Eigen::VectorXd poseGoalGlobalLast = Eigen::VectorXd(6); ///< Last desired pose goal in global coordinates.
+
+    bool poseGoalGlobalChanged = false; ///< Flag indicating if the pose goal has changed.
+    const double LAT_LON_EPS   = 1e-6;   // ≈11 cm
+    const double DEPTH_EPS     = 0.02;   // 2 cm
+    const double YAW_EPS       = 0.01;   // ≈0.6°
     Eigen::VectorXd velocityDesiredGlobal = Eigen::VectorXd(6); ///< Desired linear and angular velocities in global coordinates.
     
 
