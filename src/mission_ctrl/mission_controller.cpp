@@ -83,6 +83,8 @@ void MissionController::Run()
     if (!setKCLClient_->wait_for_action_server(std::chrono::seconds(1))) {
         RCLCPP_WARN(this->get_logger(), "KCL not available.");
         return;
+    }else{
+        systemStatus_->lastKCLTime = this->get_clock()->now();
     }
 #endif
     if (!systemStatus_->IsAlive()) {
