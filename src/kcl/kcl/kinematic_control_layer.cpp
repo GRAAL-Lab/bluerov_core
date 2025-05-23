@@ -77,7 +77,7 @@ KCL::KCL()
 
 void KCL::PoseActualGlobalCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg) {
     // Update actual pose in control data
-    ctrlData_->poseActualGlobal << msg->lati, msg->longi, msg->z, msg->roll, msg->pitch, msg->yaw;
+    ctrlData_->poseActualGlobal << msg->position.latitude, msg->position.longitude, msg->depth, msg->roll, msg->pitch, msg->yaw;
     ctrlData_->timeActual = msg->header.stamp;
     //print
     // RCLCPP_INFO(this->get_logger(), "Pose Actual: %f, %f, %f, %f, %f, %f", msg->x, msg->y, msg->z, msg->roll, msg->pitch, msg->yaw);
@@ -110,7 +110,6 @@ rclcpp_action::CancelResponse KCL::HandleCancel(const std::shared_ptr<rclcpp_act
     return rclcpp_action::CancelResponse::ACCEPT;
 }
 
-
 void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> goal_handle)
 {
     const auto goal = goal_handle->get_goal();
@@ -118,15 +117,14 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
     // Store in member variables
     desiredState_ = goal->desired_state;
 
-    ctrlData_->poseGoalGlobal(0) = goal->data.latitude;
-    ctrlData_->poseGoalGlobal(1) = goal->data.longitude;
-    ctrlData_->poseGoalGlobal(2) = -1.0; // needs to be controlled
+    ctrlData_->poseGoalGlobal(0) = goal->position.latitude;
+    ctrlData_->poseGoalGlobal(1) = goal->position.longitude;
+    ctrlData_->poseGoalGlobal(2) = -std::abs(goal->depth);
 
     // Print to console
     RCLCPP_INFO(this->get_logger(), "Received desired_state: %s", desiredState_.c_str());
     RCLCPP_INFO(this->get_logger(), "Received latitude: %f", ctrlData_->poseGoalGlobal[0]);
     RCLCPP_INFO(this->get_logger(), "Received longitude: %f", ctrlData_->poseGoalGlobal[1]);
-
 
     if (fsm_.SetNextState(desiredState_) == fsm::ok && fsm_.SwitchState() == fsm::ok) {
         auto result = std::make_shared<auv_core_helper::action::SetKCL::Result>();
@@ -139,8 +137,8 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
         result->message = "Failed to set state.";
         goal_handle->abort(result);
     }
-
 }
+
 
 
 void KCL::SetupTransitions() {

@@ -20,6 +20,11 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
         ctrlData->serpentineOffset, 
         ctrlData->serpentinePolygonVertices
     );
+
+    // path = PathFactory::NewOutwardSpiral(
+    //             Eigen::Vector3d(0,0,0),   // centre
+    //             5.0,                      // max diameter (m)
+    //             1.0);                     // diameter increment (m)
     
 
     if (!path) {
