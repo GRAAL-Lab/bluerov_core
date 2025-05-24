@@ -27,6 +27,8 @@ const std::string dvl_distance_actual = "/auv/dvl/distance";
 
 const std::string kcl_state = "/auv/kcl_state";
 
+const std::string desired_ctrl_mode = "/auv/desired_ctrl_mode";
+
 // SERVICES
 const std::string mission_cmd_service = "/auv/service/mission_cmd";
 const std::string control_cmd_service = "/auv/service/control_cmd";

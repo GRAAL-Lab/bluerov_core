@@ -1,13 +1,14 @@
 #ifndef PATH_MODES_HPP
 #define PATH_MODES_HPP
 
+#include <string>
+
 namespace auv_core_helper {
 
-enum PathMode { // Changed from `enum class` to `enum`
-    Serpentine2D = 1,
-    Serpentine3D = 2,
-    Helix3D = 3
-};
+    namespace PathMode {
+        const std::string Serpentine2D = "Serpentine2D";
+        const std::string Spiral2D = "Spiral2D";
+    }
 
 } // namespace auv_core_helper
 

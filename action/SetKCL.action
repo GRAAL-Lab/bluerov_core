@@ -3,6 +3,10 @@ string desired_state
 LatLong position
 float64 depth
 
+string path_mode
+float64 spiral_diameter
+float64 spiral_increment
+
 ---
 # Result
 bool success
