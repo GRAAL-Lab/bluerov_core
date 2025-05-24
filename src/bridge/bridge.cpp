@@ -46,6 +46,8 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
 
   poseGoalGlobal.setZero();
   poseGoalGlobalLast.setConstant(std::numeric_limits<double>::quiet_NaN());
+  velGoalGlobalLast.setConstant(std::numeric_limits<double>::quiet_NaN());
+
   velocityDesiredGlobal.setZero();
 
 }
@@ -356,60 +358,57 @@ void BlueROVBridge::Execute(){
     globalPoseActualPublisher_->publish(*global_pose_msg);
     globalVelocityActualPublisher_->publish(*global_velocity_msg);
 
-    if(flightMode == auv_core_helper::BrigdeMode::PoseCtrl){
-      position_target_global_.type_mask =
-            POSITION_TARGET_TYPEMASK_VX_IGNORE  |
-            POSITION_TARGET_TYPEMASK_VY_IGNORE  |
-            POSITION_TARGET_TYPEMASK_VZ_IGNORE  |
-            POSITION_TARGET_TYPEMASK_AX_IGNORE  |
-            POSITION_TARGET_TYPEMASK_AY_IGNORE  |
-            POSITION_TARGET_TYPEMASK_AZ_IGNORE  |
-            POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE;
-    }
-    else if (flightMode == auv_core_helper::BrigdeMode::VelCtrl){
-      position_target_global_.type_mask =
-            POSITION_TARGET_TYPEMASK_X_IGNORE  |
-            POSITION_TARGET_TYPEMASK_Y_IGNORE  |
-            POSITION_TARGET_TYPEMASK_Z_IGNORE  |
-            POSITION_TARGET_TYPEMASK_AX_IGNORE  |
-            POSITION_TARGET_TYPEMASK_AY_IGNORE  |
-            POSITION_TARGET_TYPEMASK_AZ_IGNORE  ;
-    }
+      if (poseGoalGlobalChanged || velGoalGlobalChanged){
 
-      // if (poseGoalGlobalChanged || velGoalGlobalChanged){
+        if(flightMode == auv_core_helper::BrigdeMode::PoseCtrl){
+          position_target_global_.type_mask =
+                POSITION_TARGET_TYPEMASK_VX_IGNORE  |
+                POSITION_TARGET_TYPEMASK_VY_IGNORE  |
+                POSITION_TARGET_TYPEMASK_VZ_IGNORE  |
+                POSITION_TARGET_TYPEMASK_AX_IGNORE  |
+                POSITION_TARGET_TYPEMASK_AY_IGNORE  |
+                POSITION_TARGET_TYPEMASK_AZ_IGNORE  |
+                POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE;
+        }
+        else if (flightMode == auv_core_helper::BrigdeMode::VelCtrl){
+          position_target_global_.type_mask =
+                POSITION_TARGET_TYPEMASK_X_IGNORE  |
+                POSITION_TARGET_TYPEMASK_Y_IGNORE  |
+                POSITION_TARGET_TYPEMASK_Z_IGNORE  |
+                POSITION_TARGET_TYPEMASK_AX_IGNORE  |
+                POSITION_TARGET_TYPEMASK_AY_IGNORE  |
+                POSITION_TARGET_TYPEMASK_AZ_IGNORE  ;
+        }
+        std::cout << "Pose or velocity goal changed, sending new target." << std::endl;
         condition_yaw_.target_system = target_system_;
         condition_yaw_.target_component = target_component_;
-        condition_yaw_.param1 = poseGoalGlobal(5)*180.0f/M_PI; 
-
-        sendConditionYaw(condition_yaw_);
-
-
+        condition_yaw_.param1 = poseGoalGlobal(5)*180.0f/M_PI;
         position_target_global_.time_boot_ms     = static_cast<uint32_t>(this->now().nanoseconds() / 1e6);
         position_target_global_.target_system    = target_system_;
         position_target_global_.target_component = target_component_;
         position_target_global_.coordinate_frame = MAV_FRAME_GLOBAL_INT;            
-        
         position_target_global_.lat_int = static_cast<int32_t>(poseGoalGlobal(0) * 1e7);       // deg → 1e-7°
         position_target_global_.lon_int = static_cast<int32_t>(poseGoalGlobal(1) * 1e7);
         position_target_global_.alt     = poseGoalGlobal(2);
-
         position_target_global_.yaw      = static_cast<float>(poseGoalGlobal(5));
         position_target_global_.yaw_rate = 0.0f;
-
-        SetPositionTargetGlobalInt(position_target_global_);
-        poseGoalGlobalLast = poseGoalGlobal;
-        poseGoalGlobalChanged     = false;
-
         position_target_global_.vx = velocityDesiredGlobal(0);
         position_target_global_.vy = velocityDesiredGlobal(1);
         position_target_global_.vz = velocityDesiredGlobal(2);
         position_target_global_.yaw_rate = velocityDesiredGlobal(5);
+
+
+        poseGoalGlobalLast = poseGoalGlobal;
+        poseGoalGlobalChanged     = false;
+        velGoalGlobalLast = velocityDesiredGlobal;
+        velGoalGlobalChanged      = false;
+        sendConditionYaw(condition_yaw_);
         SetPositionTargetGlobalInt(position_target_global_);
-      // }
+      }
     }
-else {
-    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Waiting for MAVLink global position/velocity data...");
-  }
+    else {
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Waiting for MAVLink global position/velocity data...");
+      }
 }
 
 void BlueROVBridge::setGlobalOriginServiceCallback(const std::shared_ptr<auv_core_helper::srv::SetGlobalOrigin::Request> request, std::shared_ptr<auv_core_helper::srv::SetGlobalOrigin::Response> response){
@@ -584,7 +583,17 @@ void BlueROVBridge::globalPoseDesiredCallback(const auv_core_helper::msg::PoseSt
 
 
 void BlueROVBridge::globalVelocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg){
-  velocityDesiredGlobal << msg->linear.x, msg->linear.y, msg->linear.z, msg->angular.x, msg->angular.y, msg->angular.z;  
+  velocityDesiredGlobal << msg->linear.x, msg->linear.y, msg->linear.z, msg->angular.x, msg->angular.y, msg->angular.z;
+   auto almost_equal = [this](double a, double b, double eps){
+      return std::fabs(a - b) < eps;
+  };
+  velGoalGlobalChanged =
+        !almost_equal(velocityDesiredGlobal(0), 0.0, VELX_EPS) ||
+        !almost_equal(velocityDesiredGlobal(1), 0.0, VELY_EPS) ||
+        !almost_equal(velocityDesiredGlobal(2), 0.0, VELZ_EPS) ||
+        !almost_equal(velocityDesiredGlobal(3), 0.0, ANGX_EPS) ||
+        !almost_equal(velocityDesiredGlobal(4), 0.0, ANGY_EPS) ||
+        !almost_equal(velocityDesiredGlobal(5), 0.0, ANGZ_EPS);
 }
 
 void BlueROVBridge::SetPositionTargetGlobalInt(const mavlink_set_position_target_global_int_t& position_target_global_)

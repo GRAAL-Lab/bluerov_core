@@ -113,6 +113,16 @@ private:
     const double YAW_EPS       = 0.01;   // ≈0.6°
     Eigen::VectorXd velocityDesiredGlobal = Eigen::VectorXd(6); ///< Desired linear and angular velocities in global coordinates.
     
+    Eigen::VectorXd velGoalGlobalLast = Eigen::VectorXd(6); ///< Last desired velocity goal in global coordinates.
+
+    bool velGoalGlobalChanged = false; ///< Flag indicating if the velocity goal has changed.
+    const double VELX_EPS = 0.01; ///< Velocity X tolerance
+    const double VELY_EPS = 0.01; ///< Velocity Y tolerance
+    const double VELZ_EPS = 0.01; ///< Velocity Z tolerance
+    const double ANGX_EPS = 0.01; ///< Angular X tolerance
+    const double ANGY_EPS = 0.01; ///< Angular Y tolerance
+    const double ANGZ_EPS = 0.01; ///< Angular Z tolerance
+
 
     //string to hold last flight mode
     std::string flightMode_actual = "MANUAL";
