@@ -30,8 +30,10 @@ const std::string kcl_state = "/auv/kcl_state";
 // SERVICES
 const std::string mission_cmd_service = "/auv/service/mission_cmd";
 const std::string control_cmd_service = "/auv/service/control_cmd";
+const std::string set_global_origin_service = "/auv/service/set_global_origin";
 const std::string arming_service = "/auv/service/arming";
 const std::string flight_mode_service = "/auv/service/flight_mode";
+
 
 
 // Actions
