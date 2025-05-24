@@ -14,20 +14,9 @@ const std::string mission_status = "/auv/mission/status";
 const std::string objects = "/auv/perception/objects";
 
 // CTRL
-const std::string pose_desired_local = "/auv/local/pose_desired";
-const std::string velocity_desired_local = "/auv/local/velocity_desired";
-
 const std::string pose_desired_global = "/auv/global/pose_desired";
 const std::string velocity_desired_global = "/auv/global/velocity_desired";
-const std::string pose_goal_local= "/auv/local/pose_goal";
 
-
-const std::string pose_actual_local= "/auv/local/pose_actual";
-const std::string velocity_actual_local = "/auv/local/velocity_actual";
-const std::string acceleration_actual_local = "/auv/local/acceleration_actual";
-
-
-const std::string rc_channel_values_desired = "/auv/rc/channel_values_desired";
 const std::string heart_beat = "/auv/heart_beat";
 const std::string battery_status = "/auv/battery_status";
 
