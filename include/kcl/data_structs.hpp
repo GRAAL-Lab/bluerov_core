@@ -6,6 +6,7 @@
 #include <nav_msgs/msg/path.hpp>
 #include <Eigen/Dense>
 #include <vector>
+#include <ctrl_toolbox/DataStructs.h>
 
 namespace auv {
 
@@ -17,25 +18,24 @@ struct ControlData {
     // State Information
     // ------------------------------
 
-    Eigen::VectorXd poseActualGlobal = Eigen::VectorXd(6); ///< Current AUV pose (lat, long, z, roll, pitch, yaw) in global coordinates.
-    Eigen::VectorXd poseActualLocal = Eigen::VectorXd(6); ///<  Current AUV pose (x, y, z, roll, pitch, yaw).
     rclcpp::Time timeActual;               ///< Timestamp for the current pose.
     Eigen::VectorXd velocityActual = Eigen::VectorXd(6); ///< Current linear and angular velocities.
-    Eigen::VectorXd accelerationActual = Eigen::VectorXd(6); ///< Current linear and angular accelerations.
 
-    // ------------------------------
-    // Desired State
-    // ------------------------------
+
     // ------------------------------
     // LOCAL
     // ------------------------------
     Eigen::VectorXd poseGoalLocal = Eigen::VectorXd(6); ///< Desired pose goal.
-    Eigen::VectorXd velocityDesiredLocal = Eigen::VectorXd(6); ///< Desired linear and angular velocities.
+    Eigen::VectorXd poseActualLocal = Eigen::VectorXd(6); ///<  Current AUV pose (x, y, z, roll, pitch, yaw).
+    Eigen::VectorXd homeLocal = Eigen::VectorXd(6); ///< Home position in local coordinates (x, y, z, roll, pitch, yaw).
+    Eigen::VectorXd velocityDesiredNED = Eigen::VectorXd(6); ///< Desired linear and angular velocities.
     
 
     // ------------------------------
     // GLOBAL
     // ------------------------------
+    Eigen::VectorXd poseActualGlobal = Eigen::VectorXd(6); ///< Current AUV pose (lat, long, z, roll, pitch, yaw) in global coordinates.
+    Eigen::VectorXd homeGlobal = Eigen::VectorXd(6);
     Eigen::VectorXd poseGoalGlobal = Eigen::VectorXd(6); ///< Desired pose goal in global coordinates.
     Eigen::VectorXd velocityDesiredGlobal = Eigen::VectorXd(6); ///< Desired linear and angular velocities in global coordinates.
 
@@ -52,7 +52,7 @@ struct ControlData {
     // ------------------------------
     // Path Planning Parameters
     // ------------------------------
-    int pathPlanningMode = 0; ///< Path planning mode: 2D (0) or 3D (1).
+    std::string pathPlanningMode = "Serpentine2D"; ///< Path planning mode as string.
 
     // 2D Serpentine Path Parameters
     double serpentineAngle = 0.0; ///< Angle for 2D serpentine path planning.
@@ -60,19 +60,9 @@ struct ControlData {
     double serpentineOffset = 0.0; ///< Offset for the serpentine path.
     std::vector<Eigen::Vector3d> serpentinePolygonVertices; ///< Polygon vertices for 2D serpentine planning.
 
-    // 3D Serpentine Path Parameters
-    double diveDepth = 0.0; ///< Dive depth for 3D serpentine path planning.
-    double curvature = 0.0; ///< Path curvature for 3D serpentine paths.
-    double dipNumPoints = 0.0; ///< Number of points in the serpentine "dip".
-    double diveLength = 0.0; ///< Length of the dive.
-
-    // 3D Helix Path Parameters
-    Eigen::Vector3d helixStartPos = Eigen::Vector3d::Zero(); ///< Start position on the helix.
-    Eigen::Vector3d helixAxisPos = Eigen::Vector3d::Zero(); ///< Point on the helix axis.
-    Eigen::Vector3d helixAxisDir = Eigen::Vector3d::Zero(); ///< Direction of the helix axis.
-    double helixFrequency = 0.0; ///< Length along the helix axis for one revolution.
-    int helixNumQuadrants = 0; ///< Number of quadrants in the helix.
-    bool helixCounterClockwise = true; ///< Revolution direction: true = counter-clockwise.
+    // 2D Spiral Path Parameters
+    double spiralDiameter = 0.0; ///< Diameter for 2D spiral path planning.
+    double spiralIncrement = 0.0; ///< Increment for the spiral path.
 
     // ------------------------------
     // Planned Path
@@ -103,10 +93,17 @@ struct ControlData {
     ControlData() {
         // Initialize Eigen matrices and vectors with default values
         poseActualGlobal.setZero();
+        poseActualLocal.setZero();
         velocityActual.setZero();
-        accelerationActual.setZero();
-        velocityDesiredLocal.setZero();
+        velocityDesiredNED.setZero();
         poseGoalLocal.setZero();
+        poseGoalGlobal.setZero();
+        velocityDesiredGlobal.setZero();
+        homeLocal.setZero();
+        homeGlobal.setZero();
+        homeGlobal(0) = 44.096058; // Default home latitude.
+        homeGlobal(1) = 9.864761;  // Default home longitude.
+        homeGlobal(2) = 0.0;       // Default home depth.
         maxVelocity.setConstant(1.0); // Default maximum velocities.
         minVelocity.setConstant(0.0); // Default minimum velocities.
     }

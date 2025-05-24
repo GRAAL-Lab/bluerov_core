@@ -99,6 +99,7 @@ target_link_libraries(states_lib
   ${SISL_LIBRARY}
   ${IKCL_LIBRARY}
   ${CTRL_LIBRARY}
+  Geographic
   ${auv_core_helper_LIBRARIES}
   ${DYNAMIC_GOAL_ALOS_LIBRARY}
 )
@@ -137,6 +138,7 @@ foreach(target kinematic_control_layer_node)
     ${SISL_LIBRARY}
     ${IKCL_LIBRARY}
     ${CTRL_LIBRARY}
+    Geographic
     ${DYNAMIC_GOAL_ALOS_LIBRARY}
     ${auv_core_helper_LIBRARIES}
   )

@@ -5,7 +5,7 @@ using namespace std::chrono_literals;
 KCL::KCL()
     : Node("kcl_fsm_node") {
     // Declare and retrieve the "config_name" parameter
-    this->declare_parameter<std::string>("config_name", "default_value");  // Default value if not set
+    this->declare_parameter<std::string>("config_name", "BlueROV");  // Default value if not set
     std::string configNameParam;
     this->get_parameter("config_name", configNameParam);
 
@@ -30,25 +30,11 @@ KCL::KCL()
     // Create subscriptions
     poseActualGlobalSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_global_, 1,std::bind(&KCL::PoseActualGlobalCallback, this, std::placeholders::_1));
 
-    velocityActualSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_actual_local, 1,std::bind(&KCL::VelocityActualCallback, this, std::placeholders::_1));
-
-    accelerationActualSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::acceleration_actual_local, 1,
-        std::bind(&KCL::AccelerationActualCallback, this, std::placeholders::_1));
-
-    // Create local publishers
-    poseGoalLocalPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(
-        auv_core_helper::topicnames::pose_goal_local, 1);
-
-    velocityLocalDesiredPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(
-        auv_core_helper::topicnames::velocity_desired_local, 1);
-
+    // Create publishers
     statePublisher_ = this->create_publisher<std_msgs::msg::String>(auv_core_helper::topicnames::kcl_state, 1);
-
-    // Create global publishers
     poseGoalGlobalPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_desired_global, 1);
     velocityDesiredGlobalPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired_global, 1);
-
-    // pathPublisher_ = this->create_publisher<nav_msgs::msg::Path>("planned_path", 1);
+    pathPublisher_ = this->create_publisher<nav_msgs::msg::Path>("planned_path", 1);
 
     // Create action server for KCL
     KCLSetter_ = rclcpp_action::create_server<auv_core_helper::action::SetKCL>(
@@ -63,15 +49,15 @@ KCL::KCL()
     armingClient_ = this->create_client<std_srvs::srv::SetBool>(auv_core_helper::topicnames::arming_service);
     flightModeClient_ = this->create_client<auv_core_helper::srv::SetFlightMode>(auv_core_helper::topicnames::flight_mode_service);
 
-    // Wait for arming service
-    while (!armingClient_->wait_for_service(std::chrono::seconds(1))) {
-        RCLCPP_INFO(this->get_logger(), "Waiting for arming service...");
-    }
+    // // Wait for arming service
+    // while (!armingClient_->wait_for_service(std::chrono::seconds(1))) {
+    //     RCLCPP_INFO(this->get_logger(), "Waiting for arming service...");
+    // }
 
-    // Wait for flight mode service
-    while (!flightModeClient_->wait_for_service(std::chrono::seconds(1))) {
-        RCLCPP_INFO(this->get_logger(), "Waiting for flight mode service...");
-    }
+    // // Wait for flight mode service
+    // while (!flightModeClient_->wait_for_service(std::chrono::seconds(1))) {
+    //     RCLCPP_INFO(this->get_logger(), "Waiting for flight mode service...");
+    // }
 
 }
 
@@ -89,11 +75,6 @@ void KCL::VelocityActualCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
                                    msg->angular.x, msg->angular.y, msg->angular.z;
 }
 
-void KCL::AccelerationActualCallback(const geometry_msgs::msg::Twist::SharedPtr msg) {
-    // Update actual acceleration in control data
-    ctrlData_->accelerationActual << msg->linear.x, msg->linear.y, msg->linear.z,
-                                       msg->angular.x, msg->angular.y, msg->angular.z;
-}
 
 
 rclcpp_action::GoalResponse KCL::HandleGoal(const rclcpp_action::GoalUUID &, std::shared_ptr<const auv_core_helper::action::SetKCL::Goal> goal)
@@ -117,14 +98,20 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
     // Store in member variables
     desiredState_ = goal->desired_state;
 
-    ctrlData_->poseGoalGlobal(0) = goal->position.latitude;
-    ctrlData_->poseGoalGlobal(1) = goal->position.longitude;
-    ctrlData_->poseGoalGlobal(2) = -std::abs(goal->depth);
-
-    // Print to console
-    RCLCPP_INFO(this->get_logger(), "Received desired_state: %s", desiredState_.c_str());
-    RCLCPP_INFO(this->get_logger(), "Received latitude: %f", ctrlData_->poseGoalGlobal[0]);
-    RCLCPP_INFO(this->get_logger(), "Received longitude: %f", ctrlData_->poseGoalGlobal[1]);
+    if (desiredState_ == "WAYPOINT_NAVIGATION") {
+        ctrlData_->poseGoalGlobal(0) = goal->position.latitude;
+        ctrlData_->poseGoalGlobal(1) = goal->position.longitude;
+        ctrlData_->poseGoalGlobal(2) = -std::abs(goal->depth);
+        // Print to console
+        RCLCPP_INFO(this->get_logger(), "Received desired_state: %s", desiredState_.c_str());
+        RCLCPP_INFO(this->get_logger(), "Received latitude: %f", ctrlData_->poseGoalGlobal[0]);
+        RCLCPP_INFO(this->get_logger(), "Received longitude: %f", ctrlData_->poseGoalGlobal[1]);
+    } else if (desiredState_ == "PATH_FOLLOWING") {
+        ctrlData_->poseGoalGlobal(2) = -std::abs(goal->depth);
+        ctrlData_->pathPlanningMode = goal->path_mode;
+        ctrlData_->spiralDiameter = goal->spiral_diameter;
+        ctrlData_->spiralIncrement = goal->spiral_increment;
+    }
 
     if (fsm_.SetNextState(desiredState_) == fsm::ok && fsm_.SwitchState() == fsm::ok) {
         auto result = std::make_shared<auv_core_helper::action::SetKCL::Result>();
@@ -251,8 +238,17 @@ void KCL::CallFlightModeService(const std::string &mode)
 }
 
 void KCL::ExecuteFSM() {
+    // Convert global pose to local NED coordinates
+    Eigen::Vector3d tmpHomeLocal;
+    Eigen::Vector3d tmpPoseLocal;
+    ctb::LatLong homeLL(ctrlData_->homeGlobal(0), ctrlData_->homeGlobal(1));
+    ctb::LatLong curLL(ctrlData_->poseActualGlobal(0), ctrlData_->poseActualGlobal(1));
+    ctb::LatLong2LocalNED(homeLL, -std::abs(ctrlData_->homeGlobal(2)), homeLL, tmpHomeLocal);
+    ctb::LatLong2LocalNED(curLL,  -std::abs(ctrlData_->poseActualGlobal(2)), homeLL, tmpPoseLocal);
+    ctrlData_->homeLocal.head<3>() = tmpHomeLocal;
+    ctrlData_->poseActualLocal.head<3>() = tmpPoseLocal - tmpHomeLocal;
 
-    // MIGHT NEED SOME MODIFICATIONS
+
 
     // Execute the current FSM state
     // std::string previous_state = fsm_.GetCurrentStateName();
@@ -271,10 +267,10 @@ void KCL::ExecuteFSM() {
     // rml::SaturateVector(ctrlData_->maxVelocity, ctrlData_->minVelocity, ctrlData_->velocityDesired);
 
     // Publish desired velocity
-    // PublishEigenVelocity(velocityLocalDesiredPublisher_, ctrlData_->velocityDesired);
+    PublishEigenVelocity(velocityDesiredGlobalPublisher_, ctrlData_->velocityDesiredNED);
 
-    // // Publish the planned path
-    // pathPublisher_->publish(ctrlData_->plannedPath);
+    // Publish the planned path
+    pathPublisher_->publish(ctrlData_->plannedPath);
 
 
     //do clinet call if desired != actual

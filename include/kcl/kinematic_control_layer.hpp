@@ -74,18 +74,17 @@ private:
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr poseGoalLocalPublisher_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocityLocalDesiredPublisher_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr statePublisher_;
+
     // GLOBAL
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr poseGoalGlobalPublisher_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocityDesiredGlobalPublisher_;
-
-    // rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pathPublisher_;
+    rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pathPublisher_;
 
     // --------------------
     // ROS 2 Subscriptions
     // --------------------
     rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr poseActualGlobalSubscription_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr velocityActualSubscription_;
-    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr accelerationActualSubscription_;
 
     // --------------------
     // ROS 2 Services
