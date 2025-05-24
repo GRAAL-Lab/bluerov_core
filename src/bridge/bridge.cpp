@@ -28,8 +28,10 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   globalVelocityActualPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_actual_global,1);
   dvlDistancePublisher_ = this->create_publisher<std_msgs::msg::Float64>(auv_core_helper::topicnames::dvl_distance_actual,1);
 
+
   globalPoseDesiredSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_desired_global,10,std::bind(&BlueROVBridge::globalPoseDesiredCallback, this, std::placeholders::_1));
   globalVelocityDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired_global,10,std::bind(&BlueROVBridge::globalVelocityDesiredCallback, this, std::placeholders::_1));
+  desiredCtrlModeSubscription_ = this->create_subscription<std_msgs::msg::String>(auv_core_helper::topicnames::desired_ctrl_mode, 10, std::bind(&BlueROVBridge::desiredCtrlModeCallback, this, std::placeholders::_1));
 
   // ROS Services
   setGlobalOriginService_ = this->create_service<auv_core_helper::srv::SetGlobalOrigin>(auv_core_helper::topicnames::set_global_origin_service, std::bind(&BlueROVBridge::setGlobalOriginServiceCallback, this,std::placeholders::_1, std::placeholders::_2));
@@ -354,10 +356,27 @@ void BlueROVBridge::Execute(){
     globalPoseActualPublisher_->publish(*global_pose_msg);
     globalVelocityActualPublisher_->publish(*global_velocity_msg);
 
-    
-    if(flightMode_actual == "GUIDED"){
-      //Pose controllr
-      if (poseGoalGlobalChanged){
+    if(flightMode == auv_core_helper::BrigdeMode::PoseCtrl){
+      position_target_global_.type_mask =
+            POSITION_TARGET_TYPEMASK_VX_IGNORE  |
+            POSITION_TARGET_TYPEMASK_VY_IGNORE  |
+            POSITION_TARGET_TYPEMASK_VZ_IGNORE  |
+            POSITION_TARGET_TYPEMASK_AX_IGNORE  |
+            POSITION_TARGET_TYPEMASK_AY_IGNORE  |
+            POSITION_TARGET_TYPEMASK_AZ_IGNORE  |
+            POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE;
+    }
+    else if (flightMode == auv_core_helper::BrigdeMode::VelCtrl){
+      position_target_global_.type_mask =
+            POSITION_TARGET_TYPEMASK_X_IGNORE  |
+            POSITION_TARGET_TYPEMASK_Y_IGNORE  |
+            POSITION_TARGET_TYPEMASK_Z_IGNORE  |
+            POSITION_TARGET_TYPEMASK_AX_IGNORE  |
+            POSITION_TARGET_TYPEMASK_AY_IGNORE  |
+            POSITION_TARGET_TYPEMASK_AZ_IGNORE  ;
+    }
+
+      // if (poseGoalGlobalChanged || velGoalGlobalChanged){
         condition_yaw_.target_system = target_system_;
         condition_yaw_.target_component = target_component_;
         condition_yaw_.param1 = poseGoalGlobal(5)*180.0f/M_PI; 
@@ -369,14 +388,7 @@ void BlueROVBridge::Execute(){
         position_target_global_.target_system    = target_system_;
         position_target_global_.target_component = target_component_;
         position_target_global_.coordinate_frame = MAV_FRAME_GLOBAL_INT;            
-        position_target_global_.type_mask =
-            POSITION_TARGET_TYPEMASK_VX_IGNORE  |
-            POSITION_TARGET_TYPEMASK_VY_IGNORE  |
-            POSITION_TARGET_TYPEMASK_VZ_IGNORE  |
-            POSITION_TARGET_TYPEMASK_AX_IGNORE  |
-            POSITION_TARGET_TYPEMASK_AY_IGNORE  |
-            POSITION_TARGET_TYPEMASK_AZ_IGNORE  |
-            POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE;
+        
         position_target_global_.lat_int = static_cast<int32_t>(poseGoalGlobal(0) * 1e7);       // deg → 1e-7°
         position_target_global_.lon_int = static_cast<int32_t>(poseGoalGlobal(1) * 1e7);
         position_target_global_.alt     = poseGoalGlobal(2);
@@ -387,19 +399,15 @@ void BlueROVBridge::Execute(){
         SetPositionTargetGlobalInt(position_target_global_);
         poseGoalGlobalLast = poseGoalGlobal;
         poseGoalGlobalChanged     = false;
-      }
-    }
-    else{
-      //Velocity Controller
+
         position_target_global_.vx = velocityDesiredGlobal(0);
         position_target_global_.vy = velocityDesiredGlobal(1);
         position_target_global_.vz = velocityDesiredGlobal(2);
         position_target_global_.yaw_rate = velocityDesiredGlobal(5);
         SetPositionTargetGlobalInt(position_target_global_);
+      // }
     }
-    
-
-  } else {
+else {
     RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Waiting for MAVLink global position/velocity data...");
   }
 }
@@ -515,19 +523,19 @@ void BlueROVBridge::setFlightMode(const std::string& mode)
 {
   // Map mode string to ArduSub custom mode number
   int32_t custom_mode = 19;         // Default to MANUAL=19
-  if (mode == "MANUAL") {           // Pass-through input with no stabilization
+  if (mode == auv_core_helper::FlightMode::MANUAL) {           // Pass-through input with no stabilization
     custom_mode = 19;
-  } else if (mode == "STABILIZE") { // manual angle with manual depth/throttle
+  } else if (mode == auv_core_helper::FlightMode::STABILIZE) { // manual angle with manual depth/throttle
     custom_mode = 0;
-  } else if (mode == "ALT_HOLD") {  // manual body-frame angular rate with manual depth/throttle
+  } else if (mode == auv_core_helper::FlightMode::ALT_HOLD) {  // manual body-frame angular rate with manual depth/throttle
     custom_mode = 2;
-  } else if (mode == "GUIDED") {    // fully automatic fly to coordinate or fly at velocity/direction using GCS immediate commands
+  } else if (mode == auv_core_helper::FlightMode::GUIDED) {    // fully automatic fly to coordinate or fly at velocity/direction using GCS immediate commands
     custom_mode = 4; 
-  } else if (mode == "POSHOLD") {   // automatic position hold with manual override, with automatic throttle
+  } else if (mode == auv_core_helper::FlightMode::POSHOLD) {   // automatic position hold with manual override, with automatic throttle
     custom_mode = 16;
-  } else if (mode == "SURFACE") {   // automatically return to surface, pilot maintains horizontal control
+  } else if (mode == auv_core_helper::FlightMode::SURFACE) {   // automatically return to surface, pilot maintains horizontal control
     custom_mode = 9;
-  } else if (mode == "SURFTRAK") {  // Track distance above seafloor (hold range)
+  } else if (mode == auv_core_helper::FlightMode::SURFTRAK) {  // Track distance above seafloor (hold range)
     custom_mode = 21 ;
   }
   else {
@@ -653,4 +661,9 @@ void BlueROVBridge::sendConditionYaw(const mavlink_command_long_t& condition_yaw
   // Send the message
   sendMavlinkMessage(msg);
   RCLCPP_INFO(this->get_logger(), "CONDITION_YAW command sent");
+}
+
+
+void BlueROVBridge::desiredCtrlModeCallback(const std_msgs::msg::String::SharedPtr msg){
+  flightMode =  msg->data;
 }

@@ -25,6 +25,8 @@
 // AUV-specific topic names
 #include "auv_core_helper/topicnames.hpp"
 
+#include "auv_core_helper/bridgemode.hpp"
+
 #include <Eigen/Dense>
 
 // Include the MAVLink C headers
@@ -65,6 +67,8 @@ private:
     rclcpp::Service<auv_core_helper::srv::SetGlobalOrigin>::SharedPtr setGlobalOriginService_;
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr armingService_;
     rclcpp::Service<auv_core_helper::srv::SetFlightMode>::SharedPtr flightModeService_;
+
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr desiredCtrlModeSubscription_;
     
     //--------------------------------------------------------------------------
     // Timers
@@ -112,6 +116,7 @@ private:
 
     //string to hold last flight mode
     std::string flightMode_actual = "MANUAL";
+    std::string flightMode = auv_core_helper::BrigdeMode::PoseCtrl; ///< Current flight mode, default is PoseCtrl.
 
     //--------------------------------------------------------------------------
     // Internal Methods
@@ -279,4 +284,10 @@ private:
      * @brief Main loop for processing MAVLink messages and ROS callbacks
      */
     void Execute();
+
+    /**
+     * @brief Callback for desired control mode
+     * @param msg The received String message indicating the desired control mode
+     */
+    void desiredCtrlModeCallback(const std_msgs::msg::String::SharedPtr msg);
 };
