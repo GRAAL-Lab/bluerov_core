@@ -22,6 +22,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
 
   // Setup ROS pubs/subs
   heartBeatPublisher_ = this->create_publisher<auv_core_helper::msg::HeartBeat>(auv_core_helper::topicnames::heart_beat,1);
+  globalOriginPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::global_origin,1);
   batteryStatusPublisher_ = this->create_publisher<auv_core_helper::msg::BatteryStatus>(auv_core_helper::topicnames::battery_status,1);
   globalPoseActualPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_global_,1);
   globalVelocityActualPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_actual_global,1);
@@ -162,6 +163,10 @@ void BlueROVBridge::receiveData(){
           case MAVLINK_MSG_ID_BATTERY_STATUS:
             handleBatteryStatus(msg);
             break;
+
+          case MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN:
+            handleGlobalOrigin(msg);
+            break;
             
           default:
             break;
@@ -264,7 +269,21 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
     setMessageInterval(MAVLINK_MSG_ID_DISTANCE_SENSOR, 8.0f);     // #34
     setMessageInterval(MAVLINK_MSG_ID_COMMAND_ACK, 8.0f);         // #35
     setMessageInterval(MAVLINK_MSG_ID_BATTERY_STATUS, 8.0f);      // #147
+    setMessageInterval(MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN, 8.0f);   // #32
   }
+}
+
+void BlueROVBridge::handleGlobalOrigin(const mavlink_message_t& msg){
+  mavlink_gps_global_origin_t gps_global_origin;
+  mavlink_msg_gps_global_origin_decode(&msg, &gps_global_origin);
+  
+  auto global_origin_msg = std::make_unique<auv_core_helper::msg::PoseStamped>();
+  global_origin_msg->header.stamp = this->now();
+  global_origin_msg->header.frame_id = "Global WGS84";
+  global_origin_msg->position.latitude = gps_global_origin.latitude / 1e7;  // Convert to degrees 
+  global_origin_msg->position.longitude = gps_global_origin.longitude / 1e7;  // Convert to degrees
+  global_origin_msg->depth = gps_global_origin.altitude / 1000.0;  // mm → meters
+  globalOriginPublisher_->publish(*global_origin_msg);
 }
 
 void BlueROVBridge::handleBatteryStatus(const mavlink_message_t& msg){

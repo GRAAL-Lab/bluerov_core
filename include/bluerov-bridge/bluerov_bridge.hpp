@@ -52,6 +52,7 @@ private:
     // ROS Publishers, Subscribers & Services
     //--------------------------------------------------------------------------
     rclcpp::Publisher<auv_core_helper::msg::HeartBeat>::SharedPtr heartBeatPublisher_;
+    rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr globalOriginPublisher_;
     rclcpp::Publisher<auv_core_helper::msg::BatteryStatus>::SharedPtr batteryStatusPublisher_;
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseActualPublisher_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr globalVelocityActualPublisher_;
@@ -168,6 +169,12 @@ private:
      * @param sender_addr The sender's address
      */
     void handleHeartbeat(const mavlink_message_t& msg, const sockaddr_in& sender_addr);
+
+    /**
+     * @brief Handle GPS_GLOBAL_ORIGIN message
+     * @param msg The received MAVLink message
+     */
+    void handleGlobalOrigin(const mavlink_message_t& msg);
 
     /**
      * @brief Handle BATTERY_STATUS message
