@@ -263,14 +263,12 @@ void KCL::ExecuteFSM() {
     stateMsg.data = fsm_.GetCurrentStateName();
     statePublisher_->publish(stateMsg);
 
-    // Publish goal pose
-    PublishEigenPose(poseGoalGlobalPublisher_, ctrlData_->poseGoalGlobal, this->get_clock()->now());
+        PublishEigenPose(poseGoalGlobalPublisher_, ctrlData_->poseGoalGlobal, this->get_clock()->now());
+        PublishEigenVelocity(velocityDesiredGlobalPublisher_, ctrlData_->velocityDesiredNED);
 
     // Scale desired velocity within limits
     // rml::SaturateVector(ctrlData_->maxVelocity, ctrlData_->minVelocity, ctrlData_->velocityDesired);
 
-    // Publish desired velocity
-    PublishEigenVelocity(velocityDesiredGlobalPublisher_, ctrlData_->velocityDesiredNED);
 
     // Publish the planned path
     pathPublisher_->publish(ctrlData_->plannedPath);

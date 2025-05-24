@@ -24,7 +24,7 @@ private:
     std::shared_ptr<sisl::Path> path; ///< SISL-generated path.
     std::vector<Eigen::Vector3d> sampledPoints; ///< Sampled points from the path.
     bool isCurveSet_ = true; ///< Whether the path is set.
-    bool isVehicleOnPathDirection_ = false; ///< Whether the vehicle is aligned with the path direction.
+    bool isVehicleOnPathDirection_ = true; ///< Whether the vehicle is aligned with the path direction.
     double currentAbscissa_ = 0.0; ///< Current abscissa (progress along the path).
     double closestPointAbscissa_ = 0.0; ///< Abscissa of the closest point on the path.
 

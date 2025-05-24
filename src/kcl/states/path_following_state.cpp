@@ -99,8 +99,6 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
     return fsm::ok;
 }
 
-
-
 fsm::retval PathFollowingState::Execute() noexcept { 
     //print i am alive in this state
     RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Executing PATH_FOLLOWING state");
@@ -146,6 +144,14 @@ fsm::retval PathFollowingState::Execute() noexcept {
         pitchError_     =  ctb::AngleDifference(ctrlData->poseGoalLocal(4), ctrlData->poseActualLocal(4));
         yawError_       =  ctb::AngleDifference(ctrlData->poseGoalLocal(5), ctrlData->poseActualLocal(5));
 
+        //print the errors
+        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Position X Error: %f", positionXError_);
+        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Position Y Error: %f", positionYError_);
+        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Position Z Error: %f", positionZError_);
+        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Roll Error: %f", rollError_);
+        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Pitch Error: %f", pitchError_);
+        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Yaw Error: %f", yawError_);
+
         // Normalize orientation errors for safety
         ctb::NormalizeAngle(rollError_);
         ctb::NormalizeAngle(yawError_);
@@ -177,6 +183,9 @@ fsm::retval PathFollowingState::Execute() noexcept {
         double pi_p = -atan2(direction.z(), sqrt(direction.x()*direction.x() + direction.y()*direction.y()));
         double psi_d = pi_h;
         double theta_psi_d = pi_p;
+        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"),
+             "delta=%.3f  |next-current|=%.6f",
+             delta_, (nextPoint-currentPoint).norm());
         bool alosSuccess = alosController_->ALOS3D(
             ctrlData->poseActualLocal.head(3),
             nextPoint,
@@ -244,7 +253,6 @@ fsm::retval PathFollowingState::Execute() noexcept {
     }
     return fsm::ok;
 }
-
 
 fsm::retval PathFollowingState::OnExit() noexcept {
     ctrlData->plannedPath.poses.clear();
