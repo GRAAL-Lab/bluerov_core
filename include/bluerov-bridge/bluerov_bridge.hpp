@@ -9,7 +9,6 @@
 #include "std_msgs/msg/string.hpp"
 #include "auv_core_helper/msg/pose_stamped.hpp"
 #include "auv_core_helper/msg/heart_beat.hpp"                           
-#include "auv_core_helper/msg/rc_channels.hpp"
 #include "std_msgs/msg/bool.hpp"                     
 #include "std_msgs/msg/float64.hpp"                  
 #include "std_msgs/msg/int8.hpp"                     
@@ -60,7 +59,6 @@ private:
     
     rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseDesiredSubscription_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr globalVelocityDesiredSubscription_;
-    rclcpp::Subscription<auv_core_helper::msg::RCChannels>::SharedPtr rcChannelValuesDesiredSubscription_;
 
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr armingService_;
     rclcpp::Service<auv_core_helper::srv::SetFlightMode>::SharedPtr flightModeService_;
@@ -236,17 +234,6 @@ private:
      * @param mode The desired flight mode
      */
     void setFlightMode(const std::string& mode);
-
-    /**
-     * @brief Callback for receiving desired RC channels
-     * @param msg The received RCChannels message
-     */
-    void rcChannelValuesDesiredCallback(const auv_core_helper::msg::RCChannels::SharedPtr msg);
-
-    /**
-     * @brief Set RC channel PWM values
-     */
-    void setRcChannelPwm(const uint16_t* rc_channel_values);
     
     /**
      * @brief Callback for receiving desired global pose

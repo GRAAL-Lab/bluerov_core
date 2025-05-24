@@ -29,8 +29,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
 
   globalPoseDesiredSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_desired_global,10,std::bind(&BlueROVBridge::globalPoseDesiredCallback, this, std::placeholders::_1));
   globalVelocityDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired_global,10,std::bind(&BlueROVBridge::globalVelocityDesiredCallback, this, std::placeholders::_1));
-  rcChannelValuesDesiredSubscription_ = this->create_subscription<auv_core_helper::msg::RCChannels>(auv_core_helper::topicnames::rc_channel_values_desired,10,std::bind(&BlueROVBridge::rcChannelValuesDesiredCallback, this, std::placeholders::_1));
-  
+
   // ROS Services
   armingService_ = this->create_service<std_srvs::srv::SetBool>(auv_core_helper::topicnames::arming_service, std::bind(&BlueROVBridge::armingServiceCallback, this,std::placeholders::_1, std::placeholders::_2));
     
@@ -502,84 +501,6 @@ void BlueROVBridge::setFlightMode(const std::string& mode)
   sendMavlinkMessage(msg);
   // RCLCPP_INFO(this->get_logger(), "Flight mode set to %s", mode.c_str());
 }
-
-void BlueROVBridge::rcChannelValuesDesiredCallback(const auv_core_helper::msg::RCChannels::SharedPtr msg)
-{   
-    if (!got_heartbeat_) {
-        RCLCPP_WARN(this->get_logger(), 
-            "Cannot set RC channel values yet; no autopilot heartbeat discovered!");
-        return;
-    }
-    
-    if (hb.custom_mode != MAV_MODE_MANUAL_ARMED) {
-        RCLCPP_WARN(this->get_logger(), 
-            "Vehicle is not in MANUAL mode. Setting MANUAL mode before sending RC channel values.");
-        return;
-    }
-
-    RCLCPP_INFO(this->get_logger(), "RC channel values desired received");
-    RCLCPP_INFO(this->get_logger(), "channels: %d, %d, %d, %d, %d, %d", msg->channels[0], msg->channels[1], msg->channels[2], msg->channels[3], msg->channels[4], msg->channels[5]);
-   
-  // Initialize all channels .
-    uint16_t rc_channel_values[18];
-    for (int i = 0; i < 18; ++i) {
-        rc_channel_values[i] = UINT16_MAX;    //  A value of 0 or UINT16_MAX means to ignore this field
-    }
-
-    rc_channel_values[0] = msg->channels[0];
-    rc_channel_values[1] = msg->channels[1];
-    rc_channel_values[2] = msg->channels[2];
-    rc_channel_values[3] = msg->channels[3];
-    rc_channel_values[4] = msg->channels[4];
-    rc_channel_values[5] = msg->channels[5];
-    rc_channel_values[6] = msg->channels[6];
-    rc_channel_values[7] = msg->channels[7];
-    rc_channel_values[8] = msg->channels[8];
-    rc_channel_values[9] = msg->channels[9];
-    rc_channel_values[10] = msg->channels[10];
-    rc_channel_values[11] = msg->channels[11];
-    rc_channel_values[12] = msg->channels[12];
-    rc_channel_values[13] = msg->channels[13];
-    rc_channel_values[14] = msg->channels[14];
-    rc_channel_values[15] = msg->channels[15];
-    rc_channel_values[16] = msg->channels[16];
-    rc_channel_values[17] = msg->channels[17];
-    
-    setRcChannelPwm(rc_channel_values);
-}
-
-void BlueROVBridge::setRcChannelPwm(const uint16_t* rc_channel_values)
-{
-    mavlink_message_t msg;
-    mavlink_msg_rc_channels_override_pack(
-        system_id_,
-        component_id_,
-        &msg,
-        target_system_,
-        target_component_,
-        rc_channel_values[0],
-        rc_channel_values[1],
-        rc_channel_values[2],
-        rc_channel_values[3],
-        rc_channel_values[4],
-        rc_channel_values[5],
-        rc_channel_values[6],
-        rc_channel_values[7],
-        rc_channel_values[8],
-        rc_channel_values[9],
-        rc_channel_values[10],
-        rc_channel_values[11],
-        rc_channel_values[12],
-        rc_channel_values[13],
-        rc_channel_values[14],
-        rc_channel_values[15],
-        rc_channel_values[16],
-        rc_channel_values[17]
-    );
-    sendMavlinkMessage(msg);
-    RCLCPP_INFO(this->get_logger(), "RC channel values sent");
-}
-
 
 void BlueROVBridge::globalPoseDesiredCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg)
 {
