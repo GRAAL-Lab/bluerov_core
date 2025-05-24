@@ -32,6 +32,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   globalVelocityDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired_global,10,std::bind(&BlueROVBridge::globalVelocityDesiredCallback, this, std::placeholders::_1));
 
   // ROS Services
+  setGlobalOriginService_ = this->create_service<auv_core_helper::srv::SetGlobalOrigin>(auv_core_helper::topicnames::set_global_origin_service, std::bind(&BlueROVBridge::setGlobalOriginServiceCallback, this,std::placeholders::_1, std::placeholders::_2));
   armingService_ = this->create_service<std_srvs::srv::SetBool>(auv_core_helper::topicnames::arming_service, std::bind(&BlueROVBridge::armingServiceCallback, this,std::placeholders::_1, std::placeholders::_2));
     
   flightModeService_ = this->create_service<auv_core_helper::srv::SetFlightMode>(auv_core_helper::topicnames::flight_mode_service,std::bind(&BlueROVBridge::flightModeServiceCallback, this, std::placeholders::_1, std::placeholders::_2));
@@ -274,7 +275,7 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
 }
 
 void BlueROVBridge::handleGlobalOrigin(const mavlink_message_t& msg){
-  mavlink_gps_global_origin_t gps_global_origin;
+ 
   mavlink_msg_gps_global_origin_decode(&msg, &gps_global_origin);
   
   auto global_origin_msg = std::make_unique<auv_core_helper::msg::PoseStamped>();
@@ -302,6 +303,21 @@ void BlueROVBridge::handleBatteryStatus(const mavlink_message_t& msg){
 
    batteryStatusPublisher_->publish(*battery_status_);
  }
+
+ void BlueROVBridge::handleDvlDistance(const mavlink_message_t& msg){
+  mavlink_distance_sensor_t distance_sensor;
+  mavlink_msg_distance_sensor_decode(&msg, &distance_sensor);
+
+  auto dvl_distance_msg = std::make_unique<std_msgs::msg::Float64>();
+  dvl_distance_msg->data = distance_sensor.current_distance;  //Distance in cm 
+
+  dvlDistancePublisher_->publish(std::move(dvl_distance_msg));
+}
+
+void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg){
+  mavlink_msg_command_ack_decode(&msg, &ack);
+
+}
 
 
 void BlueROVBridge::handleGlobalPositionInt(const mavlink_message_t& msg){
@@ -337,6 +353,8 @@ void BlueROVBridge::Execute(){
   if (global_pose_msg && global_velocity_msg && got_heartbeat_) {
     globalPoseActualPublisher_->publish(*global_pose_msg);
     globalVelocityActualPublisher_->publish(*global_velocity_msg);
+
+    
     if(flightMode_actual == "GUIDED"){
       //Pose controllr
       if (poseGoalGlobalChanged){
@@ -386,19 +404,21 @@ void BlueROVBridge::Execute(){
   }
 }
 
-void BlueROVBridge::handleDvlDistance(const mavlink_message_t& msg){
-  mavlink_distance_sensor_t distance_sensor;
-  mavlink_msg_distance_sensor_decode(&msg, &distance_sensor);
+void BlueROVBridge::setGlobalOriginServiceCallback(const std::shared_ptr<auv_core_helper::srv::SetGlobalOrigin::Request> request, std::shared_ptr<auv_core_helper::srv::SetGlobalOrigin::Response> response){
+  RCLCPP_INFO(this->get_logger(), "Setting global origin service called: %f, %f, %f", request->latitude, request->longitude, request->altitude);
+  mavlink_set_gps_global_origin_t set_gps_global_origin;
+  set_gps_global_origin.latitude = static_cast<int32_t>(request->latitude * 1e7);
+  set_gps_global_origin.longitude = static_cast<int32_t>(request->longitude * 1e7);
+  set_gps_global_origin.altitude = static_cast<int32_t>(request->altitude * 1000.0);
+  setGlobalOrigin(set_gps_global_origin);
 
-  auto dvl_distance_msg = std::make_unique<std_msgs::msg::Float64>();
-  dvl_distance_msg->data = distance_sensor.current_distance;  //Distance in cm 
-
-  dvlDistancePublisher_->publish(std::move(dvl_distance_msg));
-}
-
-void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg){
-  mavlink_msg_command_ack_decode(&msg, &ack);
-
+  if(gps_global_origin.latitude == set_gps_global_origin.latitude && gps_global_origin.longitude == set_gps_global_origin.longitude && gps_global_origin.altitude == set_gps_global_origin.altitude) {
+      response->success = true;
+      response->message = "Global origin set.";
+    } else {
+      response->success = false;
+      response->message = "Global origin set failed.";
+    }
 }
 
 void BlueROVBridge::armingServiceCallback(const std::shared_ptr<std_srvs::srv::SetBool::Request> request, std::shared_ptr<std_srvs::srv::SetBool::Response> response){
@@ -448,6 +468,22 @@ void BlueROVBridge::flightModeServiceCallback(const std::shared_ptr<auv_core_hel
   setFlightMode(request->mode);
 }
 
+void BlueROVBridge::setGlobalOrigin(mavlink_set_gps_global_origin_t& set_gps_global_origin){
+  mavlink_message_t msg;
+  mavlink_msg_set_gps_global_origin_pack(
+      system_id_,
+      component_id_,
+      &msg,
+      target_system_,
+      set_gps_global_origin.latitude,
+      set_gps_global_origin.longitude,
+      set_gps_global_origin.altitude,
+      this->now().nanoseconds()
+    );
+  sendMavlinkMessage(msg);
+  RCLCPP_INFO(this->get_logger(), "Global origin set message sent to %d, %f, %f, %f", target_system_, (double)set_gps_global_origin.latitude/1e7, (double)set_gps_global_origin.longitude/1e7, (double)set_gps_global_origin.altitude/1000.0);
+}
+
 void BlueROVBridge::setArmState(bool arm_vehicle)
 {
   if (!got_heartbeat_) {
@@ -456,10 +492,7 @@ void BlueROVBridge::setArmState(bool arm_vehicle)
     return;
   }
 
-  RCLCPP_INFO(this->get_logger(),
-      "%s vehicle (sys=%d, comp=%d)...",
-      arm_vehicle ? "Arming" : "Disarming",
-      target_system_, target_component_);
+  RCLCPP_INFO(this->get_logger(),"%s vehicle (sys=%d, comp=%d)...",arm_vehicle ? "Arming" : "Disarming",target_system_, target_component_);
 
   mavlink_message_t msg;
   mavlink_msg_command_long_pack(
@@ -512,7 +545,7 @@ void BlueROVBridge::setFlightMode(const std::string& mode)
       MAV_CMD_DO_SET_MODE,
       0, // confirmation
       1,  // param1: Mode, as defined by MAV_MODE enum (1 = MODE_GUIDED)
-      static_cast<float>(custom_mode),  // param2: Custom mode - ArduSub mode
+      static_cast<float>(custom_mode),  // param2: Custom mode - ArduSub mode 
       0,  // param3: Custom sub-mode - not used for ArduSub
       0, 0, 0, 0 // param4-7 unused
   );
@@ -539,7 +572,6 @@ void BlueROVBridge::globalPoseDesiredCallback(const auv_core_helper::msg::PoseSt
         !almost_equal(poseGoalGlobal(1), poseGoalGlobalLast(1), LAT_LON_EPS) ||
         !almost_equal(poseGoalGlobal(2), poseGoalGlobalLast(2), DEPTH_EPS)   ||
         !almost_equal(poseGoalGlobal(5), poseGoalGlobalLast(5), YAW_EPS);
-
 }
 
 

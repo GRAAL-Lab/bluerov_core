@@ -20,6 +20,7 @@
 // ROS 2 service headers
 #include "std_srvs/srv/set_bool.hpp"             
 #include "auv_core_helper/srv/set_flight_mode.hpp" 
+#include "auv_core_helper/srv/set_global_origin.hpp"
 
 // AUV-specific topic names
 #include "auv_core_helper/topicnames.hpp"
@@ -61,6 +62,7 @@ private:
     rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseDesiredSubscription_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr globalVelocityDesiredSubscription_;
 
+    rclcpp::Service<auv_core_helper::srv::SetGlobalOrigin>::SharedPtr setGlobalOriginService_;
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr armingService_;
     rclcpp::Service<auv_core_helper::srv::SetFlightMode>::SharedPtr flightModeService_;
     
@@ -69,20 +71,6 @@ private:
     //--------------------------------------------------------------------------
     rclcpp::TimerBase::SharedPtr data_timer_;         // Timer for MAVLink data reception
     rclcpp::TimerBase::SharedPtr mainTimer_;         // Timer for main loop
-
-
-    Eigen::VectorXd poseGoalGlobal = Eigen::VectorXd(6); ///< Desired pose goal in global coordinates.
-    Eigen::VectorXd poseGoalGlobalLast = Eigen::VectorXd(6); ///< Last desired pose goal in global coordinates.
-
-    bool poseGoalGlobalChanged = false; ///< Flag indicating if the pose goal has changed.
-    const double LAT_LON_EPS   = 1e-6;   // ≈11 cm
-    const double DEPTH_EPS     = 0.02;   // 2 cm
-    const double YAW_EPS       = 0.01;   // ≈0.6°
-    Eigen::VectorXd velocityDesiredGlobal = Eigen::VectorXd(6); ///< Desired linear and angular velocities in global coordinates.
-    
-
-    //string to hold last flight mode
-    std::string flightMode_actual = "MANUAL";
 
     //--------------------------------------------------------------------------
     // MAVLink Socket / Connection
@@ -99,46 +87,31 @@ private:
     uint8_t target_component_{0};       // Target component ID (from heartbeat)
     bool got_heartbeat_{false};         // Flag indicating if heartbeat was received
 
-    //=============================================================================
-    // MAVLink declarations
-    //=============================================================================
+    //--------------------------------------------------------------------------
+    //Declarations
+    //--------------------------------------------------------------------------
     mavlink_heartbeat_t hb;
     mavlink_command_ack_t ack;
     mavlink_set_position_target_global_int_t position_target_global_;
     mavlink_set_attitude_target_t attitude_target_;
     mavlink_command_long_t condition_yaw_ ;
+    mavlink_gps_global_origin_t gps_global_origin;
     
-    //--------------------------------------------------------------------------
-    // Waypoint Navigation Variables
-    //--------------------------------------------------------------------------
-    
-    /// Current waypoint being navigated to (ENU coordinates)
-    geometry_msgs::msg::PoseStamped current_waypoint_;
-    
-    /// Pending waypoint/path when mode change is in progress
-    geometry_msgs::msg::PoseStamped pending_waypoint_; 
-    bool has_pending_waypoint_{false};
-    
-    /// Waypoint navigation state
-    bool waypoint_navigation_active_{false}; // Actively following waypoints
-    bool waypoint_reached_{false};           // Current waypoint reached
-    bool guided_mode_active_{false};         // Vehicle is in GUIDED mode
-    
-    /// Mode change tracking
-    bool mode_change_requested_{false};      // Mode change has been requested
-    rclcpp::Time mode_change_request_time_{}; // Time of last mode change request
-    uint32_t mode_change_attempts_{0};       // Number of mode change attempts
-    std::string requested_mode_{};           // The mode that was requested
-    
-    /// Waypoint acceptance radius (meters)
-    double waypoint_acceptance_radius_{0.1};
-    
-    /// Position hold at last waypoint when queue is empty
-    bool position_hold_active_{false};              // Vehicle is in POSHOLD mode
-    geometry_msgs::msg::PoseStamped position_hold_waypoint_; // Position being held
-
     std::unique_ptr<auv_core_helper::msg::PoseStamped> global_pose_msg = std::make_unique<auv_core_helper::msg::PoseStamped>();
     std::unique_ptr<geometry_msgs::msg::Twist> global_velocity_msg = std::make_unique<geometry_msgs::msg::Twist>();
+
+    Eigen::VectorXd poseGoalGlobal = Eigen::VectorXd(6); ///< Desired pose goal in global coordinates.
+    Eigen::VectorXd poseGoalGlobalLast = Eigen::VectorXd(6); ///< Last desired pose goal in global coordinates.
+
+    bool poseGoalGlobalChanged = false; ///< Flag indicating if the pose goal has changed.
+    const double LAT_LON_EPS   = 1e-6;   // ≈11 cm
+    const double DEPTH_EPS     = 0.02;   // 2 cm
+    const double YAW_EPS       = 0.01;   // ≈0.6°
+    Eigen::VectorXd velocityDesiredGlobal = Eigen::VectorXd(6); ///< Desired linear and angular velocities in global coordinates.
+    
+
+    //string to hold last flight mode
+    std::string flightMode_actual = "MANUAL";
 
     //--------------------------------------------------------------------------
     // Internal Methods
@@ -211,7 +184,15 @@ private:
      * @param msg The received MAVLink message
      */
     void handleCommandAck(const mavlink_message_t& msg);
-    
+
+    /**
+     * @brief Service callback for setting the global origin.
+     * @param request Service request containing the desired global origin.
+     * @param response Service response indicating success/failure.
+     */
+    void setGlobalOriginServiceCallback(
+        const std::shared_ptr<auv_core_helper::srv::SetGlobalOrigin::Request> request,
+        std::shared_ptr<auv_core_helper::srv::SetGlobalOrigin::Response> response);
     /**
      * @brief Service callback for arming/disarming the vehicle.
      * @param request Service request containing boolean for arm (true) or disarm (false).
@@ -229,6 +210,12 @@ private:
     void flightModeServiceCallback(
         const std::shared_ptr<auv_core_helper::srv::SetFlightMode::Request> request,
         std::shared_ptr<auv_core_helper::srv::SetFlightMode::Response> response);
+    
+    /**
+     * @brief Set the global origin via MAVLink
+     * @param set_gps_global_origin The MAVLink message containing global origin data
+     */
+    void setGlobalOrigin(mavlink_set_gps_global_origin_t& set_gps_global_origin);
 
     /**
      * @brief Set the arm state
@@ -287,17 +274,6 @@ private:
      * @param use_current If true, ignore lat/lon/alt and use current position
      */
     void sendSetHome(float latitude, float longitude, float altitude, bool use_current = false);
-
-    /**
-     * @brief Send MAV_CMD_OVERRIDE_GOTO command to interrupt current navigation
-     * 
-     * This commands the vehicle to immediately move to the specified position.
-     * It can be used in emergency situations to redirect the vehicle.
-     * 
-     * @param position Target position in ENU coordinates
-     * @param continue_cmd If true, the vehicle will continue executing mission after reaching position
-     */
-    void sendOverrideGoto(const geometry_msgs::msg::Point& position, bool continue_cmd = false);
 
     /**
      * @brief Main loop for processing MAVLink messages and ROS callbacks
