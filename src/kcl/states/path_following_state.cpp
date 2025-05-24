@@ -154,16 +154,10 @@ fsm::retval PathFollowingState::Execute() noexcept {
         ctrlData->velocityDesiredNED(0) = -pidX_.Compute(0, positionXError_);
         ctrlData->velocityDesiredNED(1) = -pidY_.Compute(0, positionYError_);
         ctrlData->velocityDesiredNED(2) = -pidZ_.Compute(0, positionZError_);
+        ctrlData->velocityDesiredNED(3) = -pidRoll_.Compute(0, rollError_);
+        ctrlData->velocityDesiredNED(4) = -pidPitch_.Compute(0, pitchError_);
+        ctrlData->velocityDesiredNED(5) = -pidYaw_.Compute(0, yawError_);
 
-        // Compute body-frame angular velocities using PID
-        Eigen::Vector3d wDesired = Eigen::Vector3d::Zero();
-        wDesired[0] = -pidRoll_.Compute(0, rollError_);
-        wDesired[1] = -pidPitch_.Compute(0, pitchError_);
-        wDesired[2] = -pidYaw_.Compute(0, yawError_);
-        // Directly assign body-frame angular velocities (no Euler angle rate conversion)
-        ctrlData->velocityDesiredNED(3) = wDesired[0];
-        ctrlData->velocityDesiredNED(4) = wDesired[1];
-        ctrlData->velocityDesiredNED(5) = wDesired[2];
         // Check if aligned
         if (std::abs(positionXError_) < 0.1 && std::abs(positionYError_) < 0.1 && std::abs(positionZError_) < 0.1 &&
             std::abs(rollError_) < 0.1 && std::abs(yawError_) < 0.1 && std::abs(pitchError_) < 0.1) {
@@ -198,7 +192,6 @@ fsm::retval PathFollowingState::Execute() noexcept {
             RCLCPP_WARN(rclcpp::get_logger("PathFollowingState"), "ALOS3D failed to compute desired heading/pitch.");
             return fsm::ok;
         }
-        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "here 1");
 
         ctrlData->poseGoalLocal(0) = nextPoint.x();
         ctrlData->poseGoalLocal(1) = nextPoint.y();
@@ -206,6 +199,7 @@ fsm::retval PathFollowingState::Execute() noexcept {
         ctrlData->poseGoalLocal(3) = 0;
         ctrlData->poseGoalLocal(4) = theta_psi_d; 
         ctrlData->poseGoalLocal(5) = psi_d;
+
         // Compute errors in world frame
         positionXError_ = ctrlData->poseGoalLocal(0) - ctrlData->poseActualLocal(0);
         positionYError_ = ctrlData->poseGoalLocal(1) - ctrlData->poseActualLocal(1);
@@ -222,16 +216,10 @@ fsm::retval PathFollowingState::Execute() noexcept {
         ctrlData->velocityDesiredNED(0) = -pidX_.Compute(0, positionXError_);
         ctrlData->velocityDesiredNED(1) = -pidY_.Compute(0, positionYError_);
         ctrlData->velocityDesiredNED(2) = -pidZ_.Compute(0, positionZError_);
+        ctrlData->velocityDesiredNED(3) = -pidRoll_.Compute(0, rollError_);
+        ctrlData->velocityDesiredNED(4) = -pidPitch_.Compute(0, pitchError_);
+        ctrlData->velocityDesiredNED(5) = -pidYaw_.Compute(0, yawError_);
 
-        // PID on angular errors for body-frame angular velocities
-        Eigen::Vector3d wDesired = Eigen::Vector3d::Zero();
-        wDesired[0] = -pidRoll_.Compute(0, rollError_);
-        wDesired[1] = -pidPitch_.Compute(0, pitchError_);
-        wDesired[2] = -pidYaw_.Compute(0, yawError_);
-        // Assign body-frame angular velocities directly
-        ctrlData->velocityDesiredNED(3) = wDesired[0];
-        ctrlData->velocityDesiredNED(4) = wDesired[1];
-        ctrlData->velocityDesiredNED(5) = wDesired[2];
         Eigen::Vector3d currentPosDot = path->Derivate(1, closestPointAbscissa_).front();
         Eigen::Vector3d goalPosDot = path->Derivate(1, goalAbscissa).front();
         Eigen::Vector3d currentDirection = currentPosDot.normalized();
@@ -239,13 +227,13 @@ fsm::retval PathFollowingState::Execute() noexcept {
         double tangentsDifferenceNorm = (goalDirection - currentDirection).norm();
         delta_ = alosController_->UpdateLookAheadDistance(crossTrackError_, verticalTrackError_, tangentsDifferenceNorm);
         double path_completed = (closestPointAbscissa_ / path->EndParameter()) * 100.0;
+
         //print cte, vte, delta, time, path_completed in diffrent lines
         // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Cross-track error: %f", crossTrackError_);
         // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Vertical-track error: %f", verticalTrackError_);
         // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Delta: %f", delta_);
         // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Time: %f", ctrlData->timeActual.seconds());
         // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path completed: %f", path_completed);
-        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "here 1");
 
         currentAbscissa_ = closestPointAbscissa_;
         if (path_completed >= 99.95) {

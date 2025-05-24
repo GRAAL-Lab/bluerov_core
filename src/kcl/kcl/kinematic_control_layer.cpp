@@ -128,7 +128,6 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
 }
 
 
-
 void KCL::SetupTransitions() {
     // Create states
     idleState_ = std::make_unique<IdleState>(&fsm_);
@@ -248,6 +247,7 @@ void KCL::ExecuteFSM() {
     ctb::LatLong2LocalNED(curLL,  -std::abs(ctrlData_->poseActualGlobal(2)), homeLL, tmpPoseLocal);
     ctrlData_->homeLocal.head<3>() = tmpHomeLocal;
     ctrlData_->poseActualLocal.head<3>() = tmpPoseLocal - tmpHomeLocal;
+    ctrlData_->poseActualLocal.tail<3>() = ctrlData_->poseActualGlobal.tail<3>();
 
     //publish desiredctrlmode
     deisiredCtrlModePublisher_->publish(std_msgs::msg::String().set__data(ctrlData_->deisiredCtrlMode));
