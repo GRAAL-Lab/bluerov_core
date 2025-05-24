@@ -1,1 +1,0 @@
-/home/usflinux/rami_ws/src/kcl/build/kcl/ament_cmake_environment_hooks/local_setup.bash
