@@ -6,7 +6,8 @@ SurfaceState::SurfaceState(fsm::FSM* fsm): BaseAUVState(fsm, States::SURFACE) {}
 // OnEntry
 fsm::retval SurfaceState::OnEntry() {
     ctrlData->armed_desired = true;
-    ctrlData->flightMode_desired = "SURFACE"; // Set flight mode to surface
+    ctrlData->flightMode_desired = auv_core_helper::FlightMode::SURFACE;
+    ctrlData->deisiredCtrlMode = auv_core_helper::BrigdeMode::PoseCtrl;
     return fsm::ok;
 }
 

@@ -35,6 +35,7 @@ KCL::KCL()
     poseGoalGlobalPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_desired_global, 1);
     velocityDesiredGlobalPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired_global, 1);
     pathPublisher_ = this->create_publisher<nav_msgs::msg::Path>("planned_path", 1);
+    deisiredCtrlModePublisher_ = this->create_publisher<std_msgs::msg::String>(auv_core_helper::topicnames::desired_ctrl_mode, 1);
 
     // Create action server for KCL
     KCLSetter_ = rclcpp_action::create_server<auv_core_helper::action::SetKCL>(
@@ -49,15 +50,15 @@ KCL::KCL()
     armingClient_ = this->create_client<std_srvs::srv::SetBool>(auv_core_helper::topicnames::arming_service);
     flightModeClient_ = this->create_client<auv_core_helper::srv::SetFlightMode>(auv_core_helper::topicnames::flight_mode_service);
 
-    // // Wait for arming service
-    // while (!armingClient_->wait_for_service(std::chrono::seconds(1))) {
-    //     RCLCPP_INFO(this->get_logger(), "Waiting for arming service...");
-    // }
+    // Wait for arming service
+    while (!armingClient_->wait_for_service(std::chrono::seconds(1))) {
+        RCLCPP_INFO(this->get_logger(), "Waiting for arming service...");
+    }
 
-    // // Wait for flight mode service
-    // while (!flightModeClient_->wait_for_service(std::chrono::seconds(1))) {
-    //     RCLCPP_INFO(this->get_logger(), "Waiting for flight mode service...");
-    // }
+    // Wait for flight mode service
+    while (!flightModeClient_->wait_for_service(std::chrono::seconds(1))) {
+        RCLCPP_INFO(this->get_logger(), "Waiting for flight mode service...");
+    }
 
 }
 
@@ -248,6 +249,8 @@ void KCL::ExecuteFSM() {
     ctrlData_->homeLocal.head<3>() = tmpHomeLocal;
     ctrlData_->poseActualLocal.head<3>() = tmpPoseLocal - tmpHomeLocal;
 
+    //publish desiredctrlmode
+    deisiredCtrlModePublisher_->publish(std_msgs::msg::String().set__data(ctrlData_->deisiredCtrlMode));
 
 
     // Execute the current FSM state

@@ -31,6 +31,7 @@
 #include "ctrl_toolbox/pid/DigitalPID.h"
 #include "ctrl_toolbox/HelperFunctions.h"
 #include "rml/EulerRPY.h"
+#include "auv_core_helper/bridgemode.hpp"
 
 // -------------------------
 // Base State Class for AUV FSM

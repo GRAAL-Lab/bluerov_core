@@ -7,7 +7,8 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
     RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Entering PATH_FOLLOWING state");
 
     ctrlData->armed_desired = true;
-    ctrlData->flightMode_desired = "GUIDED";
+    ctrlData->flightMode_desired = auv_core_helper::FlightMode::GUIDED;
+    ctrlData->deisiredCtrlMode = auv_core_helper::BrigdeMode::VelCtrl;
 
     //update home
     ctrlData->homeGlobal.head<3>() = ctrlData->poseActualGlobal.head<3>();

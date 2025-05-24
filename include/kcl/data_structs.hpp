@@ -7,6 +7,8 @@
 #include <Eigen/Dense>
 #include <vector>
 #include <ctrl_toolbox/DataStructs.h>
+#include "auv_core_helper/bridgemode.hpp"
+
 
 namespace auv {
 
@@ -47,6 +49,7 @@ struct ControlData {
     bool armed_actual = false;
     std::string flightMode_desired = "MANUAL"; 
     std::string flightMode_actual = "MANUAL"; 
+    std::string deisiredCtrlMode = auv_core_helper::BrigdeMode::PoseCtrl;
 
 
     // ------------------------------

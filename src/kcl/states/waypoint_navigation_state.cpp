@@ -7,7 +7,8 @@ fsm::retval WayPointNavigationState::OnEntry() noexcept{
 
     RCLCPP_INFO(rclcpp::get_logger("WayPointNavigationState"), "Entering WayPoint Navigation State");
     ctrlData->armed_desired    = true;
-    ctrlData->flightMode_desired = "GUIDED";
+    ctrlData->flightMode_desired = auv_core_helper::FlightMode::GUIDED;
+    ctrlData->deisiredCtrlMode = auv_core_helper::BrigdeMode::PoseCtrl;
 
     waypoint_.latitude  = ctrlData->poseGoalGlobal(0);
     waypoint_.longitude = ctrlData->poseGoalGlobal(1);

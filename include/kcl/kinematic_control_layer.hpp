@@ -32,6 +32,9 @@
 // AUV-specific message types between mission control and the AUV
 #include "auv_core_helper/action/set_kcl.hpp"
 
+#include "auv_core_helper/bridgemode.hpp"
+
+
 // AUV service types
 #include "std_srvs/srv/set_bool.hpp"             
 #include "auv_core_helper/srv/set_flight_mode.hpp" 
@@ -79,6 +82,9 @@ private:
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr poseGoalGlobalPublisher_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocityDesiredGlobalPublisher_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pathPublisher_;
+
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr deisiredCtrlModePublisher_;
+
 
     // --------------------
     // ROS 2 Subscriptions
