@@ -1,10 +1,22 @@
 cmake_minimum_required(VERSION 3.5)
+
+## Compile as C++17
+set(CMAKE_CXX_STANDARD 17)
+#set(CMAKE_BUILD_TYPE RelWithDebInfo)
+add_compile_options(-std=c++17)
+
 project(test_package)
+
+find_library(PAHO_MQTTPP3_LIB paho-mqttpp3 REQUIRED)
+find_library(PAHO_MQTT3AS_LIB paho-mqtt3as REQUIRED)
 
 include_directories("${CMAKE_SOURCE_DIR}/include/jsoncons/include")
 include_directories("${CMAKE_SOURCE_DIR}/include/ctrl_toolbox/include/")
 include_directories("${CMAKE_SOURCE_DIR}/include/json_utils")
 include_directories("${CMAKE_SOURCE_DIR}/include")
+include_directories("/usr/local/include")
+
+link_directories("/usr/local/lib")
 
 # Default to C99
 if(NOT CMAKE_C_STANDARD)
@@ -45,18 +57,30 @@ target_include_directories(json_utils PUBLIC
 # Executable target
 add_executable(my_test src/test_node.cpp)
 add_executable(my_terminal src/terminal.cpp)
+add_executable(mqtt_client src/mqtt_client.cpp)
+
+target_compile_features(my_terminal PUBLIC cxx_std_17)
 
 # Link against the json_utils library
 target_link_libraries(my_test
   json_utils
 )
 
+target_link_libraries(mqtt_client
+    json_utils
+    ${PAHO_MQTTPP3_LIB}
+    ${PAHO_MQTT3AS_LIB}
+    rml
+    stdc++fs
+)
+
 target_link_libraries(my_terminal config++) 
 
 ament_target_dependencies(my_test rclcpp std_msgs auv_core_helper)
 ament_target_dependencies(my_terminal rclcpp std_msgs auv_core_helper ament_index_cpp)
+ament_target_dependencies(mqtt_client rclcpp std_msgs)
 
-install(TARGETS my_test my_terminal DESTINATION lib/${PROJECT_NAME})
+install(TARGETS my_test my_terminal mqtt_client DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY conf/
   DESTINATION share/${PROJECT_NAME}/conf
