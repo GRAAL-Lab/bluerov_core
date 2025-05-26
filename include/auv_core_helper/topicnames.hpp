@@ -36,10 +36,11 @@ const std::string set_global_origin_service = "/auv/service/set_global_origin";
 const std::string arming_service = "/auv/service/arming";
 const std::string flight_mode_service = "/auv/service/flight_mode";
 
-
-
 // Actions
 const std::string kcl_setter_action = "/set_kcl_state";
+
+// Perceptions
+const std::string obstacles = "/objects";
 
 
 }
