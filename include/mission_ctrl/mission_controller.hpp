@@ -26,7 +26,6 @@ namespace mission {
 
 class MissionController : public rclcpp::Node {
 
-    //TODO conf
     double stateTimeout = 20.0; // seconds
     double controlLoopRate = 1.0; // Hz
 
@@ -57,6 +56,7 @@ class MissionController : public rclcpp::Node {
 
 
     void SimulateMissionCmdFromFile();
+    void LoadConfiguration();
 
     // FSM
     void SetUpFSM();

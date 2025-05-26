@@ -43,11 +43,13 @@ namespace states {
             return fsm::fail;
         }
 
-        std::cerr << "Searching...\n";
-        std::cerr << "Cumulative angle: " << cumulativeAngle << "\n";
+        if (systemStatus_->conf.debugPrints) {
+            std::cerr << ".";
+            std::cerr << "\nCumulative angle: " << cumulativeAngle << "\n";
+        }
 
-        //temp
-        found = true;
+        if (systemStatus_->conf.simKcl)
+            found = true;
 
         return fsm::ok;
     }

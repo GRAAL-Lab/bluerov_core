@@ -6,6 +6,7 @@ MissionController::MissionController()
 {
     ctrlData_ = std::make_shared<ControlData>();
     systemStatus_ = std::make_shared<SystemStatus>(this->get_clock()->get_clock_type());
+    LoadConfiguration(); // REQUIRES SYSTEM STATUS TO BE INITIALIZED
 
     stateInit_ = std::make_shared<states::StateInit>();
     stateHoming_ = std::make_shared<states::StateHoming>();
@@ -50,11 +51,11 @@ MissionController::MissionController()
     // std::cout << "Controller Rate: " << conf_->controlLoopRate << "Hz" << std::endl;
     runTimer_ = this->create_wall_timer(std::chrono::milliseconds(msRunPeriod), std::bind(&MissionController::Run, this));
 
-#ifdef NO_CTRL_STATION
-    RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No control station, loading configuration from file");
-    SimulateMissionCmdFromFile();
-    SetTaskDataFSM();
-#endif
+    if (systemStatus_->conf.simCtrlStation) {
+        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No control station, loading configuration from file");
+        SimulateMissionCmdFromFile();
+        SetTaskDataFSM();
+    }
 };
 
 void MissionController::StatusPub()
@@ -79,14 +80,14 @@ void MissionController::Run()
 {
     //=== Check if the system is alive ===
     systemStatus_->UpdateStatus(this->get_clock()->now());
-#ifndef NO_KCL
-    if (!setKCLClient_->wait_for_action_server(std::chrono::seconds(1))) {
-        RCLCPP_WARN(this->get_logger(), "KCL not available.");
-        return;
-    }else{
-        systemStatus_->lastKCLTime = this->get_clock()->now();
+    if (!systemStatus_->conf.simKcl) {
+        if (!setKCLClient_->wait_for_action_server(std::chrono::seconds(1))) {
+            RCLCPP_WARN(this->get_logger(), "KCL not available.");
+            return;
+        } else {
+            systemStatus_->lastKCLTime = this->get_clock()->now();
+        }
     }
-#endif
     if (!systemStatus_->IsAlive()) {
         RCLCPP_WARN(this->get_logger(), "System not alive. Perception: %d, KCL: %d, Bridge: %d",
             systemStatus_->perceptionAlive, systemStatus_->kclAlive, systemStatus_->bridgeAlive);
@@ -131,11 +132,18 @@ void MissionController::Run()
 
         auv_core_helper::action::SetKCL::Goal cmd;
         cmd = ctrlData_->kclData.kcl_command;
-#ifdef DEBUG_PRINTS
-        RCLCPP_INFO(this->get_logger(), "Sending command to KCL [%s], %f, %f, %f", cmd.desired_state.c_str(),
-            cmd.position.latitude, cmd.position.longitude, cmd.depth);
-#endif
+        if (systemStatus_->conf.debugPrints) {
+            RCLCPP_INFO(this->get_logger(), "Sending command to KCL [%s], %f, %f, %f", cmd.desired_state.c_str(),
+                cmd.position.latitude, cmd.position.longitude, cmd.depth);
+        }
+
         setKCLClient_->async_send_goal(cmd, options);
+
+        if (systemStatus_->conf.simKcl) {
+            ctrlData_->inertialF_linearPosition.latitude = cmd.position.latitude;
+            ctrlData_->inertialF_linearPosition.longitude = cmd.position.longitude;
+            ctrlData_->depth = cmd.depth;
+        }
     }
 };
 
@@ -225,6 +233,34 @@ void MissionController::PoseCB(const auv_core_helper::msg::PoseStamped::SharedPt
     ctrlData_->depth = msg->depth;
     ctrlData_->bodyF_angularPosition.RPY(msg->roll,
         msg->pitch, msg->yaw);
+}
+
+void MissionController::LoadConfiguration()
+{
+    // Load configuration from file
+    std::string package_share_directory = ament_index_cpp::get_package_share_directory("mission_ctrl");
+    std::string confPath = package_share_directory + "/conf/" + "system.conf";
+    libconfig::Config confObj;
+    try {
+        confObj.readFile(confPath.c_str());
+        ctb::GetParam(confObj, systemStatus_->conf.simKcl, "simulate_kcl");
+        ctb::GetParam(confObj, systemStatus_->conf.simPerception, "simulate_perception");
+        ctb::GetParam(confObj, systemStatus_->conf.simBridge, "simulate_bridge");
+        ctb::GetParam(confObj, systemStatus_->conf.simCtrlStation, "simulate_ctrl_station");
+        ctb::GetParam(confObj, systemStatus_->conf.debugPrints, "debug_prints");
+        RCLCPP_INFO(this->get_logger(), "Configuration loaded from file: %s", confPath.c_str());
+        RCLCPP_INFO(this->get_logger(), "simKcl: %d", systemStatus_->conf.simKcl);
+        RCLCPP_INFO(this->get_logger(), "simPerception: %d", systemStatus_->conf.simPerception);
+        RCLCPP_INFO(this->get_logger(), "simBridge: %d", systemStatus_->conf.simBridge);
+        RCLCPP_INFO(this->get_logger(), "simCtrlStation: %d", systemStatus_->conf.simCtrlStation);
+        RCLCPP_INFO(this->get_logger(), "debugPrints: %d", systemStatus_->conf.debugPrints);
+
+    } catch (const libconfig::FileIOException& fioex) {
+        std::cerr << "I/O error while reading file: " << fioex.what() << std::endl;
+        std::cerr << "  Path: '" << confPath << "'. Make sure the file exists and is readable." << std::endl;
+    } catch (const libconfig::ParseException& pex) {
+        std::cerr << "Parse error at " << pex.getFile() << ":" << pex.getLine() << " - " << pex.getError() << std::endl;
+    }
 }
 
 void MissionController::SimulateMissionCmdFromFile()

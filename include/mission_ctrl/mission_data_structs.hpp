@@ -11,6 +11,7 @@
 
 #include "auv_core_helper/action/set_kcl.hpp"
 #include "auv_core_helper/srv/mission_command.hpp"
+#include "auv_core_helper/msg/dtc_pipeline_pipe.hpp"
 
 namespace mission {
 
@@ -26,6 +27,7 @@ struct ControlData;
 struct Buoy;
 struct Gate;
 struct BuoysArea;
+struct PipelinePipeDtc;
 struct PipelinePipe;
 struct PipelineStructure;
 
@@ -35,6 +37,14 @@ struct Intervention;
 struct InspectionAndIntervention;
 
 // ===========================
+
+struct missionCtrlConf {
+    bool simKcl;
+    bool simPerception;
+    bool simBridge;
+    bool simCtrlStation;
+    bool debugPrints;
+};
 
 struct BuoyActionColorMap {
     std::string clockWiseRotationColor;
@@ -83,14 +93,22 @@ struct Gate {
 struct MissionData {
     std::vector<Buoy> inspectedBuoys;
     Gate gate;
+    //PipelinePipe damagedPipe;
 };
 
 struct PerceptionData {
     bool isAlive;
     std::string state;
+    bool newDtcFromPerception;
 
     bool enableDtcObstacles;
     bool enableDtcBuoys;
+    bool enableDtcMainPipe;
+    bool enableDtcManipulationConsole;
+
+    bool enableDtcPipes;
+    //PipelinePipeDtc currentPipeDtc;
+    auv_core_helper::msg::DtcPipelinePipe currentPipeDtc;
 
     std::map<std::string, Buoy> detectedBuoys;
 };
@@ -138,10 +156,31 @@ struct BuoysArea {
     }
 };
 
+
+
+// struct PipelinePipeDtc{
+//     std::string codeDtc;
+//     bool isInPov;
+//     bool moveTowardStructure;
+//     ctb::LatLong pointOnPipe;
+//     double verticalDistance;
+//     double currentPipeOrientation;
+
+//     bool foundRedMarker;
+//     Eigen::Vector3d redMarkerLatLongDepth;
+//     bool foundPipeNumber;
+//     Eigen::Vector3d pipeNumberLatLongDepth;
+//     uint pipeNumber;
+// }
+
 struct PipelinePipe {
     uint number;
     double orientation;
-    ctb::LatLong position;
+    ctb::LatLong position; //maybe useless 
+    bool hasRedMarker = false;
+    ctb::LatLong positionRedMarker; // position of the red marker on the pipe, if exists
+    bool foundPipeNumber = false;
+    ctb::LatLong positionPipeNumber; // position of the pipe number on the pipe, if exists
 
     friend std::ostream& operator<<(std::ostream& os, const PipelinePipe& pipe)
     {
@@ -524,6 +563,8 @@ struct SystemStatus {
     bool kclAlive = false;
     bool bridgeAlive = false;
 
+    missionCtrlConf conf;
+
     SystemStatus(rcl_clock_type_t clockType)
     {
         if (clockType == 1) {
@@ -549,18 +590,20 @@ struct SystemStatus {
         kclAlive = lastKCLTime > (now - rclcpp::Duration::from_seconds(timeout));
         bridgeAlive = lastBridgeTime > (now - rclcpp::Duration::from_seconds(timeout));
 
-        #ifdef NO_BRIDGE
-        bridgeAlive = true;
-        #endif
-        #ifdef NO_PERCEPTION
-        perceptionAlive = true;
-        #endif
-        #ifdef NO_KCL
-        kclAlive = true;
-        #endif
+        if(conf.simBridge){
+            bridgeAlive = true;
+        }
+        if(conf.simPerception){
+            perceptionAlive = true;
+        }
+        if(conf.simKcl){
+            kclAlive = true;
+        }
     }
     
 };
+
+
 
 }
 

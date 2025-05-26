@@ -15,7 +15,8 @@ namespace states {
     fsm::retval StateBase::SetNextMissionState()
     {
         taskData_->taskPhases.pop();
-        std::cerr << "Next state: " << taskData_->taskPhases.front().first << std::endl;
+        std::cerr << "\nNext state: " << taskData_->taskPhases.front().first << std::endl;
+        
         return fsm_->SetNextState(taskData_->taskPhases.front().first);
     }
 
