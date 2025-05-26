@@ -27,7 +27,6 @@ find_package(ament_index_cpp REQUIRED)
 find_library(RML_LIBRARY NAMES rml)
 find_library(FSM_LIBRARY NAMES fsm)
 find_library(CTRL_LIBRARY NAMES ctrl_toolbox)
-find_library(IKCL_LIBRARY NAMES ikcl)
 find_library(DYNAMIC_GOAL_ALOS_LIBRARY NAMES dynamic_goal_ALOS REQUIRED)
 find_package(PkgConfig REQUIRED)
 find_library(SISL_LIBRARY NAMES sisl_toolbox)
@@ -97,7 +96,6 @@ target_link_libraries(states_lib
   ${ament_index_cpp_LIBRARIES}
   ${RML_LIBRARY}
   ${SISL_LIBRARY}
-  ${IKCL_LIBRARY}
   ${CTRL_LIBRARY}
   Geographic
   ${auv_core_helper_LIBRARIES}
@@ -136,7 +134,6 @@ foreach(target kinematic_control_layer_node)
     ${FSM_LIBRARY}
     ${RML_LIBRARY}
     ${SISL_LIBRARY}
-    ${IKCL_LIBRARY}
     ${CTRL_LIBRARY}
     Geographic
     ${DYNAMIC_GOAL_ALOS_LIBRARY}
