@@ -1,5 +1,5 @@
-bool pipe_in_fov                #spotted a pipe!
 string pipeline_pipe_code       #empty, A or B. (depending on pp orientations given by the bros)
+bool pipe_in_fov                #spotted a pipe!
 LatLong point_on_pipe           #try to keep this constant unless it is not on the pipe anymore
 float64 vertical_distance       #robot-pipe distance on z-axis
 float64 pipe_direction          #NED 
