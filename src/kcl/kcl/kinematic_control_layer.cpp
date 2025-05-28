@@ -31,7 +31,7 @@ KCL::KCL()
     poseActualGlobalSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_global_, 1,std::bind(&KCL::PoseActualGlobalCallback, this, std::placeholders::_1));
 
     // Create publishers
-    statePublisher_ = this->create_publisher<std_msgs::msg::String>(auv_core_helper::topicnames::kcl_state, 1);
+    statePublisher_ = this->create_publisher<auv_core_helper::msg::KclStatus>(auv_core_helper::topicnames::kcl_state, 1);
     poseGoalGlobalPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_desired_global, 1);
     velocityDesiredGlobalPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired_global, 1);
     pathPublisher_ = this->create_publisher<nav_msgs::msg::Path>("planned_path", 1);
@@ -259,9 +259,11 @@ void KCL::ExecuteFSM() {
     fsm_.ExecuteState();
 
     // Publish current state
-    std_msgs::msg::String stateMsg;
-    stateMsg.data = fsm_.GetCurrentStateName();
+    auv_core_helper::msg::KclStatus stateMsg;
+    stateMsg.stamp = this->get_clock()->now();
     statePublisher_->publish(stateMsg);
+    //stateMsg.state = fsm_.GetCurrentStateName();
+    //statePublisher_->publish(stateMsg);
 
         PublishEigenPose(poseGoalGlobalPublisher_, ctrlData_->poseGoalGlobal, this->get_clock()->now());
         PublishEigenVelocity(velocityDesiredGlobalPublisher_, ctrlData_->velocityDesiredNED);

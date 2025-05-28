@@ -8,7 +8,7 @@
 class WayPointNavigationState : public BaseAUVState
 {
 private:
-    bool        isFacingGoal_{false};   ///< true once yaw is aligned
+    bool isFacingGoal_{false};          ///< true once yaw is aligned
     ctb::LatLong waypoint_;             ///< immutable mission waypoint
     double waypointDepth_{0.0};         ///< depth of the waypoint
     ctb::LatLong current_;              ///< live vehicle position

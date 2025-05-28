@@ -9,12 +9,14 @@
 #include <geometry_msgs/msg/twist.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <nav_msgs/msg/path.hpp>
+#include "auv_core_helper/msg/kcl_status.hpp"
 
 // AUV-specific headers
 #include "kcl/data_structs.hpp"
 #include "auv_core_helper/msg/pose_stamped.hpp"
 #include "auv_core_helper/helper_lib.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
+
 
 // State headers
 #include "states/base_auv_state.hpp"
@@ -76,7 +78,7 @@ private:
     // LOCAL
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr poseGoalLocalPublisher_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocityLocalDesiredPublisher_;
-    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr statePublisher_;
+    rclcpp::Publisher<auv_core_helper::msg::KclStatus>::SharedPtr statePublisher_;
 
     // GLOBAL
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr poseGoalGlobalPublisher_;
