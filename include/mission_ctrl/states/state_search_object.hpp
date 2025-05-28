@@ -21,6 +21,8 @@ namespace states {
         double cumulativeAngle;
 
         rml::EulerRPY previous_bodyF_angularPosition;
+
+        Gate gate;
         
     };
 

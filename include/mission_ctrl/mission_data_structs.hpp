@@ -44,6 +44,11 @@ struct missionCtrlConf {
     bool simBridge;
     bool simCtrlStation;
     bool debugPrints;
+
+    bool IsSimulation() const
+    {
+        return simKcl && simPerception && simBridge && simCtrlStation;
+    }
 };
 
 struct BuoyActionColorMap {
@@ -79,6 +84,14 @@ struct Gate {
 
     bool SetGateBuoys(const Buoy& b1, const Buoy& b2)
     {
+        if(b1.color != "orange" && b1.color != "yellow") {
+            return false; // Invalid color for gate buoy
+        }
+        if(b2.color != "orange" && b2.color != "yellow") {
+            return false; // Invalid color for gate buoy
+        }
+
+
         Eigen::Vector3d distanceVector;
         ctb::LatLong2LocalNED(b1.position, 0, b2.position, distanceVector);
         if (distanceVector.norm() > expectedDistance + distanceTolerance || distanceVector.norm() < expectedDistance - distanceTolerance) {
@@ -158,36 +171,29 @@ struct BuoysArea {
 
 
 
-// struct PipelinePipeDtc{
-//     std::string codeDtc;
-//     bool isInPov;
-//     bool moveTowardStructure;
-//     ctb::LatLong pointOnPipe;
-//     double verticalDistance;
-//     double currentPipeOrientation;
-
-//     bool foundRedMarker;
-//     Eigen::Vector3d redMarkerLatLongDepth;
-//     bool foundPipeNumber;
-//     Eigen::Vector3d pipeNumberLatLongDepth;
-//     uint pipeNumber;
-// }
+struct Position {
+    ctb::LatLong latlong;
+    double depth;
+};
 
 struct PipelinePipe {
-    uint number;
+    
     double orientation;
-    ctb::LatLong position; //maybe useless 
+    Position position; //maybe useless 
     bool hasRedMarker = false;
-    ctb::LatLong positionRedMarker; // position of the red marker on the pipe, if exists
+    Position positionRedMarker; // position of the red marker on the pipe, if exists
     bool foundPipeNumber = false;
-    ctb::LatLong positionPipeNumber; // position of the pipe number on the pipe, if exists
+    Position positionPipeNumber; // position of the pipe number on the pipe, if exists
+    uint number;
 
     friend std::ostream& operator<<(std::ostream& os, const PipelinePipe& pipe)
     {
         os << "PipelinePipe {\n";
+        os << "  hasRedMarker: " << std::boolalpha << pipe.hasRedMarker << "\n";
+        os << "  positionRedMarker: (" << pipe.positionRedMarker.latlong.latitude << ", " << pipe.positionRedMarker.latlong.longitude << ")\n";
+        os << "  foundPipeNumber: " << std::boolalpha << pipe.foundPipeNumber << "\n";
         os << "  number: " << pipe.number << "\n";
-        os << "  orientation: " << pipe.orientation << "\n";
-        os << "  position: (" << pipe.position.latitude << ", " << pipe.position.longitude << ")\n";
+        os << "  positionPipeNumber: (" << pipe.positionPipeNumber.latlong.latitude << ", " << pipe.positionPipeNumber.latlong.longitude << ")\n";
         os << "}\n";
         return os;
     }
@@ -295,8 +301,8 @@ protected:
                 PipelinePipe pipe;
                 pipe.number = static_cast<uint>(i + 1);
                 pipe.orientation = pipelinePipes[i].orientation;
-                pipe.position.latitude = pipelinePipes[i].centroid.latitude;
-                pipe.position.longitude = pipelinePipes[i].centroid.longitude;
+                pipe.position.latlong.latitude = pipelinePipes[i].centroid.latitude;
+                pipe.position.latlong.longitude = pipelinePipes[i].centroid.longitude;
                 pPipes.push_back(pipe);
             }
         } catch (...) {
@@ -316,7 +322,7 @@ protected:
                 return false;
             if (!ctb::GetParam(pipelinePipeSetting, pipe.orientation, "orientation"))
                 return false;
-            if (!LatLongFromConfig(pipelinePipeSetting, pipe.position, "centroid"))
+            if (!LatLongFromConfig(pipelinePipeSetting, pipe.position.latlong, "centroid"))
                 return false;
             pipelinePipes.push_back(pipe);
         }
@@ -459,7 +465,7 @@ struct Intervention : public TaskBenchmarkSettings {
             return false;
         if (!ctb::GetParam(pipelinePipeSetting, damagedPipeOnPipeline.orientation, "orientation"))
             return false;
-        if (!LatLongFromConfig(pipelinePipeSetting, damagedPipeOnPipeline.position, "centroid"))
+        if (!LatLongFromConfig(pipelinePipeSetting, damagedPipeOnPipeline.position.latlong, "centroid"))
             return false;
 
         return true;
@@ -473,8 +479,8 @@ struct Intervention : public TaskBenchmarkSettings {
             numberOfMainPipeDamageMarkers = request->n_damage_markers;
             damagedPipeOnPipeline.number = request->damaged_pipe.number;
             damagedPipeOnPipeline.orientation = request->damaged_pipe.orientation;
-            damagedPipeOnPipeline.position.latitude = request->damaged_pipe.centroid.latitude;
-            damagedPipeOnPipeline.position.longitude = request->damaged_pipe.centroid.longitude;
+            damagedPipeOnPipeline.position.latlong.latitude = request->damaged_pipe.centroid.latitude;
+            damagedPipeOnPipeline.position.latlong.longitude = request->damaged_pipe.centroid.longitude;
         } catch (...) {
             return false;
         }

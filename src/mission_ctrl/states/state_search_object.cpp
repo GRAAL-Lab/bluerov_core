@@ -29,6 +29,33 @@ namespace states {
 
     fsm::retval StateSearchObject::Execute()
     {
+        if(ctrlData->perceptionData.newDtcFromPerception){
+            ctrlData->perceptionData.newDtcFromPerception = false;
+            if (taskData_->taskPhases.front().second == opis::gate) {
+                for (auto& db_first : ctrlData->perceptionData.detectedBuoys) {
+                    for (auto& db_second : ctrlData->perceptionData.detectedBuoys){
+                        if (db_first.second.detectionId == db_second.second.detectionId) {
+                            continue; // same buoy
+                        }
+                        if(gate.SetGateBuoys(db_first.second, db_second.second)) {
+                            // Found the gate
+                            if (systemStatus_->conf.debugPrints) {
+                                std::cerr << "Gate found: " << db_first.second.detectionId << " and " << db_second.second.detectionId << "\n";
+                            }
+                            found = true;
+                            break; // exit inner loop
+                        }
+                    }
+
+                }
+                
+            } else if (taskData_->taskPhases.front().second == opis::mainPipe) {
+                
+            } else if (taskData_->taskPhases.front().second == opis::manipulationConsole) {
+               
+            }
+        }
+
         if (found) {
             std::cerr << "Found!\n";
             return this->SetNextMissionState();
@@ -48,7 +75,7 @@ namespace states {
             std::cerr << "\nCumulative angle: " << cumulativeAngle << "\n";
         }
 
-        if (systemStatus_->conf.simKcl)
+        if (systemStatus_->conf.simPerception)
             found = true;
 
         return fsm::ok;

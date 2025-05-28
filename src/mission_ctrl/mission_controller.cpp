@@ -36,6 +36,10 @@ MissionController::MissionController()
         auv_core_helper::topicnames::objects, rclcpp::SystemDefaultsQoS(),
         std::bind(&MissionController::PerceptionCB, this, std::placeholders::_1));
 
+    KclSub_ = this->create_subscription<auv_core_helper::msg::KclStatus>(
+        auv_core_helper::topicnames::kcl_state, rclcpp::SystemDefaultsQoS(),
+        std::bind(&MissionController::KclCB, this, std::placeholders::_1));
+
     poseSub_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_global_,
         rclcpp::SystemDefaultsQoS(),
         std::bind(&MissionController::PoseCB, this, std::placeholders::_1));
@@ -52,10 +56,16 @@ MissionController::MissionController()
     runTimer_ = this->create_wall_timer(std::chrono::milliseconds(msRunPeriod), std::bind(&MissionController::Run, this));
 
     if (systemStatus_->conf.simCtrlStation) {
-        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No control station, loading configuration from file");
         SimulateMissionCmdFromFile();
         SetTaskDataFSM();
+        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No control station");
     }
+    if (systemStatus_->conf.simBridge)
+        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No bridge");
+    if (systemStatus_->conf.simKcl)
+        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No KCL");
+    if (systemStatus_->conf.simPerception)
+        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No Perception");
 };
 
 void MissionController::StatusPub()
@@ -80,14 +90,6 @@ void MissionController::Run()
 {
     //=== Check if the system is alive ===
     systemStatus_->UpdateStatus(this->get_clock()->now());
-    if (!systemStatus_->conf.simKcl) {
-        if (!setKCLClient_->wait_for_action_server(std::chrono::seconds(1))) {
-            RCLCPP_WARN(this->get_logger(), "KCL not available.");
-            return;
-        } else {
-            systemStatus_->lastKCLTime = this->get_clock()->now();
-        }
-    }
     if (!systemStatus_->IsAlive()) {
         RCLCPP_WARN(this->get_logger(), "System not alive. Perception: %d, KCL: %d, Bridge: %d",
             systemStatus_->perceptionAlive, systemStatus_->kclAlive, systemStatus_->bridgeAlive);
@@ -137,12 +139,18 @@ void MissionController::Run()
                 cmd.position.latitude, cmd.position.longitude, cmd.depth);
         }
 
-        setKCLClient_->async_send_goal(cmd, options);
-
         if (systemStatus_->conf.simKcl) {
             ctrlData_->inertialF_linearPosition.latitude = cmd.position.latitude;
             ctrlData_->inertialF_linearPosition.longitude = cmd.position.longitude;
             ctrlData_->depth = cmd.depth;
+            return;
+        }
+
+        if (setKCLClient_->wait_for_action_server(std::chrono::seconds(1))) {
+            setKCLClient_->async_send_goal(cmd, options);
+        } else {
+            RCLCPP_WARN(this->get_logger(), "KCL is not ready to rcv a cmd.");
+            // FAIL?
         }
     }
 };
@@ -199,6 +207,11 @@ void MissionController::PerceptionCB(const auv_core_helper::msg::DtcList::Shared
 
         ctrlData_->perceptionData.detectedBuoys[buoy.id] = b;
     }
+}
+
+void MissionController::KclCB(const auv_core_helper::msg::KclStatus::SharedPtr msg)
+{
+    systemStatus_->lastKCLTime = this->get_clock()->now();
 }
 
 void MissionController::MissionCommandCB(

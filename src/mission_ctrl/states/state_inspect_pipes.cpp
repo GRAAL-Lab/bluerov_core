@@ -30,27 +30,39 @@ namespace states {
         return fsm::ok;
     }
 
-    // string pipeline_pipe_code       #empty, A or B. (depending on pp orientations given by the bros)
-    // bool pipe_in_fov                #spotted a pipe!
-    // LatLong point_on_pipe           #try to keep this constant unless it is not on the pipe anymore
-    // float64 vertical_distance       #robot-pipe distance on z-axis
-    // float64 pipe_direction          #NED
-    // bool move_toward_structure      #this will be false at start, true once reached the end of the pipe (opposite to structure)
-
-    // bool found_red_marker
-    // Position red_marker_position
-    // bool found_number
-    // Position number_position
-    // uint8 number # number spotted on current pipe
-
     fsm::retval StateInspectPipes::Execute()
     {
         std::cerr << ".";
-        if (!ctrlData->perceptionData.newDtcFromPerception)
-            return fsm::ok;
-        ctrlData->perceptionData.newDtcFromPerception = false;
+        // Process perception data
+        if (ctrlData->perceptionData.newDtcFromPerception) {
+            ctrlData->perceptionData.newDtcFromPerception = false;
+            auto& pipe = (currentPipeDtcCode == "A") ? pipeA : pipeB;
+            // Got the red marker
+            if (ctrlData->perceptionData.currentPipeDtc.found_red_marker) {
+                pipe.data.hasRedMarker = true;
+                pipe.data.positionRedMarker.latlong.latitude = ctrlData->perceptionData.currentPipeDtc.red_marker_position.latlong.latitude;
+                pipe.data.positionRedMarker.latlong.longitude = ctrlData->perceptionData.currentPipeDtc.red_marker_position.latlong.longitude;
+                pipe.data.positionRedMarker.depth = ctrlData->perceptionData.currentPipeDtc.red_marker_position.depth;
+            }
+            // Got the pipe number
+            if (ctrlData->perceptionData.currentPipeDtc.found_number) {
+                pipe.data.foundPipeNumber = true;
+                pipe.data.positionPipeNumber.latlong.latitude = ctrlData->perceptionData.currentPipeDtc.number_position.latlong.latitude;
+                pipe.data.positionPipeNumber.latlong.longitude = ctrlData->perceptionData.currentPipeDtc.number_position.latlong.longitude;
+                pipe.data.positionPipeNumber.depth = ctrlData->perceptionData.currentPipeDtc.number_position.depth;
+                pipe.data.number = ctrlData->perceptionData.currentPipeDtc.number;
+            }
 
+            if (pipe.data.hasRedMarker && pipe.data.foundPipeNumber) {
+                // Found everything.
+            } else if (pipe.data.hasRedMarker) {
+                // At least we know this it the damaged pipe.
+            }
+        }
+
+        // Progress the inspection
         if (currentPhase == PipelinePipeInspectionPhase::LOOKING_FOR_PIPE) {
+            // If we see a pipe, get close, otherwise keep following the path
             if (ctrlData->perceptionData.currentPipeDtc.pipe_in_fov) {
                 // Found a pipe
                 if (systemStatus_->conf.debugPrints) {
@@ -59,8 +71,6 @@ namespace states {
                 onPipeInspection = true;
                 currentPipeDtcCode = ctrlData->perceptionData.currentPipeDtc.pipeline_pipe_code;
                 currentPhase = PipelinePipeInspectionPhase::MOVING_TO_POINT_ON_PIPE;
-            } else {
-                // keep following the path around the structure
             }
         } else if (currentPhase == PipelinePipeInspectionPhase::MOVING_TO_POINT_ON_PIPE) {
             // Got a goal from dtc which should be on the pipe
@@ -99,27 +109,35 @@ namespace states {
             ctrlData->kclData.kcl_command.depth = taskData_->diveDepth;
 
         } else if (currentPhase == PipelinePipeInspectionPhase::MOVING_AWAY_FROM_PIPELINE_STRUCTURE) {
+            // We are close to the structure, so we have to move away from it
+            // until dtc tells us to move to the structure
             if (ctrlData->perceptionData.currentPipeDtc.move_toward_structure) {
                 currentPhase = PipelinePipeInspectionPhase::MOVING_TO_PIPELINE_STRUCTURE;
                 auto& pipe = (currentPipeDtcCode == "A") ? pipeA : pipeB;
+                // Save the end position of the pipe
                 pipe.endPosition.latitude = ctrlData->perceptionData.currentPipeDtc.point_on_pipe.latitude;
                 pipe.endPosition.longitude = ctrlData->perceptionData.currentPipeDtc.point_on_pipe.longitude;
-                return fsm::ok;
+            } else {
+                // tell kcl to move away from the pipeline structure
+                ctrlData->perceptionData.currentPipeDtc.vertical_distance; // has to be like 0.3m
             }
-            // tell kcl to move away from the pipeline structure
-            ctrlData->perceptionData.currentPipeDtc.vertical_distance; // has to be like 0.3m
 
         } else if (currentPhase == PipelinePipeInspectionPhase::MOVING_TO_PIPELINE_STRUCTURE) {
+            // We are far from the structure, so we have to move toward it
+            // until dtc tells us to stop by setting move_toward_structure to false
             if (!ctrlData->perceptionData.currentPipeDtc.move_toward_structure) {
                 // reached the structure
                 if (systemStatus_->conf.debugPrints) {
                     std::cerr << "Reached pipeline structure\n";
                 }
+                // Save the start position of the pipe
                 auto& pipe = (currentPipeDtcCode == "A") ? pipeA : pipeB;
                 pipe.startPosition.latitude = ctrlData->perceptionData.currentPipeDtc.point_on_pipe.latitude;
                 pipe.startPosition.longitude = ctrlData->perceptionData.currentPipeDtc.point_on_pipe.longitude;
+                
                 pipe.numberOfLaps++;
                 currentPhase = PipelinePipeInspectionPhase::ADDITIONAL_INSPECTION_LAP;
+                // Maybe cleaner to ask the KCL to compute a path of n laps over the pipe
                 if (pipe.numberOfLaps >= maxInspectionlaps) {
                     onPipeInspection = false;
                     auto& otherPipe = (currentPipeDtcCode == "A") ? pipeB : pipeA;
@@ -132,10 +150,11 @@ namespace states {
                     }
                 }
                 return fsm::ok;
+            } else {
+                // tell kcl to move to the pipeline structure
+                ctrlData->perceptionData.currentPipeDtc.vertical_distance; // has to be like 0.3m
             }
 
-            // tell kcl to move to the pipeline structure
-            ctrlData->perceptionData.currentPipeDtc.vertical_distance; // has to be like 0.3m
         } else if (currentPhase == PipelinePipeInspectionPhase::ADDITIONAL_INSPECTION_LAP) {
             auto& pipe = (currentPipeDtcCode == "A") ? pipeA : pipeB;
 
@@ -156,7 +175,7 @@ namespace states {
                 if (distance < 0.5) {
                     pipe.numberOfLaps++;
                     pipe.movingToStructure = true;
-                }else{
+                } else {
                     targetPosition = pipe.endPosition;
                     // Tell kcl to go to targetPosition
                 }

@@ -22,13 +22,15 @@ namespace states {
         } else if (taskData_->taskType == taskBenchmarks::INSPECTION_AND_INTERVENTION) {
             std::shared_ptr<InspectionAndIntervention> inspectionConf = std::dynamic_pointer_cast<InspectionAndIntervention>(taskData_);
             numberOfBuoys = inspectionConf->numberOfBuoys;
-        } // else{
-        //     // state is created but not used
-        // }
+        } else{
+            this->SetNextMissionState();
+            return fsm::ok; // No buoys to search for
+        }
 
         // tell kcl to follow area coverage path
 
         // tell perception to look for buoys
+        ctrlData->perceptionData.enableDtcBuoys = true;
 
         return fsm::ok;
     }
@@ -39,6 +41,7 @@ namespace states {
         if (numberOfBuoysInspected >= numberOfBuoys) {
             // tell kcl to stop following area coverage path
             // tell perception to stop looking for buoys
+            ctrlData->perceptionData.enableDtcBuoys = false;
             return this->SetNextMissionState();
         }
 

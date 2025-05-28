@@ -21,6 +21,7 @@
 #include "auv_core_helper/msg/mission_status.hpp"
 #include "auv_core_helper/msg/dtc_list.hpp"
 #include "auv_core_helper/msg/pose_stamped.hpp"
+#include "auv_core_helper/msg/kcl_status.hpp"
 
 namespace mission {
 
@@ -49,6 +50,7 @@ class MissionController : public rclcpp::Node {
     rclcpp::Publisher<auv_core_helper::msg::MissionStatus>::SharedPtr missionStatusPub_;
     rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr poseSub_;    
     rclcpp::Subscription<auv_core_helper::msg::DtcList>::SharedPtr perceptionSub_;
+    rclcpp::Subscription<auv_core_helper::msg::KclStatus>::SharedPtr KclSub_;
     rclcpp_action::Client<auv_core_helper::action::SetKCL>::SharedPtr setKCLClient_;
     rclcpp::Service<auv_core_helper::srv::MissionCommand>::SharedPtr missionCommandService_;
        
@@ -69,6 +71,7 @@ class MissionController : public rclcpp::Node {
     // Callbacks
     void PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
     void PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg);
+    void KclCB(const auv_core_helper::msg::KclStatus::SharedPtr msg);
     void MissionCommandCB(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request,
                            std::shared_ptr<auv_core_helper::srv::MissionCommand::Response> response);
 
