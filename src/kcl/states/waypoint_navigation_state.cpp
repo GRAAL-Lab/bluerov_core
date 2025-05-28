@@ -12,7 +12,7 @@ fsm::retval WayPointNavigationState::OnEntry() noexcept{
 
     waypoint_.latitude  = ctrlData->poseGoalGlobal(0);
     waypoint_.longitude = ctrlData->poseGoalGlobal(1);
-    waypointSet_        = true;
+    waypointDepth_      = ctrlData->poseGoalGlobal(2);
     isFacingGoal_       = false;
     return fsm::ok;
 }
@@ -27,7 +27,7 @@ fsm::retval WayPointNavigationState::Execute() noexcept{
     if (!isFacingGoal_){
         ctrlData->poseGoalGlobal(0) = ctrlData->poseActualGlobal(0);
         ctrlData->poseGoalGlobal(1) = ctrlData->poseActualGlobal(1);
-        ctrlData->poseGoalGlobal(2) = -1;
+        ctrlData->poseGoalGlobal(2) = ctrlData->poseActualGlobal(2);
         ctrlData->poseGoalGlobal(3) = 0;
         ctrlData->poseGoalGlobal(4) = 0;
         ctb::NormalizeAngle(headingToGoal_);
@@ -40,9 +40,10 @@ fsm::retval WayPointNavigationState::Execute() noexcept{
     else{
         ctrlData->poseGoalGlobal(0) = waypoint_.latitude;
         ctrlData->poseGoalGlobal(1) = waypoint_.longitude;
-        ctrlData->poseGoalGlobal(2) = -1;
+        ctrlData->poseGoalGlobal(2) = waypointDepth_;
         ctrlData->poseGoalGlobal(3) = 0;
         ctrlData->poseGoalGlobal(4) = 0;
+        ctb::NormalizeAngle(headingToGoal_);
         ctrlData->poseGoalGlobal(5) = headingToGoal_;
         if (distanceToGoal_ < DIST_TOL) {
             fsm_->SetNextState(States::HOLD);
@@ -56,6 +57,5 @@ fsm::retval WayPointNavigationState::OnExit() noexcept{
 
     RCLCPP_INFO(rclcpp::get_logger("WayPointNavigationState"), "Exiting WAYPOINT_NAVIGATION");
     isFacingGoal_ = false;
-    waypointSet_  = false;
     return fsm::ok;
 }
