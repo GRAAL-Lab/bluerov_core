@@ -16,8 +16,10 @@ private:
     double distanceToGoal_{0.0};
     double headingToGoal_{0.0};
 
+    double targetHeading_{0.0};         ///< freeze heading calculated on entry
+
     constexpr static double YAW_TOL   = 0.05;  ///< 3 deg
-    constexpr static double DIST_TOL  = 0.10;  ///< 10 cm
+    constexpr static double DIST_TOL  = 0.15;  ///< 10 cm
 
 public:
     explicit WayPointNavigationState(fsm::FSM* fsm);

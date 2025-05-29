@@ -15,7 +15,6 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
     
     if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Serpentine2D) {
         RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path Planning Serpentine 2D");
-        
         if (ctrlData->serpentinePolygonVertices.empty()) {
             return fsm::fail;
         }
@@ -33,7 +32,7 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
 
     } else if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Spiral2D) {
         RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path Planning Spiral 2D");
-
+        // set offset with a 90 degree which is pi/2 radians
         path = sisl::PathFactory::NewOutwardSpiral(
             Eigen::Vector3d(0, 0, 0),          // centre
             ctrlData->spiralDiameter,          // max diameter (m)
@@ -183,14 +182,24 @@ fsm::retval PathFollowingState::Execute() noexcept {
             fsm_->SetNextState(States::HOLD);
             return fsm::ok;
         }
-        Eigen::Vector3d direction = (nextPoint - currentPoint).normalized();
+         
+        Eigen::Vector3d direction;
+        if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Serpentine2D){
+            direction = (nextPoint - currentPoint).normalized();
+
+        }
+        else if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Spiral2D) {
+            direction = path->Derivate(1, closestPointAbscissa_).front().normalized();
+        } else {
+            RCLCPP_ERROR(rclcpp::get_logger("PathFollowingState"), "Unexpected pathPlanningMode: %s", ctrlData->pathPlanningMode.c_str());
+            fsm_->SetNextState(States::HOLD);
+            return fsm::fail;
+        }
+        // Eigen::Vector3d direction = (nextPoint - currentPoint).normalized();
         double pi_h = atan2(direction.y(), direction.x());
         double pi_p = -atan2(direction.z(), sqrt(direction.x()*direction.x() + direction.y()*direction.y()));
         double psi_d = pi_h;
         double theta_psi_d = pi_p;
-        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"),
-             "delta=%.3f  |next-current|=%.6f",
-             delta_, (nextPoint-currentPoint).norm());
         bool alosSuccess = alosController_->ALOS3D(
             ctrlData->poseActualLocal.head(3),
             nextPoint,
@@ -213,8 +222,8 @@ fsm::retval PathFollowingState::Execute() noexcept {
         ctrlData->poseGoalLocal(1) = nextPoint.y();
         ctrlData->poseGoalLocal(2) = nextPoint.z();
         ctrlData->poseGoalLocal(3) = 0;
-        ctrlData->poseGoalLocal(4) = theta_psi_d; 
-        ctrlData->poseGoalLocal(5) = psi_d;
+        ctrlData->poseGoalLocal(4) = pi_h; 
+        ctrlData->poseGoalLocal(5) = pi_p;
 
         // Compute errors in world frame
         positionXError_ = ctrlData->poseGoalLocal(0) - ctrlData->poseActualLocal(0);
