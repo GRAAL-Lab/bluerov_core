@@ -49,7 +49,7 @@ struct ControlData {
     bool armed_actual = false;
     std::string flightMode_desired = "MANUAL"; 
     std::string flightMode_actual = "MANUAL"; 
-    std::string deisiredCtrlMode = auv_core_helper::BrigdeMode::PoseCtrl;
+    std::string deisiredCtrlMode = "NOT_SET"; ///< Desired control mode as string.
 
 
     // ------------------------------

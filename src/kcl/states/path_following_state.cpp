@@ -178,6 +178,11 @@ fsm::retval PathFollowingState::Execute() noexcept {
         double goalAbscissa = closestPointAbscissa_ + delta_; 
         goalAbscissa = std::clamp(goalAbscissa, path->StartParameter(), path->EndParameter());
         Eigen::Vector3d nextPoint = path->At(goalAbscissa);
+        if ((path->EndParameter() - closestPointAbscissa_) < 1e-3) {                      // 1 mm safety margin
+            RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path completed – switching to HOLD");
+            fsm_->SetNextState(States::HOLD);
+            return fsm::ok;
+        }
         Eigen::Vector3d direction = (nextPoint - currentPoint).normalized();
         double pi_h = atan2(direction.y(), direction.x());
         double pi_p = -atan2(direction.z(), sqrt(direction.x()*direction.x() + direction.y()*direction.y()));
@@ -199,6 +204,8 @@ fsm::retval PathFollowingState::Execute() noexcept {
 
         if (!alosSuccess) {
             RCLCPP_WARN(rclcpp::get_logger("PathFollowingState"), "ALOS3D failed to compute desired heading/pitch.");
+            RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path completed – switching to HOLD");
+            fsm_->SetNextState(States::HOLD);
             return fsm::ok;
         }
 
@@ -238,11 +245,11 @@ fsm::retval PathFollowingState::Execute() noexcept {
         double path_completed = (closestPointAbscissa_ / path->EndParameter()) * 100.0;
 
         //print cte, vte, delta, time, path_completed in diffrent lines
-        // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Cross-track error: %f", crossTrackError_);
-        // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Vertical-track error: %f", verticalTrackError_);
-        // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Delta: %f", delta_);
-        // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Time: %f", ctrlData->timeActual.seconds());
-        // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path completed: %f", path_completed);
+        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Cross-track error: %f", crossTrackError_);
+        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Vertical-track error: %f", verticalTrackError_);
+        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Delta: %f", delta_);
+        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Time: %f", ctrlData->timeActual.seconds());
+        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path completed: %f", path_completed);
 
         currentAbscissa_ = closestPointAbscissa_;
         if (path_completed >= 99.95) {

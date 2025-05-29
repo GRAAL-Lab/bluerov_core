@@ -50,15 +50,6 @@ KCL::KCL()
     armingClient_ = this->create_client<std_srvs::srv::SetBool>(auv_core_helper::topicnames::arming_service);
     flightModeClient_ = this->create_client<auv_core_helper::srv::SetFlightMode>(auv_core_helper::topicnames::flight_mode_service);
 
-    // Wait for arming service
-    while (!armingClient_->wait_for_service(std::chrono::seconds(1))) {
-        RCLCPP_INFO(this->get_logger(), "Waiting for arming service...");
-    }
-
-    // Wait for flight mode service
-    while (!flightModeClient_->wait_for_service(std::chrono::seconds(1))) {
-        RCLCPP_INFO(this->get_logger(), "Waiting for flight mode service...");
-    }
 
 }
 
@@ -265,8 +256,12 @@ void KCL::ExecuteFSM() {
     //stateMsg.state = fsm_.GetCurrentStateName();
     //statePublisher_->publish(stateMsg);
 
+    if (ctrlData_->deisiredCtrlMode == auv_core_helper::BrigdeMode::PoseCtrl) {
         PublishEigenPose(poseGoalGlobalPublisher_, ctrlData_->poseGoalGlobal, this->get_clock()->now());
+    }
+    else if (ctrlData_->deisiredCtrlMode == auv_core_helper::BrigdeMode::VelCtrl) {
         PublishEigenVelocity(velocityDesiredGlobalPublisher_, ctrlData_->velocityDesiredNED);
+    }
 
     // Scale desired velocity within limits
     // rml::SaturateVector(ctrlData_->maxVelocity, ctrlData_->minVelocity, ctrlData_->velocityDesired);

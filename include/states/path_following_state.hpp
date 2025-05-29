@@ -50,6 +50,9 @@ private:
     static constexpr double MAX_PITCH = 0.610865; ///< Maximum pitch angle (±35 degrees) in radians.
     static constexpr double MIN_PITCH = -0.610865; ///< Minimum pitch angle (±35 degrees) in radians.
 
+    //heading offset
+    double headingOffset_ = 0.0; ///< Offset for the heading angle.
+
 
     std::unique_ptr<dynamic_goal_alos::DynamicGoalBasedALOS> alosController_;
     double delta_;
