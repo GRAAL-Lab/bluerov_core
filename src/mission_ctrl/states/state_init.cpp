@@ -13,7 +13,6 @@ namespace states {
     fsm::retval StateInit::OnEntry()
     {
         doneInit = false;
-        std::cerr << "Waiting for task data to be set" << std::endl;
         return fsm::ok;
     }
 

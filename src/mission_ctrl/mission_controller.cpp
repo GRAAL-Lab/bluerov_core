@@ -70,6 +70,10 @@ MissionController::MissionController()
 
 void MissionController::StatusPub()
 {
+    if (taskData_ == nullptr) {
+        return;
+    }
+    
     // MISSION STATUS
     auv_core_helper::msg::MissionStatus status;
     status.stamp = this->now();
@@ -236,6 +240,7 @@ void MissionController::MissionCommandCB(
         return;
     }
     SetTaskDataFSM();
+    response->res = true;
 }
 
 void MissionController::PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg)
