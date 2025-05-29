@@ -39,6 +39,12 @@ extern "C" {
 #include <arpa/inet.h>
 #include <unistd.h>
 
+#include <rmw/rmw.h>
+#include <optional>
+
+using SetBoolSrv = std_srvs::srv::SetBool;
+using SetModeSrv = auv_core_helper::srv::SetFlightMode;
+
 /**
  * @brief A ROS 2 node that interfaces with ArduPilot/BlueROV using MAVLink protocol.
  */
@@ -65,6 +71,10 @@ private:
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr globalVelocityDesiredSubscription_;
 
     rclcpp::Service<auv_core_helper::srv::SetGlobalOrigin>::SharedPtr setGlobalOriginService_;
+
+
+    /* How long we’re willing to wait before we fail the request */
+    static const rclcpp::Duration kSrvTimeout;      ///< watchdog for deferred services
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr armingService_;
     rclcpp::Service<auv_core_helper::srv::SetFlightMode>::SharedPtr flightModeService_;
 
@@ -126,7 +136,7 @@ private:
 
     //string to hold last flight mode
     std::string flightMode_actual = "MANUAL";
-    std::string flightMode = auv_core_helper::BrigdeMode::PoseCtrl; ///< Current flight mode, default is PoseCtrl.
+    std::string flightMode = "NOT_SET"; ///< Current flight mode, default is PoseCtrl.
 
     //--------------------------------------------------------------------------
     // Internal Methods
@@ -214,8 +224,10 @@ private:
      * @param response Service response indicating success/failure.
      */
     void armingServiceCallback(
-        const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
-        std::shared_ptr<std_srvs::srv::SetBool::Response> response);
+        const std::shared_ptr<rmw_request_id_t> header,
+        const std::shared_ptr<SetBoolSrv::Request> request);
+
+
 
     /**
      * @brief Service callback for setting the vehicle's flight mode.
@@ -223,8 +235,8 @@ private:
      * @param response Service response indicating success/failure.
      */
     void flightModeServiceCallback(
-        const std::shared_ptr<auv_core_helper::srv::SetFlightMode::Request> request,
-        std::shared_ptr<auv_core_helper::srv::SetFlightMode::Response> response);
+        const std::shared_ptr<rmw_request_id_t> header,
+        const std::shared_ptr<SetModeSrv::Request> request);
     
     /**
      * @brief Set the global origin via MAVLink
@@ -300,4 +312,28 @@ private:
      * @param msg The received String message indicating the desired control mode
      */
     void desiredCtrlModeCallback(const std_msgs::msg::String::SharedPtr msg);
+
+
+    /* ----------  PENDING-ARM  ---------- */
+    struct PendingArm {
+    std::shared_ptr<rmw_request_id_t>            header;
+    std::shared_ptr<std_srvs::srv::SetBool::Response> resp;
+    bool                                         want_arm;
+    rclcpp::Time                                 deadline;
+    };
+    std::optional<PendingArm>  pending_arm_;
+
+    /* ----------  PENDING-MODE  ---------- */
+    struct PendingMode {
+    std::shared_ptr<rmw_request_id_t>                  header;
+    std::shared_ptr<auv_core_helper::srv::SetFlightMode::Response> resp;
+    int32_t                                    desired_custom;
+    rclcpp::Time                               deadline;
+    };
+    std::optional<PendingMode> pending_mode_;
+
+
+    int32_t mapModeStringToNumber(const std::string & mode) const;
+
+
 };

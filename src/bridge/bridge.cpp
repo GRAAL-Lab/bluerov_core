@@ -8,6 +8,10 @@
 #include <unistd.h>
 #include <thread>
 
+
+const rclcpp::Duration BlueROVBridge::kSrvTimeout =
+        rclcpp::Duration::from_seconds(3.0);
+
 /**
  * @file bluerov_bridge.cpp
  * @brief Implementation of the BlueROVBridge class that connects ROS2 to ArduSub via MAVLink
@@ -33,15 +37,23 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   globalVelocityDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired_global,10,std::bind(&BlueROVBridge::globalVelocityDesiredCallback, this, std::placeholders::_1));
   desiredCtrlModeSubscription_ = this->create_subscription<std_msgs::msg::String>(auv_core_helper::topicnames::desired_ctrl_mode, 10, std::bind(&BlueROVBridge::desiredCtrlModeCallback, this, std::placeholders::_1));
 
-  // ROS Services
+
   setGlobalOriginService_ = this->create_service<auv_core_helper::srv::SetGlobalOrigin>(auv_core_helper::topicnames::set_global_origin_service, std::bind(&BlueROVBridge::setGlobalOriginServiceCallback, this,std::placeholders::_1, std::placeholders::_2));
-  armingService_ = this->create_service<std_srvs::srv::SetBool>(auv_core_helper::topicnames::arming_service, std::bind(&BlueROVBridge::armingServiceCallback, this,std::placeholders::_1, std::placeholders::_2));
-    
-  flightModeService_ = this->create_service<auv_core_helper::srv::SetFlightMode>(auv_core_helper::topicnames::flight_mode_service,std::bind(&BlueROVBridge::flightModeServiceCallback, this, std::placeholders::_1, std::placeholders::_2));
+  
+  armingService_ = this->create_service<SetBoolSrv>(
+      auv_core_helper::topicnames::arming_service,
+      std::bind(&BlueROVBridge::armingServiceCallback,
+                this, std::placeholders::_1, std::placeholders::_2));
+
+  flightModeService_ = this->create_service<SetModeSrv>(
+      auv_core_helper::topicnames::flight_mode_service,
+      std::bind(&BlueROVBridge::flightModeServiceCallback,
+                this, std::placeholders::_1, std::placeholders::_2));
 
   // Timers
   data_timer_ = this->create_wall_timer(std::chrono::milliseconds(125), std::bind(&BlueROVBridge::receiveData, this)); // ~8Hz
   mainTimer_ = this->create_wall_timer(std::chrono::milliseconds(200),std::bind(&BlueROVBridge::Execute, this)); // ~8Hz
+
   
 
   poseGoalGlobal.setZero();
@@ -243,6 +255,23 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
 
   // Extract the heartbeat info
   mavlink_msg_heartbeat_decode(&msg, &hb);
+  if (pending_arm_) {
+    bool armed_flag = hb.base_mode & MAV_MODE_FLAG_SAFETY_ARMED;
+    if (armed_flag == pending_arm_->want_arm) {
+      pending_arm_->resp->success = true;
+      pending_arm_->resp->message = armed_flag ? "Vehicle armed." : "Vehicle disarmed.";
+      armingService_->send_response(*pending_arm_->header, *pending_arm_->resp);
+      pending_arm_.reset();
+    }
+  }
+  if (pending_mode_) {
+    if (static_cast<int32_t>(hb.custom_mode) == pending_mode_->desired_custom) {
+      pending_mode_->resp->success = true;
+      pending_mode_->resp->message = "Flight mode engaged.";
+      flightModeService_->send_response(*pending_mode_->header, *pending_mode_->resp);
+      pending_mode_.reset();
+    }
+  }
 
   auto heartBeatMsg = std::make_unique<auv_core_helper::msg::HeartBeat>();
   heartBeatMsg->type = hb.type;
@@ -318,9 +347,28 @@ void BlueROVBridge::handleBatteryStatus(const mavlink_message_t& msg){
   dvlDistancePublisher_->publish(std::move(dvl_distance_msg));
 }
 
-void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg){
+void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg)
+{
+  mavlink_command_ack_t ack;
   mavlink_msg_command_ack_decode(&msg, &ack);
 
+  auto failed = (ack.result == MAV_RESULT_DENIED ||
+                 ack.result == MAV_RESULT_FAILED ||
+                 ack.result == MAV_RESULT_TEMPORARILY_REJECTED);
+
+  if (pending_arm_ && ack.command == MAV_CMD_COMPONENT_ARM_DISARM && failed) {
+    pending_arm_->resp->success = false;
+    pending_arm_->resp->message = "Autopilot rejected arming/disarming.";
+    armingService_->send_response(*pending_arm_->header, *pending_arm_->resp);
+    pending_arm_.reset();
+  }
+
+  if (pending_mode_ && ack.command == MAV_CMD_DO_SET_MODE && failed) {
+    pending_mode_->resp->success = false;
+    pending_mode_->resp->message = "Autopilot rejected flight-mode change.";
+    flightModeService_->send_response(*pending_mode_->header, *pending_mode_->resp);
+    pending_mode_.reset();
+  }
 }
 
 
@@ -379,6 +427,19 @@ void BlueROVBridge::Execute(){
                 POSITION_TARGET_TYPEMASK_AY_IGNORE  |
                 POSITION_TARGET_TYPEMASK_AZ_IGNORE  ;
         }
+        else {
+          position_target_global_.type_mask =
+                POSITION_TARGET_TYPEMASK_X_IGNORE  |
+                POSITION_TARGET_TYPEMASK_Y_IGNORE  |
+                POSITION_TARGET_TYPEMASK_Z_IGNORE  |
+                POSITION_TARGET_TYPEMASK_VX_IGNORE  |
+                POSITION_TARGET_TYPEMASK_VY_IGNORE  |
+                POSITION_TARGET_TYPEMASK_VZ_IGNORE  |
+                POSITION_TARGET_TYPEMASK_AX_IGNORE  |
+                POSITION_TARGET_TYPEMASK_AY_IGNORE  |
+                POSITION_TARGET_TYPEMASK_AZ_IGNORE  |
+                POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE;
+        }
         std::cout << "Pose or velocity goal changed, sending new target." << std::endl;
         condition_yaw_.target_system = target_system_;
         condition_yaw_.target_component = target_component_;
@@ -404,6 +465,20 @@ void BlueROVBridge::Execute(){
         velGoalGlobalChanged      = false;
         sendConditionYaw(condition_yaw_);
         SetPositionTargetGlobalInt(position_target_global_);
+
+        /* TIMEOUT ARM */
+        if (pending_arm_ && this->now() > pending_arm_->deadline) {
+          armingService_->send_response(*pending_arm_->header, *pending_arm_->resp);
+          RCLCPP_WARN(get_logger(), "Arming/disarming request timed out.");
+          pending_arm_.reset();
+        }
+
+        /* TIMEOUT MODE */
+        if (pending_mode_ && this->now() > pending_mode_->deadline) {
+          flightModeService_->send_response(*pending_mode_->header, *pending_mode_->resp);
+          RCLCPP_WARN(get_logger(), "Flight-mode change timed out.");
+          pending_mode_.reset();
+        }
       }
     }
     else {
@@ -428,53 +503,46 @@ void BlueROVBridge::setGlobalOriginServiceCallback(const std::shared_ptr<auv_cor
     }
 }
 
-void BlueROVBridge::armingServiceCallback(const std::shared_ptr<std_srvs::srv::SetBool::Request> request, std::shared_ptr<std_srvs::srv::SetBool::Response> response){
-  RCLCPP_INFO(this->get_logger(), "Arming service called: %s", request->data ? "ARM" : "DISARM");
-  setArmState(request->data);                                     // True to arm, false to disarm
-  if(ack.command == MAV_CMD_COMPONENT_ARM_DISARM) {
-    if (ack.result == MAV_RESULT_ACCEPTED) {
-      response->success = true;
-      response->message = request->data ? "Arm command sent." : "Disarm command sent.";  
-    } else {
-      const char* error_str = "Unknown";
-      switch (ack.result) {
-        case MAV_RESULT_DENIED: error_str = "Arming vehicle DENIED"; break;
-        case MAV_RESULT_FAILED: error_str = "Arming vehicle FAILED"; break;
-        case MAV_RESULT_TEMPORARILY_REJECTED: error_str = "Arming vehicle TEMPORARILY_REJECTED"; break;
-        case MAV_RESULT_CANCELLED: error_str = "Arming vehicle CANCELLED"; break;
-        default: error_str = "UNKNOWN"; break;
-        response->success = false;
-        response->message = error_str;
-      }
-      RCLCPP_WARN(this->get_logger(), "Arming vehicle FAILED: %s", error_str);
-    }
-  }
+void BlueROVBridge::armingServiceCallback(
+    const std::shared_ptr<rmw_request_id_t> header,
+    const std::shared_ptr<SetBoolSrv::Request> request)
+{
+  setArmState(request->data);
+
+  auto resp = std::make_shared<SetBoolSrv::Response>();
+  resp->success = false;
+  resp->message = "Timed out.";
+
+  pending_arm_ = PendingArm{header, resp, request->data,
+                            this->now() + kSrvTimeout};
 }
 
-void BlueROVBridge::flightModeServiceCallback(const std::shared_ptr<auv_core_helper::srv::SetFlightMode::Request> request,std::shared_ptr<auv_core_helper::srv::SetFlightMode::Response> response){
-  // RCLCPP_INFO(this->get_logger(), "Flight mode service called: %s", request->mode.c_str());
-  if (ack.command == MAV_CMD_DO_SET_MODE) {
-    if (ack.result == MAV_RESULT_ACCEPTED) {
-      response->success = true;
-      response->message = "Flight mode command sent.";
-    } else {
-      const char* error_str = "Unknown";
-      switch (ack.result) {
-        case MAV_RESULT_DENIED: error_str = "Setting Flight Mode DENIED"; break;
-        case MAV_RESULT_UNSUPPORTED: error_str = "Flight Mode UNSUPPORTED"; break;
-        case MAV_RESULT_FAILED: error_str = "Setting Flight Mode FAILED"; break;
-        case MAV_RESULT_TEMPORARILY_REJECTED: error_str = "Setting Flight Mode TEMPORARILY_REJECTED"; break;
-        default: error_str = "UNKNOWN"; break;
-      }
-      response->success = false;
-      response->message = error_str;
-      RCLCPP_WARN(this->get_logger(), "Setting Flight Mode FAILED: %s", error_str);
-    }
-  }
-  flightMode_actual = request->mode;
+void BlueROVBridge::flightModeServiceCallback(
+    const std::shared_ptr<rmw_request_id_t> header,
+    const std::shared_ptr<SetModeSrv::Request> request)
+{
+  int32_t custom = mapModeStringToNumber(request->mode);
   setFlightMode(request->mode);
+
+  auto resp = std::make_shared<SetModeSrv::Response>();
+  resp->success = false;
+  resp->message = "Timed out.";
+
+  pending_mode_ = PendingMode{header, resp, custom,
+                              this->now() + kSrvTimeout};
 }
 
+int32_t BlueROVBridge::mapModeStringToNumber(const std::string & mode) const
+{
+  if (mode ==  auv_core_helper::FlightMode::STABILIZE) return 0;
+  if (mode ==  auv_core_helper::FlightMode::ALT_HOLD)  return 2;
+  if (mode ==  auv_core_helper::FlightMode::GUIDED)    return 4;
+  if (mode ==  auv_core_helper::FlightMode::SURFACE)   return 9;
+  if (mode ==  auv_core_helper::FlightMode::POSHOLD)   return 16;
+  if (mode ==  auv_core_helper::FlightMode::SURFTRAK)  return 21;
+  /* default → MANUAL */
+  return 19;
+}
 void BlueROVBridge::setGlobalOrigin(mavlink_set_gps_global_origin_t& set_gps_global_origin){
   mavlink_message_t msg;
   mavlink_msg_set_gps_global_origin_pack(
@@ -521,27 +589,7 @@ void BlueROVBridge::setArmState(bool arm_vehicle)
 void BlueROVBridge::setFlightMode(const std::string& mode)
 {
   // Map mode string to ArduSub custom mode number
-  int32_t custom_mode = 19;         // Default to MANUAL=19
-  if (mode == auv_core_helper::FlightMode::MANUAL) {           // Pass-through input with no stabilization
-    custom_mode = 19;
-  } else if (mode == auv_core_helper::FlightMode::STABILIZE) { // manual angle with manual depth/throttle
-    custom_mode = 0;
-  } else if (mode == auv_core_helper::FlightMode::ALT_HOLD) {  // manual body-frame angular rate with manual depth/throttle
-    custom_mode = 2;
-  } else if (mode == auv_core_helper::FlightMode::GUIDED) {    // fully automatic fly to coordinate or fly at velocity/direction using GCS immediate commands
-    custom_mode = 4; 
-  } else if (mode == auv_core_helper::FlightMode::POSHOLD) {   // automatic position hold with manual override, with automatic throttle
-    custom_mode = 16;
-  } else if (mode == auv_core_helper::FlightMode::SURFACE) {   // automatically return to surface, pilot maintains horizontal control
-    custom_mode = 9;
-  } else if (mode == auv_core_helper::FlightMode::SURFTRAK) {  // Track distance above seafloor (hold range)
-    custom_mode = 21 ;
-  }
-  else {
-    RCLCPP_WARN(this->get_logger(), 
-        "Unknown mode '%s', defaulting to MANUAL", mode.c_str());
-  }
-  
+  int32_t custom_mode = mapModeStringToNumber(mode);
   mavlink_message_t msg;
   mavlink_msg_command_long_pack(
       system_id_,
