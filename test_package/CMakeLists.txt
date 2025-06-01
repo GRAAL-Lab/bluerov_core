@@ -58,8 +58,11 @@ target_include_directories(json_utils PUBLIC
 add_executable(my_test src/test_node.cpp)
 add_executable(my_terminal src/terminal.cpp)
 add_executable(mqtt_client src/mqtt_client.cpp)
+add_executable(terminal src/terminal_node.cpp)
+add_executable(cmd_dispatcher src/command_dispatcher_node.cpp)
 
 target_compile_features(my_terminal PUBLIC cxx_std_17)
+target_compile_features(cmd_dispatcher PUBLIC cxx_std_17)
 
 # Link against the json_utils library
 target_link_libraries(my_test
@@ -75,12 +78,15 @@ target_link_libraries(mqtt_client
 )
 
 target_link_libraries(my_terminal config++) 
+target_link_libraries(cmd_dispatcher config++)
 
 ament_target_dependencies(my_test rclcpp std_msgs auv_core_helper)
 ament_target_dependencies(my_terminal rclcpp std_msgs auv_core_helper ament_index_cpp)
+ament_target_dependencies(cmd_dispatcher rclcpp std_msgs auv_core_helper ament_index_cpp)
 ament_target_dependencies(mqtt_client rclcpp std_msgs)
+ament_target_dependencies(terminal rclcpp std_msgs)
 
-install(TARGETS my_test my_terminal mqtt_client DESTINATION lib/${PROJECT_NAME})
+install(TARGETS terminal cmd_dispatcher my_test my_terminal mqtt_client DESTINATION lib/${PROJECT_NAME})
 
 install(DIRECTORY conf/
   DESTINATION share/${PROJECT_NAME}/conf
