@@ -1,0 +1,96 @@
+#include <iostream>
+#include <chrono>
+#include "rclcpp/rclcpp.hpp"
+#include "std_msgs/msg/float64.hpp"
+#include <json_utils.hpp>
+#include <memory>
+#include <string>
+#include <nlohmann/json.hpp>
+#include <mqtt/async_client.h>
+
+using json = nlohmann::json;
+using namespace std::chrono_literals;
+
+using namespace ctljsn;
+
+const std::string ADDRESS = "tcp://localhost:1883";
+const std::string CLIENT_ID = "ros2_client";
+const std::string USERNAME = "teamA";
+const std::string PASSWORD = "passwordA";
+const std::string TOPIC_UPDATE = "catl/rami25/sectorA/update";
+const int QOS = 1;
+
+class MqttRosNode : public rclcpp::Node, public virtual mqtt::callback {
+public:
+    MqttRosNode()
+    : Node("mqtt_ros_node") {
+        pub_lat_ = this->create_publisher<std_msgs::msg::Float64>("latitude", 10);
+        pub_long_ = this->create_publisher<std_msgs::msg::Float64>("longitude", 10);
+
+        client_ = std::make_unique<mqtt::async_client>(ADDRESS, CLIENT_ID);
+        mqtt::connect_options connOpts;
+        connOpts.set_user_name(USERNAME);
+        connOpts.set_password(PASSWORD);
+        connOpts.set_clean_session(true);
+
+        client_->set_callback(*this);
+
+        try {
+            RCLCPP_INFO(this->get_logger(), "Connecting to MQTT broker...");
+            client_->connect(connOpts)->wait();
+            RCLCPP_INFO(this->get_logger(), "Connected to broker.");
+            client_->subscribe(TOPIC_UPDATE, QOS)->wait();
+        } catch (const mqtt::exception& e) {
+            RCLCPP_ERROR(this->get_logger(), "MQTT connection error: %s", e.what());
+        }
+    }
+
+private:
+    std::unique_ptr<mqtt::async_client> client_;
+    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_lat_;
+    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_long_;
+
+    void message_arrived(mqtt::const_message_ptr msg) override {
+            RCLCPP_INFO(this->get_logger(), "Received MQTT message: %s", msg->get_payload().c_str());
+	    try {
+		// Usa solo jsoncons
+		std::string raw = msg->get_payload();
+		jsoncons::json wm_json = jsoncons::json::parse(raw);
+
+		// Verifica il tipo di messaggio
+		std::string type = wm_json["header"]["message_type"].as<std::string>();
+		if (type != "DYNAMIC_UPDATE") return;
+
+		// Parsing temporale e geografico
+		std::shared_ptr<ctljsn::time::AbsoluteTime> extractedAbsTime = ctljsn::time::CreateAbsoluteTimeFromJson(wm_json);
+		std::shared_ptr<ctljsn::time::DirectTime> extractedDirTime = std::dynamic_pointer_cast<ctljsn::time::DirectTime>(extractedAbsTime);
+		double* lat_long = ctljsn::geographic::CreateLatLongPositionFromJson(wm_json);
+
+		if (lat_long != nullptr) {
+		    auto msg_lat = std_msgs::msg::Float64();
+		    msg_lat.data = lat_long[0];
+		    pub_lat_->publish(msg_lat);
+		    RCLCPP_INFO(this->get_logger(), "Lat: %f", msg_lat.data);
+
+		    auto msg_long = std_msgs::msg::Float64();
+		    msg_long.data = lat_long[1];
+		    pub_long_->publish(msg_long);
+		    RCLCPP_INFO(this->get_logger(), "Lon: %f", msg_long.data);
+		} else {
+		    RCLCPP_WARN(this->get_logger(), "Failed to extract lat/long.");
+		}
+
+	    } catch (const std::exception& e) {
+		RCLCPP_ERROR(this->get_logger(), "Error parsing MQTT message: %s", e.what());
+	    }
+   }
+};
+
+int main(int argc, char* argv[]) {
+    rclcpp::init(argc, argv);
+    auto node = std::make_shared<MqttRosNode>();
+    rclcpp::spin(node);
+    rclcpp::shutdown();
+    return 0;
+}
+

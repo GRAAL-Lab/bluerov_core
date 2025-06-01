@@ -1,84 +1,106 @@
-# RML: Robotic Matematical Library
+cmake_minimum_required(VERSION 3.5)
 
-# At LEAST 2.8 but newer is better
-cmake_minimum_required(VERSION 3.2 FATAL_ERROR)
-project(ctrl_toolbox VERSION 1.0 LANGUAGES CXX)
-
-# Must use GNUI stallDirs to install libraries into correct
-# locations on all platforms.
-include(GNUInstallDirs)
-
-# Default to C++17
-#if(NOT CMAKE_CXX_STANDARD)
+## Compile as C++17
 set(CMAKE_CXX_STANDARD 17)
-#endif()
+#set(CMAKE_BUILD_TYPE RelWithDebInfo)
+add_compile_options(-std=c++17)
 
-#if(NOT CMAKE_BUILD_TYPE)
-set(CMAKE_BUILD_TYPE RelWithDebInfo)
-#endif()
+project(ctrl_station)
+
+find_library(PAHO_MQTTPP3_LIB paho-mqttpp3 REQUIRED)
+find_library(PAHO_MQTT3AS_LIB paho-mqtt3as REQUIRED)
+
+include_directories("${CMAKE_SOURCE_DIR}/include/jsoncons/include")
+include_directories("${CMAKE_SOURCE_DIR}/include/ctrl_toolbox/include/")
+include_directories("${CMAKE_SOURCE_DIR}/include/json_utils")
+include_directories("${CMAKE_SOURCE_DIR}/include")
+include_directories("/usr/local/include")
+
+link_directories("/usr/local/lib")
+
+# Default to C99
+if(NOT CMAKE_C_STANDARD)
+  set(CMAKE_C_STANDARD 99)
+endif()
+
+# Default to C++14
+if(NOT CMAKE_CXX_STANDARD)
+  set(CMAKE_CXX_STANDARD 14)
+endif()
+
+if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+  add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
+# find dependencies
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(auv_core_helper REQUIRED)
+find_package(ament_index_cpp REQUIRED)
 
 
-option(BUILD_TESTS "Compile tests" OFF)
+# uncomment the following section in order to fill in
+# further dependencies manually.
+# find_package(<dependency> REQUIRED)
 
-add_library(ctrl_toolbox SHARED
-    src/pid/DigitalPID.cc
-    src/virtual_frame/VirtualFrame.cc
-    src/HelperFunctions.cc
-    src/kalman_filter/ModelKalmanFilter.cc
-    src/kalman_filter/ExtendedKalmanFilter.cc
-    src/kalman_filter/MeasurementKalmanFilter.cc
+
+
+add_library(json_utils STATIC
+    src/json_utils.cpp
 )
 
-target_link_libraries(ctrl_toolbox rml Geographic)
-
-set_target_properties(ctrl_toolbox PROPERTIES LINKER_LANGUAGE CXX)
-
-# Define headers for this library. PUBLIC headers are used for
-# compiling the library, and will be added to consumers' build
-# paths.
-target_include_directories(ctrl_toolbox PUBLIC
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/ctrl_toolbox>
-    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/ctrl_toolbox_internal>
-    $<INSTALL_INTERFACE:include>
-    PRIVATE src)
-
-# If we have compiler requirements for this library, list them
-# here
-target_compile_features(ctrl_toolbox
-    PUBLIC
-        cxx_auto_type
-        cxx_range_for
-        cxx_variadic_templates
+target_include_directories(json_utils PUBLIC
+  "$<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include/json_utils>"
 )
 
-# Depend on a library that we defined in the top-level file
-#target_link_libraries(lib
-#    boost
-#    MyOtherLibrary)
+# Executable target
+#add_executable(my_test src/test_node.cpp)
+#add_executable(my_terminal src/terminal.cpp)
+add_executable(mqtt_client src/mqtt_client.cpp)
+add_executable(terminal src/terminal_node.cpp)
+add_executable(cmd_dispatcher src/command_dispatcher_node.cpp)
 
-# 'make install' to the correct locations (provided by GNUInstallDirs).
-install(TARGETS ctrl_toolbox EXPORT ctrl_toolboxConfig
-    ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})  # This is for Windows
-install(DIRECTORY include/ctrl_toolbox DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-install(DIRECTORY include/ctrl_toolbox_internal DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+#target_compile_features(my_terminal PUBLIC cxx_std_17)
+target_compile_features(cmd_dispatcher PUBLIC cxx_std_17)
 
-# This makes the project importable from the install directory
-# Put config file in per-project dir (name MUST match), can also
-# just go into 'cmake'.
-install(EXPORT ctrl_toolboxConfig DESTINATION share/ctrl_toolbox/cmake)
+# Link against the json_utils library
+#target_link_libraries(my_test
+#  json_utils
+#)
 
-# This makes the project importable from the build directory
-export(TARGETS ctrl_toolbox FILE ctrl_toolboxConfig.cmake)
+target_link_libraries(mqtt_client
+    json_utils
+    ${PAHO_MQTTPP3_LIB}
+    ${PAHO_MQTT3AS_LIB}
+    rml
+    stdc++fs
+)
 
+#target_link_libraries(my_terminal config++) 
+target_link_libraries(cmd_dispatcher config++)
 
-if(BUILD_TESTS)
-    # Every library has unit tests, of course
-    add_executable(ctrl_toolbox_test test/ctrl_toolbox_test.cc)
-    
-    target_link_libraries(ctrl_toolbox_test ctrl_toolbox)
-    
-    add_test(ctrl_toolbox_test ctrl_toolbox_test)
-endif(BUILD_TESTS)
+#ament_target_dependencies(my_test rclcpp std_msgs auv_core_helper)
+#ament_target_dependencies(my_terminal rclcpp std_msgs auv_core_helper ament_index_cpp)
+ament_target_dependencies(cmd_dispatcher rclcpp std_msgs auv_core_helper ament_index_cpp)
+ament_target_dependencies(mqtt_client rclcpp std_msgs)
+ament_target_dependencies(terminal rclcpp std_msgs)
+
+install(TARGETS terminal cmd_dispatcher mqtt_client DESTINATION lib/${PROJECT_NAME})
+
+install(DIRECTORY conf/
+  DESTINATION share/${PROJECT_NAME}/conf
+)
+
+if(BUILD_TESTING)
+  find_package(ament_lint_auto REQUIRED)
+  # the following line skips the linter which checks for copyrights
+  # uncomment the line when a copyright and license is not present in all source files
+  #set(ament_cmake_copyright_FOUND TRUE)
+  # the following line skips cpplint (only works in a git repo)
+  # uncomment the line when this package is not in a git repo
+  #set(ament_cmake_cpplint_FOUND TRUE)
+  ament_lint_auto_find_test_dependencies()
+endif()
+
+ament_package()
