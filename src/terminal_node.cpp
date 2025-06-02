@@ -29,10 +29,11 @@ private:
   {
     while (rclcpp::ok()) {
       std::cout << "\n========== TBM MENU ==========" << std::endl;
-      std::cout << "1. Seleziona TBM ID e pubblica" << std::endl;
-      std::cout << "2. Send dispatch request" << std::endl;
-      std::cout << "2. Esci" << std::endl;
-      std::cout << "Scelta: ";
+      std::cout << "1. Select TBM ID" << std::endl;
+      std::cout << "2. Send mission command" << std::endl;
+      std::cout << "3. SSH into AUV (not yet merged in this node)" << std::endl;
+      std::cout << "4. Exit" << std::endl;
+      std::cout << "> ";
 
       int choice;
       if (!(std::cin >> choice)) break;
@@ -56,7 +57,7 @@ private:
 	    break;
         }
 
-        case 3:
+        case 4:
           RCLCPP_INFO(this->get_logger(), "Exit requested");
           rclcpp::shutdown();
           return;
