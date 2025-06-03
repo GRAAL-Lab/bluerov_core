@@ -103,8 +103,7 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
 }
 
 fsm::retval PathFollowingState::Execute() noexcept { 
-    //print i am alive in this state
-    RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Executing PATH_FOLLOWING state");
+    // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Executing PATH_FOLLOWING state");
 
     static bool initial_time_set = false;
     static rclcpp::Time previous_time;
@@ -190,28 +189,16 @@ fsm::retval PathFollowingState::Execute() noexcept {
             return fsm::ok;
         }
          
-        Eigen::Vector3d direction;
-        if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Serpentine2D){
-            direction = (nextPoint - currentPoint).normalized();
-
-        }
-        else if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Spiral2D) {
-            direction = path->Derivate(1, closestPointAbscissa_).front().normalized();
-        } else {
-            RCLCPP_ERROR(rclcpp::get_logger("PathFollowingState"), "Unexpected pathPlanningMode: %s", ctrlData->pathPlanningMode.c_str());
-            ctrlData->actionSuccess  = false;
-            ctrlData->actionFailed   = true;
-            ctrlData->actionMessage = "Unexpected pathPlanningMode: " + ctrlData->pathPlanningMode;
-            ctrlData->velocityDesiredNED.setZero();
-            fsm_->SetNextState(States::HOLD);
-            return fsm::fail;
-        }
-        // Eigen::Vector3d direction = (nextPoint - currentPoint).normalized();
+        Eigen::Vector3d direction = (nextPoint - currentPoint).normalized();
         double pi_h = atan2(direction.y(), direction.x());
         double pi_p = -atan2(direction.z(), sqrt(direction.x()*direction.x() + direction.y()*direction.y()));
-        double psi_d = pi_h;
-        double theta_psi_d = pi_p;
-        bool alosSuccess = alosController_->ALOS3D(
+
+        double psi_d = pi_p;
+        double theta_psi_d = pi_h;
+
+
+        if (!(ctrlData->pathPlanningMode == auv_core_helper::PathMode::Spiral2D)){
+            bool alosSuccess = alosController_->ALOS3D(
             ctrlData->poseActualLocal.head(3),
             nextPoint,
             currentPoint,
@@ -219,10 +206,9 @@ fsm::retval PathFollowingState::Execute() noexcept {
             ctrlData->dt,
             theta_psi_d,
             psi_d,
-            crossTrackError_,
+            crossTrackError_,   
             verticalTrackError_);
-
-        if (!alosSuccess) {
+            if (!alosSuccess) {
             RCLCPP_WARN(rclcpp::get_logger("PathFollowingState"), "ALOS3D failed to compute desired heading/pitch.");
             RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path completed – switching to HOLD");
             ctrlData->actionSuccess  = false;
@@ -232,13 +218,21 @@ fsm::retval PathFollowingState::Execute() noexcept {
             fsm_->SetNextState(States::HOLD);
             return fsm::ok;
         }
+        }
+        
+
 
         ctrlData->poseGoalLocal(0) = nextPoint.x();
         ctrlData->poseGoalLocal(1) = nextPoint.y();
         ctrlData->poseGoalLocal(2) = nextPoint.z();
         ctrlData->poseGoalLocal(3) = 0;
-        ctrlData->poseGoalLocal(4) = pi_h; 
-        ctrlData->poseGoalLocal(5) = pi_p;
+        ctrlData->poseGoalLocal(4) = psi_d; // desired pitch
+        ctrlData->poseGoalLocal(5) = theta_psi_d; // desired yaw
+        if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Spiral2D) {
+            ctrlData->poseGoalLocal(5) -= M_PI / 2.0; // adjust yaw for spiral path
+            ctb::NormalizeAngle(ctrlData->poseGoalLocal(5));
+        }
+
 
         // Compute errors in world frame
         positionXError_ = ctrlData->poseGoalLocal(0) - ctrlData->poseActualLocal(0);
@@ -248,6 +242,7 @@ fsm::retval PathFollowingState::Execute() noexcept {
         pitchError_     =  ctb::AngleDifference(ctrlData->poseGoalLocal(4), ctrlData->poseActualLocal(4));
         yawError_       =  ctb::AngleDifference(ctrlData->poseGoalLocal(5), ctrlData->poseActualLocal(5));
 
+        ctrlData->poseGoalGlobal(5) = ctrlData->poseGoalLocal(5);
         ctb::NormalizeAngle(rollError_);
         ctb::NormalizeAngle(yawError_);
         ctb::NormalizeAngle(pitchError_);
