@@ -32,8 +32,6 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(auv_core_helper REQUIRED)
 find_package(ament_index_cpp REQUIRED)
-find_package(nlohmann_json REQUIRED)
-find_package(nlohmann_json REQUIRED)
 
 
 # Include directories
@@ -78,7 +76,6 @@ target_link_libraries(mqtt_client
     json_utils
     ${PAHO_MQTTPP3_LIB}
     ${PAHO_MQTT3AS_LIB}
-    nlohmann_json::nlohmann_json
     rml
     stdc++fs
 )

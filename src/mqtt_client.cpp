@@ -5,10 +5,8 @@
 #include <json_utils.hpp>
 #include <memory>
 #include <string>
-#include <nlohmann/json.hpp>
 #include <mqtt/async_client.h>
 
-using json = nlohmann::json;
 using namespace std::chrono_literals;
 
 using namespace ctljsn;
