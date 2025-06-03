@@ -23,8 +23,6 @@
 #include "states/idle_state.hpp"
 #include "states/hold_state.hpp"
 #include "states/waypoint_navigation_state.hpp"
-#include "states/surface_state.hpp"
-#include "states/dive_state.hpp"
 #include "states/path_following_state.hpp"
 #include "states/commands.hpp"
 
@@ -71,8 +69,6 @@ private:
     std::unique_ptr<IdleState> idleState_;
     std::unique_ptr<HoldState> holdState_;
     std::unique_ptr<WayPointNavigationState> wayPointNavigationState_;
-    std::unique_ptr<SurfaceState> surfaceState_;
-    std::unique_ptr<DiveState> diveState_;
     std::unique_ptr<PathFollowingState> pathFollowingState_;
 
     // --------------------

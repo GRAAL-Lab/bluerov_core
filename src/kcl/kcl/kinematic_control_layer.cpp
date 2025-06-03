@@ -169,8 +169,6 @@ void KCL::SetupTransitions() {
     idleState_ = std::make_unique<IdleState>(&fsm_);
     holdState_ = std::make_unique<HoldState>(&fsm_);
     wayPointNavigationState_ = std::make_unique<WayPointNavigationState>(&fsm_);
-    surfaceState_ = std::make_unique<SurfaceState>(&fsm_);
-    diveState_ = std::make_unique<DiveState>(&fsm_);
     pathFollowingState_ = std::make_unique<PathFollowingState>(&fsm_);
 
     
@@ -179,57 +177,32 @@ void KCL::SetupTransitions() {
     idleState_->ctrlData = ctrlData_;
     holdState_->ctrlData = ctrlData_;
     wayPointNavigationState_->ctrlData = ctrlData_;
-    surfaceState_->ctrlData = ctrlData_;
-    diveState_->ctrlData = ctrlData_;
     pathFollowingState_->ctrlData = ctrlData_;
 
     // Add states and enable transitions
     fsm_.AddState(States::IDLE, idleState_.get());
     fsm_.AddState(States::HOLD, holdState_.get());
     fsm_.AddState(States::WAYPOINT_NAVIGATION, wayPointNavigationState_.get());
-    fsm_.AddState(States::SURFACE, surfaceState_.get());
-    fsm_.AddState(States::DIVE, diveState_.get());
     fsm_.AddState(States::PATH_FOLLOWING, pathFollowingState_.get());
 
 
     // Enable transitions
     fsm_.EnableTransition(States::IDLE, States::HOLD, true);
     fsm_.EnableTransition(States::IDLE, States::WAYPOINT_NAVIGATION, true);
-    fsm_.EnableTransition(States::IDLE, States::SURFACE, true);
-    fsm_.EnableTransition(States::IDLE, States::DIVE, true);
     fsm_.EnableTransition(States::IDLE, States::PATH_FOLLOWING, true);
 
     fsm_.EnableTransition(States::HOLD, States::IDLE, true);
     fsm_.EnableTransition(States::HOLD, States::WAYPOINT_NAVIGATION, true);
-    fsm_.EnableTransition(States::HOLD, States::SURFACE, true);
-    fsm_.EnableTransition(States::HOLD, States::DIVE, true);
     fsm_.EnableTransition(States::HOLD, States::PATH_FOLLOWING, true);
 
     fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::IDLE, true);
     fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::HOLD, true);
     fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::PATH_FOLLOWING, true);
-    fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::SURFACE, true);
-    fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::DIVE, true);
-
-    fsm_.EnableTransition(States::SURFACE, States::IDLE, true);
-    fsm_.EnableTransition(States::SURFACE, States::HOLD, true);
-    fsm_.EnableTransition(States::SURFACE, States::PATH_FOLLOWING, true);
-    fsm_.EnableTransition(States::SURFACE, States::WAYPOINT_NAVIGATION, true);
-    fsm_.EnableTransition(States::SURFACE, States::DIVE, true);
-
-
-    fsm_.EnableTransition(States::DIVE, States::IDLE, true);
-    fsm_.EnableTransition(States::DIVE, States::HOLD, true);
-    fsm_.EnableTransition(States::DIVE, States::PATH_FOLLOWING, true);
-    fsm_.EnableTransition(States::DIVE, States::WAYPOINT_NAVIGATION, true);
-    fsm_.EnableTransition(States::DIVE, States::SURFACE, true);
 
 
     fsm_.EnableTransition(States::PATH_FOLLOWING, States::IDLE, true);
     fsm_.EnableTransition(States::PATH_FOLLOWING, States::HOLD, true);
     fsm_.EnableTransition(States::PATH_FOLLOWING, States::WAYPOINT_NAVIGATION, true);
-    fsm_.EnableTransition(States::PATH_FOLLOWING, States::SURFACE, true);
-    fsm_.EnableTransition(States::PATH_FOLLOWING, States::DIVE, true);
 
 
     fsm_.SetInitState(States::IDLE);

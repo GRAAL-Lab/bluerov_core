@@ -69,8 +69,6 @@ add_library(states_lib STATIC
   src/kcl/states/base_auv_state.cpp
   src/kcl/states/idle_state.cpp
   src/kcl/states/waypoint_navigation_state.cpp
-  src/kcl/states/surface_state.cpp
-  src/kcl/states/dive_state.cpp
   src/kcl/states/path_following_state.cpp
   src/kcl/states/hold_state.cpp
 )
@@ -108,8 +106,6 @@ add_executable(kinematic_control_layer_node
     src/kcl/states/base_auv_state.cpp
     src/kcl/states/idle_state.cpp
     src/kcl/states/waypoint_navigation_state.cpp
-    src/kcl/states/surface_state.cpp
-    src/kcl/states/dive_state.cpp
     src/kcl/states/path_following_state.cpp
     src/kcl/states/hold_state.cpp
     src/kcl/kcl/kinematic_control_layer.cpp
