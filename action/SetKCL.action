@@ -9,7 +9,7 @@ float64 depth
 string path_mode
 float64 spiral_diameter
 float64 spiral_increment
-float64 resume_path_from_progress #[0, 1]
+float64 resume_path_from_progress
 
 ---
 # Result
@@ -18,5 +18,5 @@ string message
 
 ---
 # Feedback
-string status_message
-float64 path_following_progress #[0, 1]
+string actual_state
+float64 action_progress
