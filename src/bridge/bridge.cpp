@@ -597,7 +597,8 @@ void BlueROVBridge::Execute(){
                 POSITION_TARGET_TYPEMASK_AX_IGNORE |
                 POSITION_TARGET_TYPEMASK_AY_IGNORE |
                 POSITION_TARGET_TYPEMASK_AZ_IGNORE |
-                POSITION_TARGET_TYPEMASK_YAW_IGNORE;
+                POSITION_TARGET_TYPEMASK_YAW_IGNORE |
+                POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE;
         }
         else {
           position_target_global_.type_mask =
@@ -614,7 +615,10 @@ void BlueROVBridge::Execute(){
                 POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE;
         }
 
-        condition_yaw_.param1 = poseGoalGlobal(5)*180.0f/M_PI;
+        double yaw_deg = poseGoalGlobal(5) * 180.0 / M_PI;
+        if (yaw_deg < 0.0)
+          yaw_deg += 360.0; // Ensure yaw is in [0, 360) range
+        condition_yaw_.param1 = yaw_deg;
         
         position_target_global_.time_boot_ms     = static_cast<uint32_t>(this->now().nanoseconds() / 1e6);
         position_target_global_.target_system    = target_system_;
@@ -726,7 +730,7 @@ void BlueROVBridge::sendConditionYaw(const mavlink_command_long_t& condition_yaw
       0.0f,                       // confirmation field 0: First transmission of this command. 1-255: Confirmation transmissions (e.g. for kill command)
       condition_yaw_.param1,      // param1: target angle (degrees)
       0.0f,                       // param2: angular speed (deg/sec) ArduPilot interprets yaw rate = 0 as: Use the default yaw rate defined in the firmware parameters.
-      0.0f,                       // param3: direction: -1=CCW, 1=CW, 0=shortest
+      1.0f,                       // param3: direction: -1=CCW, 1=CW, 0=shortest
       0.0f,                       // param4: 0=absolute, 1=relative
       0.0f, 0.0f, 0.0f);         // param5-7: unused
   
