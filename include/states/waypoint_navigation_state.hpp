@@ -21,6 +21,8 @@ private:
     constexpr static double YAW_TOL   = 0.05;  ///< 3 deg
     constexpr static double DIST_TOL  = 0.15;  ///< 10 cm
 
+
+    double initialDist3D_{0.0};        ///< initial 3-D distance to waypoint
 public:
     explicit WayPointNavigationState(fsm::FSM* fsm);
 

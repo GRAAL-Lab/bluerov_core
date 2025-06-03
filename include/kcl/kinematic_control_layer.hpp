@@ -46,6 +46,9 @@
 #include "rml/Functions.h"
 #include "ctrl_toolbox/ctrl_toolbox.hpp"
 
+using SetKCL = auv_core_helper::action::SetKCL;
+
+
 class KCL : public rclcpp::Node {
 public:
     explicit KCL();
@@ -105,11 +108,10 @@ private:
     // ROS 2 Action Server
     // --------------------
     rclcpp_action::Server<auv_core_helper::action::SetKCL>::SharedPtr KCLSetter_;
+    std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> activeGoal_;
     rclcpp_action::GoalResponse HandleGoal(const rclcpp_action::GoalUUID & uuid,std::shared_ptr<const auv_core_helper::action::SetKCL::Goal> goal);
     rclcpp_action::CancelResponse HandleCancel(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> goal_handle);
-
-
-
+    std::mutex goalMutex_; ///< Mutex to protect access to the active goal.
 
     // --------------------
     // Timer
@@ -143,6 +145,8 @@ private:
     void CallArmingService(bool arm);
     /// Call the flight mode service.
     void CallFlightModeService(const std::string &mode);
+    /// Update the action state based on the current FSM state and control data.
+    void UpdateActionState();
 
     
 

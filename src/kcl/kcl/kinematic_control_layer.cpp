@@ -72,52 +72,97 @@ void KCL::VelocityActualCallback(const geometry_msgs::msg::Twist::SharedPtr msg)
 rclcpp_action::GoalResponse KCL::HandleGoal(const rclcpp_action::GoalUUID &, std::shared_ptr<const auv_core_helper::action::SetKCL::Goal> goal)
 {
     RCLCPP_INFO(this->get_logger(), "Received goal request with state: %s", goal->desired_state.c_str());
-    // TODO: Validate the goal here
-    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+    std::lock_guard<std::mutex> lock(goalMutex_);
+    return activeGoal_? rclcpp_action::GoalResponse::REJECT : rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
-rclcpp_action::CancelResponse KCL::HandleCancel(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>>)
+rclcpp_action::CancelResponse KCL::HandleCancel(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> /*goal_handle*/)
 {
-    RCLCPP_INFO(this->get_logger(), "Received request to cancel goal");
-    // TODO: Handle cancel request
     return rclcpp_action::CancelResponse::ACCEPT;
 }
 
 void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> goal_handle)
 {
-    const auto goal = goal_handle->get_goal();
+
+    {   // remember the goal
+        std::lock_guard<std::mutex> lock(goalMutex_);
+        activeGoal_ = goal_handle;
+    }
+
+    const auto goal = goal_handle->get_goal();   
 
     // Store in member variables
     desiredState_ = goal->desired_state;
+    ctrlData_->poseGoalGlobal(0) = goal->position.latitude;
+    ctrlData_->poseGoalGlobal(1) = goal->position.longitude;
+    ctrlData_->poseGoalGlobal(2) = -std::abs(goal->depth);
+    ctrlData_->pathPlanningMode  = goal->path_mode;
+    ctrlData_->spiralDiameter    = goal->spiral_diameter;
+    ctrlData_->spiralIncrement   = goal->spiral_increment;
 
-    if (desiredState_ == "WAYPOINT_NAVIGATION") {
-        ctrlData_->poseGoalGlobal(0) = goal->position.latitude;
-        ctrlData_->poseGoalGlobal(1) = goal->position.longitude;
-        ctrlData_->poseGoalGlobal(2) = -std::abs(goal->depth);
-        // Print to console
-        RCLCPP_INFO(this->get_logger(), "Received desired_state: %s", desiredState_.c_str());
-        RCLCPP_INFO(this->get_logger(), "Received latitude: %f", ctrlData_->poseGoalGlobal[0]);
-        RCLCPP_INFO(this->get_logger(), "Received longitude: %f", ctrlData_->poseGoalGlobal[1]);
-    } else if (desiredState_ == "PATH_FOLLOWING") {
-        ctrlData_->poseGoalGlobal(2) = -std::abs(goal->depth);
-        ctrlData_->pathPlanningMode = goal->path_mode;
-        ctrlData_->spiralDiameter = goal->spiral_diameter;
-        ctrlData_->spiralIncrement = goal->spiral_increment;
-    }
+    ctrlData_->actionProgress = 0.0;
+    ctrlData_->actionSuccess  = false;
+    ctrlData_->actionFailed   = false;
+    ctrlData_->actionMessage.clear();
+    
+    fsm_.SetNextState(desiredState_);
 
-    if (fsm_.SetNextState(desiredState_) == fsm::ok && fsm_.SwitchState() == fsm::ok) {
-        auto result = std::make_shared<auv_core_helper::action::SetKCL::Result>();
-        result->success = true;
-        result->message = "State set successfully.";
-        goal_handle->succeed(result);
-    } else {
-        auto result = std::make_shared<auv_core_helper::action::SetKCL::Result>();
-        result->success = false;
-        result->message = "Failed to set state.";
-        goal_handle->abort(result);
-    }
+    //should be moved to main if failed cancle goal
+    // if (fsm_.SetNextState(desiredState_) == fsm::ok && fsm_.SwitchState() == fsm::ok) {
+    //     auto result = std::make_shared<auv_core_helper::action::SetKCL::Result>();
+    //     result->success = true;
+    //     result->message = "State set successfully.";
+    //     goal_handle->succeed(result);
+    // } else {
+    //     auto result = std::make_shared<auv_core_helper::action::SetKCL::Result>();
+    //     result->success = false;
+    //     result->message = "Failed to set state.";
+    //     goal_handle->abort(result);
+    // }
 }
 
+void KCL::UpdateActionState()
+{
+    std::lock_guard<std::mutex> lock(goalMutex_);
+    if (!activeGoal_) { return; }                       // nothing to do
+
+    /* ---------- cancellation request ---------- */
+    if (activeGoal_->is_canceling()) {
+        auto res = std::make_shared<SetKCL::Result>();
+        res->success = false;
+        res->message = "Canceled by client";
+        activeGoal_->canceled(res);
+        activeGoal_.reset();
+        return;
+    }
+
+    /* ---------- publish feedback --------------- */
+    auto fb = std::make_shared<SetKCL::Feedback>();
+    fb->actual_state      = fsm_.GetCurrentStateName();
+    fb->action_progress = ctrlData_->actionProgress;
+    activeGoal_->publish_feedback(fb);
+
+    /* ---------- decide if we are done ---------- */
+    if (ctrlData_->actionSuccess) {
+        auto res = std::make_shared<SetKCL::Result>();
+        res->success = true;
+        res->message = "Goal completed";
+        activeGoal_->succeed(res);
+        activeGoal_.reset();
+        ctrlData_->actionSuccess = false;
+        return;
+    }
+
+    if (ctrlData_->actionFailed) {
+        auto res = std::make_shared<SetKCL::Result>();
+        res->success = false;
+        res->message = "Failed to complete goal";
+        activeGoal_->abort(res);
+        activeGoal_.reset();
+        ctrlData_->actionFailed = false;
+        return;
+    }
+}
 
 void KCL::SetupTransitions() {
     // Create states
@@ -205,6 +250,8 @@ void KCL::CallArmingService(bool arm)
                 ctrlData_->armed_actual = ctrlData_->armed_desired;
             } else {
                 RCLCPP_WARN(this->get_logger(), "Arming failed: %s", result.get()->message.c_str());
+                ctrlData_->actionFailed   = true;
+                ctrlData_->actionMessage = "Unable to arm after";
             }
         });
 }
@@ -223,6 +270,7 @@ void KCL::CallFlightModeService(const std::string &mode)
                 ctrlData_->flightMode_actual = ctrlData_->flightMode_desired;
             } else {
                 RCLCPP_WARN(this->get_logger(), "Flight mode failed: %s", result.get()->message.c_str());
+                // TO DO, try to put in depth hold dive a small bit while moving forward and try to put in guided mode again.
                 CallFlightModeService(ctrlData_->flightMode_desired);
             }
         });
@@ -276,8 +324,7 @@ void KCL::ExecuteFSM() {
         CallArmingService(ctrlData_->armed_desired);
     }
     if (ctrlData_->flightMode_desired != ctrlData_->flightMode_actual) {
-        //print
-        RCLCPP_INFO(this->get_logger(), "Flight mode desired: %s", ctrlData_->flightMode_desired.c_str());
         CallFlightModeService(ctrlData_->flightMode_desired);
     }
+    UpdateActionState();
 }

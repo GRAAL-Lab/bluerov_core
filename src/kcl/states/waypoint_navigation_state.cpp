@@ -2,31 +2,55 @@
 
 
 
-WayPointNavigationState::WayPointNavigationState(fsm::FSM* fsm): BaseAUVState(fsm, "WAYPOINT_NAVIGATION") {}
+/* ──────────────────────────────────────────────────────────────── */
+
+WayPointNavigationState::WayPointNavigationState(fsm::FSM* fsm)
+: BaseAUVState(fsm, "WAYPOINT_NAVIGATION")
+{}
+
+/* helper: Euclidean distance in NED given horiz & vert components */
+static inline double hypot3(double horizontal, double vertical)
+{
+    return std::sqrt(horizontal*horizontal + vertical*vertical);
+}
 
 
 fsm::retval WayPointNavigationState::OnEntry() noexcept
 {
-    RCLCPP_INFO(rclcpp::get_logger("WayPointNavigationState"),
-                "Entering WayPoint Navigation State");
+    RCLCPP_INFO(rclcpp::get_logger("WayPointNavigationState"), "Entering WayPoint Navigation State");
 
     /* arm vehicle & select flight mode */
-    ctrlData->armed_desired     = true;
+    ctrlData->armed_desired      = true;
     ctrlData->flightMode_desired = auv_core_helper::FlightMode::GUIDED;
     ctrlData->deisiredCtrlMode   = auv_core_helper::BrigdeMode::PoseCtrl;
 
-    /* cache the waypoint once */
+    /* ── cache waypoint (lat/lon, depth) ────────────────────────── */
     waypoint_.latitude  = ctrlData->poseGoalGlobal(0);
     waypoint_.longitude = ctrlData->poseGoalGlobal(1);
     waypointDepth_      = ctrlData->poseGoalGlobal(2);
 
-    /* compute a single travel-heading that will not change later          */
+    /* current position                                              */
     current_.latitude  = ctrlData->poseActualGlobal(0);
     current_.longitude = ctrlData->poseActualGlobal(1);
-    ctb::DistanceAndAzimuthRad(current_, waypoint_, distanceToGoal_, targetHeading_);
+
+    /* horiz. distance + heading                                     */
+    ctb::DistanceAndAzimuthRad(current_, waypoint_,
+                               distanceToGoal_,      /* horiz [m] */
+                               targetHeading_);
     ctb::NormalizeAngle(targetHeading_);
 
-    /* If we are already at the horizontal goal we can skip the “turn” phase */
+    /* store full initial 3-D distance                               */
+    const double vert0 = std::fabs(ctrlData->poseActualGlobal(2)
+                                   - std::fabs(waypointDepth_));
+    initialDist3D_     = hypot3(distanceToGoal_, vert0);
+    initialDist3D_     = std::max(initialDist3D_, 0.01);   // avoid /0
+
+    /* progress starts at 0 %                                        */
+    ctrlData->actionProgress = 0.0;
+    ctrlData->actionSuccess  = false;
+    ctrlData->actionFailed   = false;
+
+    /* If already facing goal skip the turn phase                    */
     isFacingGoal_ = (distanceToGoal_ < DIST_TOL);
 
     return fsm::ok;
@@ -35,65 +59,68 @@ fsm::retval WayPointNavigationState::OnEntry() noexcept
 
 fsm::retval WayPointNavigationState::Execute() noexcept
 {
-    RCLCPP_DEBUG(rclcpp::get_logger("WayPointNavigationState"),
-                 "Executing WayPoint Navigation State");
+    // RCLCPP_INFO(rclcpp::get_logger("WayPointNavigationState"), "Executing WayPoint Navigation State");
 
-    /* 1 ─ Update current position and horizontal distance (heading unused) */
-    
+    /* ── 1.  update current position & horiz distance ───────────── */
     current_.latitude  = ctrlData->poseActualGlobal(0);
     current_.longitude = ctrlData->poseActualGlobal(1);
 
     double unusedAzimuth;
     ctb::DistanceAndAzimuthRad(current_, waypoint_,
-                            distanceToGoal_,      // ← still stored
-                            unusedAzimuth);       // ← dummy l-value
-    
+                               distanceToGoal_,
+                               unusedAzimuth);
 
-        // print poseActualGlobal(2) and waypointDepth_
-    const double depthErr = std::fabs(ctrlData->poseActualGlobal(2) - std::fabs(waypointDepth_));
+    const double depthErr =
+        std::fabs(ctrlData->poseActualGlobal(2) - std::fabs(waypointDepth_));
 
+    /* ── 1.b  update progress (0-100 %) ─────────────────────────── */
+    const double remaining3D = hypot3(distanceToGoal_, depthErr);
+    const double progressPct =
+        std::clamp(100.0 * (1.0 - remaining3D / initialDist3D_), 0.0, 100.0);
+    ctrlData->actionProgress = progressPct;
 
-    /* 2 ─ Phase A : turn in place toward the waypoint (only if required)  */
-    //print is facing goal
-    std::cout << "Is facing goal: " << isFacingGoal_ << std::endl;
+    /* ── 2.  Phase A: yaw-align if not yet facing goal ──────────── */
     if (!isFacingGoal_)
     {
-        /* hold current X-Y-Z, command yaw only                               */
         ctrlData->poseGoalGlobal << current_.latitude,
                                    current_.longitude,
                                    ctrlData->poseActualGlobal(2),
                                    0, 0,
                                    targetHeading_;
+        ctb::NormalizeAngle(targetHeading_);   
 
         if (std::fabs(ctb::AngleDifference(ctrlData->poseActualGlobal(5),
                                            targetHeading_)) < YAW_TOL)
             isFacingGoal_ = true;
 
-        return fsm::ok;   // stay in this phase until yaw is aligned
+        return fsm::ok;          // stay in yaw-align phase
     }
 
-    /* 3 ─ Phase B : translate &/or dive                                     */
-    if (distanceToGoal_ > DIST_TOL)          /* still need horizontal motion? */
+    /* ── 3.  Phase B: translate / dive ──────────────────────────── */
+    if (distanceToGoal_ > DIST_TOL)            /* need XY motion */
     {
-        /* “normal” leg: drive toward waypoint and dive en-route */
         ctrlData->poseGoalGlobal << waypoint_.latitude,
                                    waypoint_.longitude,
                                    waypointDepth_,
                                    0, 0,
-                                   targetHeading_;             // keep constant yaw
+                                   targetHeading_;
     }
-    else                                      /* horizontal goal reached       */
+    else                                        /* XY reached     */
     {
-        /* HOLD X-Y, finish the dive, keep whatever yaw we currently have.   */
         ctrlData->poseGoalGlobal << current_.latitude,
                                    current_.longitude,
                                    waypointDepth_,
                                    0, 0,
                                    ctrlData->poseActualGlobal(5);
     }
-    /* 4 ─ Transition check */
+
+    /* ── 4.  Transition & success flag ──────────────────────────── */
     if (distanceToGoal_ < DIST_TOL && depthErr < DIST_TOL)
+    {
+        ctrlData->actionSuccess = true;         // ❸ inform KCL
         fsm_->SetNextState(States::HOLD);
+    }
+
 
     return fsm::ok;
 }
@@ -101,8 +128,8 @@ fsm::retval WayPointNavigationState::Execute() noexcept
 
 fsm::retval WayPointNavigationState::OnExit() noexcept
 {
-    RCLCPP_INFO(rclcpp::get_logger("WayPointNavigationState"),
-                "Exiting WAYPOINT_NAVIGATION");
-    isFacingGoal_ = false;        // reset local state
+    RCLCPP_INFO(rclcpp::get_logger("WayPointNavigationState"), "Exiting WAYPOINT_NAVIGATION");
+
+    isFacingGoal_ = false;
     return fsm::ok;
 }

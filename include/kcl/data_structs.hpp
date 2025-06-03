@@ -51,6 +51,14 @@ struct ControlData {
     std::string flightMode_actual = "MANUAL"; 
     std::string deisiredCtrlMode = "NOT_SET"; ///< Desired control mode as string.
 
+    // ------------------------------
+    // Action State
+    // ------------------------------
+    bool actionSuccess = false; ///< Indicates if the last action was successful.
+    bool actionFailed = false; ///< Indicates if the last action failed.
+    std::string actionMessage = ""; ///< Message describing the result of the last action.
+    std::string actualState = "IDLE"; ///< Current state of the AUV control system.
+    double actionProgress = 0.0; ///< Progress of the current action, from 0.0 to 100.0 %.
 
     // ------------------------------
     // Path Planning Parameters
