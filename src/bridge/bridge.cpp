@@ -111,14 +111,19 @@ void BlueROVBridge::initMavlinkConnection(){
     throw std::runtime_error(err_msg);
   }
 
-  RCLCPP_INFO(this->get_logger(),
-      "Bound to 0.0.0.0:14551, waiting for ArduSub telemetry (will initially send to 127.0.0.1:14551)");
+  // RCLCPP_INFO(this->get_logger(),
+  //     "Bound to 0.0.0.0:14551, waiting for ArduSub telemetry (will initially send to 127.0.0.1:14551)");
 
   // Initialize remote address (will be updated when first heartbeat is received)
   std::memset(&remote_addr_, 0, sizeof(remote_addr_));
   remote_addr_.sin_family = AF_INET;
+
+
   remote_addr_.sin_addr.s_addr = inet_addr("127.0.0.1");  // Default for simulation
   remote_addr_.sin_port = htons(14551); // Send commands to ArduPilot on 14551
+
+  // remote_addr_.sin_addr.s_addr = inet_addr("192.168.2.1");
+  // remote_addr_.sin_port = htons(14551); // Send commands to ArduPilot on 14551
 
   // Initialize ArduPilot-related fields
   target_system_   = 0;
@@ -443,7 +448,10 @@ void BlueROVBridge::Execute(){
         std::cout << "Pose or velocity goal changed, sending new target." << std::endl;
         condition_yaw_.target_system = target_system_;
         condition_yaw_.target_component = target_component_;
-        condition_yaw_.param1 = poseGoalGlobal(5)*180.0f/M_PI;
+        double yaw_deg = poseGoalGlobal(5) * 180.0 / M_PI;
+        if (yaw_deg < 0.0)
+          yaw_deg += 360.0; // Ensure yaw is in [0, 360) range
+        condition_yaw_.param1 = yaw_deg;
         position_target_global_.time_boot_ms     = static_cast<uint32_t>(this->now().nanoseconds() / 1e6);
         position_target_global_.target_system    = target_system_;
         position_target_global_.target_component = target_component_;
@@ -711,7 +719,7 @@ void BlueROVBridge::sendConditionYaw(const mavlink_command_long_t& condition_yaw
       0.0f,                       // confirmation field 0: First transmission of this command. 1-255: Confirmation transmissions (e.g. for kill command)
       condition_yaw_.param1,      // param1: target angle (degrees)
       0.0f,                       // param2: angular speed (deg/sec) ArduPilot interprets yaw rate = 0 as: Use the default yaw rate defined in the firmware parameters.
-      0.0f,                       // param3: direction: -1=CCW, 1=CW, 0=shortest
+      1.0f,                       // param3: direction: -1=CCW, 1=CW, 0=shortest
       0.0f,                       // param4: 0=absolute, 1=relative
       0.0f, 0.0f, 0.0f);         // param5-7: unused
   
