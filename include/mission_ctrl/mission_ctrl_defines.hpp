@@ -22,6 +22,7 @@ namespace states {
         const std::string inspectPipes = "InspectPipes";
         const std::string followMainPipe = "FollowMainPipe";
         const std::string interventionOnConsole = "InterventionOnConsole";
+        const std::string updateLocalization = "UpdateLocalization";
         const std::string homing = "Homing";
         const std::string halt = "Halt";
     }

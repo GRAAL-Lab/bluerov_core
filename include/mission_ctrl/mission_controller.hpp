@@ -13,6 +13,7 @@
 #include "mission_ctrl/states/state_search_buoy_area.hpp"
 #include "mission_ctrl/states/state_inspect_buoy.hpp"
 #include "mission_ctrl/states/state_inspect_pipes.hpp"
+#include "mission_ctrl/states/state_update_localization.hpp"
 
 
 #include "auv_core_helper/topicnames.hpp"
@@ -27,9 +28,8 @@ namespace mission {
 
 class MissionController : public rclcpp::Node {
 
-    double stateTimeout = 20.0; // seconds
-    double controlLoopRate = 1.0; // Hz
-
+    double stateTimeout = 20.0; // seconds, temp
+    
     std::shared_ptr<SystemStatus> systemStatus_;
     std::shared_ptr<ControlData> ctrlData_;
     std::shared_ptr<TaskBenchmarkSettings> taskData_;
@@ -45,6 +45,7 @@ class MissionController : public rclcpp::Node {
     std::shared_ptr<states::StateSearchBuoyArea> stateSearchBuoyArea_;
     std::shared_ptr<states::StateInspectBuoy> stateInspectBuoy_;
     std::shared_ptr<states::StateInspectPipes> stateInspectPipes_;
+    std::shared_ptr<states::StateUpdateLocalization> stateUpdateLocalization_;
     
     // Pubs and Subs, action client to KCL and service for mission command
     rclcpp::Publisher<auv_core_helper::msg::MissionStatus>::SharedPtr missionStatusPub_;

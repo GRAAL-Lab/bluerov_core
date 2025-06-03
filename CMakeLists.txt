@@ -39,6 +39,7 @@ set(MISSION_CTRL_SRCS
   src/mission_ctrl/states/state_inspect_buoy.cpp
   src/mission_ctrl/states/state_inspect_pipes.cpp
   src/mission_ctrl/states/state_search_buoy_area.cpp
+  src/mission_ctrl/states/state_update_localization.cpp
 
 )
 # --- Library target ---

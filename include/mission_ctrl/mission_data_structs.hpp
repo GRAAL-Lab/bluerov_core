@@ -10,8 +10,8 @@
 #include "rclcpp/rclcpp.hpp"
 
 #include "auv_core_helper/action/set_kcl.hpp"
-#include "auv_core_helper/srv/mission_command.hpp"
 #include "auv_core_helper/msg/dtc_pipeline_pipe.hpp"
+#include "auv_core_helper/srv/mission_command.hpp"
 
 namespace mission {
 
@@ -38,17 +38,20 @@ struct InspectionAndIntervention;
 
 // ===========================
 
-struct missionCtrlConf {
+struct MissionCtrlConf {
     bool simKcl;
     bool simPerception;
     bool simBridge;
     bool simCtrlStation;
     bool debugPrints;
 
-    bool IsSimulation() const
-    {
-        return simKcl && simPerception && simBridge && simCtrlStation;
-    }
+    double depthTolerance = 0.3;
+    double latlongTolerance = 0.5;
+    int ctrlRate = 1;
+    double bridgeLivenessTimeout = 2.0;
+    double kclLivenessTimeout = 2.0;
+    double perceptionLivenessTimeout = 2.0;
+    double systemLivenessTimeout = 2.0; 
 };
 
 struct BuoyActionColorMap {
@@ -84,13 +87,12 @@ struct Gate {
 
     bool SetGateBuoys(const Buoy& b1, const Buoy& b2)
     {
-        if(b1.color != "orange" && b1.color != "yellow") {
+        if (b1.color != "orange" && b1.color != "yellow") {
             return false; // Invalid color for gate buoy
         }
-        if(b2.color != "orange" && b2.color != "yellow") {
+        if (b2.color != "orange" && b2.color != "yellow") {
             return false; // Invalid color for gate buoy
         }
-
 
         Eigen::Vector3d distanceVector;
         ctb::LatLong2LocalNED(b1.position, 0, b2.position, distanceVector);
@@ -106,7 +108,7 @@ struct Gate {
 struct MissionData {
     std::vector<Buoy> inspectedBuoys;
     Gate gate;
-    //PipelinePipe damagedPipe;
+    // PipelinePipe damagedPipe;
 };
 
 struct PerceptionData {
@@ -120,7 +122,7 @@ struct PerceptionData {
     bool enableDtcManipulationConsole;
 
     bool enableDtcPipes;
-    //PipelinePipeDtc currentPipeDtc;
+    // PipelinePipeDtc currentPipeDtc;
     auv_core_helper::msg::DtcPipelinePipe currentPipeDtc;
 
     std::map<std::string, Buoy> detectedBuoys;
@@ -130,9 +132,13 @@ struct KinematicData {
     bool isAlive;
     std::string state;
 
+    bool cancelCommand;
+
     bool newCommand;
+    auv_core_helper::action::SetKCL::Goal new_kcl_command;
+
     bool executingCommand;
-    auv_core_helper::action::SetKCL::Goal kcl_command;
+    auv_core_helper::action::SetKCL::Goal last_kcl_command;
 };
 
 struct ControlData {
@@ -169,17 +175,15 @@ struct BuoysArea {
     }
 };
 
-
-
 struct Position {
     ctb::LatLong latlong;
     double depth;
 };
 
 struct PipelinePipe {
-    
+
     double orientation;
-    Position position; //maybe useless 
+    Position position; // maybe useless
     bool hasRedMarker = false;
     Position positionRedMarker; // position of the red marker on the pipe, if exists
     bool foundPipeNumber = false;
@@ -557,19 +561,21 @@ struct InspectionAndIntervention : public TaskBenchmarkSettings {
 };
 
 struct SystemStatus {
-    double timeout = 2.0; //s
-    
+
     rclcpp::Time lastBridgeTime;
     rclcpp::Time lastPerceptionTime;
     rclcpp::Time lastKCLTime;
+    rclcpp::Time lastSystemTime;
 
     rclcpp::Time lastStateSwitchTime;
 
     bool perceptionAlive = false;
     bool kclAlive = false;
+    bool kclActionServerAlive = true; // assumed working untile proven otherwise
     bool bridgeAlive = false;
+    bool systemAlive = true;
 
-    missionCtrlConf conf;
+    MissionCtrlConf conf;
 
     SystemStatus(rcl_clock_type_t clockType)
     {
@@ -577,39 +583,50 @@ struct SystemStatus {
             lastBridgeTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
             lastPerceptionTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
             lastKCLTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
+            lastSystemTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
             lastStateSwitchTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
         } else {
             lastBridgeTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
             lastPerceptionTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
             lastKCLTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
+            lastSystemTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
             lastStateSwitchTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
         }
     }
 
-    bool IsAlive()
+    bool WasDeadForTooLong(rclcpp::Time now)
     {
-        return perceptionAlive && kclAlive && bridgeAlive;
+
+        bool systemAliveNow = lastSystemTime < (now - rclcpp::Duration::from_seconds(conf.systemLivenessTimeout));
+        if(!systemAliveNow){
+            systemAlive = false;
+        }
+        return systemAlive;
     }
 
-    void UpdateStatus(rclcpp::Time now){
-        perceptionAlive = lastPerceptionTime > (now - rclcpp::Duration::from_seconds(timeout));
-        kclAlive = lastKCLTime > (now - rclcpp::Duration::from_seconds(timeout));
-        bridgeAlive = lastBridgeTime > (now - rclcpp::Duration::from_seconds(timeout));
+    bool IsAlive(rclcpp::Time now)
+    {
+        perceptionAlive = lastPerceptionTime > (now - rclcpp::Duration::from_seconds(conf.perceptionLivenessTimeout));
+        kclAlive = lastKCLTime > (now - rclcpp::Duration::from_seconds(conf.kclLivenessTimeout));
+        bridgeAlive = lastBridgeTime > (now - rclcpp::Duration::from_seconds(conf.bridgeLivenessTimeout));
 
-        if(conf.simBridge){
+        if (conf.simBridge) {
             bridgeAlive = true;
         }
-        if(conf.simPerception){
+        if (conf.simPerception) {
             perceptionAlive = true;
         }
-        if(conf.simKcl){
+        if (conf.simKcl) {
             kclAlive = true;
         }
+
+        if(perceptionAlive && kclAlive && bridgeAlive && kclActionServerAlive){
+            lastSystemTime = now;
+            return true;
+        }
+        return false;
     }
-    
 };
-
-
 
 }
 

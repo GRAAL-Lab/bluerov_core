@@ -6,7 +6,7 @@ namespace states {
 
     class StateHoming : public StateBase {
 
-        double minAcceptanceRadius;
+        bool reachedSurface = false;
 
     public:
         StateHoming();
@@ -16,6 +16,7 @@ namespace states {
         fsm::retval OnExit() override;
 
         ctb::LatLong homePosition;
+
     };
 
 }

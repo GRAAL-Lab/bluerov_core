@@ -7,8 +7,6 @@ namespace states {
     class StateLatLong : public StateBase {
 
         bool doneInit = false;
-        double minAcceptanceRadius;
-        double depthTolerance;
 
     public:
         StateLatLong();
