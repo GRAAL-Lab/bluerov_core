@@ -91,6 +91,7 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
             res->success      = false;
             res->message      = "Pre-empted by a newer goal";
             activeGoal_->abort(res);
+
         }
         activeGoal_ = goal_handle;
     }
@@ -111,20 +112,13 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
     ctrlData_->actionFailed   = false;
     ctrlData_->actionMessage.clear();
     
-    fsm_.SetNextState(desiredState_);
+    if (!(fsm_.SetNextState(desiredState_) == fsm::ok && fsm_.SwitchState() == fsm::ok)){
+        //faild to switch state, can decalre failure
+        ctrlData_->actionSuccess  = false;
+        ctrlData_->actionFailed   = true;
+        ctrlData_->actionMessage = "Failed to set state: " + desiredState_;
+    }
 
-    //should be moved to main if failed cancle goal
-    // if (fsm_.SetNextState(desiredState_) == fsm::ok && fsm_.SwitchState() == fsm::ok) {
-    //     auto result = std::make_shared<auv_core_helper::action::SetKCL::Result>();
-    //     result->success = true;
-    //     result->message = "State set successfully.";
-    //     goal_handle->succeed(result);
-    // } else {
-    //     auto result = std::make_shared<auv_core_helper::action::SetKCL::Result>();
-    //     result->success = false;
-    //     result->message = "Failed to set state.";
-    //     goal_handle->abort(result);
-    // }
 }
 
 void KCL::UpdateActionState()
@@ -249,7 +243,7 @@ void KCL::CallFlightModeService(const std::string &mode)
                 ctrlData_->flightMode_actual = ctrlData_->flightMode_desired;
             } else {
                 RCLCPP_WARN(this->get_logger(), "Flight mode failed: %s", result.get()->message.c_str());
-                // TO DO, try to put in depth hold dive a small bit while moving forward and try to put in guided mode again.
+                // TO DO, if it fails to go to gudided or poshold go to state find dvl lock
                 CallFlightModeService(ctrlData_->flightMode_desired);
             }
         });

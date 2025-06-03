@@ -2,8 +2,6 @@
 #include <iostream>
 
 
-//TO DO
-
 // Constructor
 IdleState::IdleState(fsm::FSM* fsm)
     : BaseAUVState(fsm, "IDLE") {}
@@ -17,6 +15,8 @@ fsm::retval IdleState::OnEntry() noexcept {
     }
     //disarm vehicle
     ctrlData->armed_desired = false;
+    ctrlData->flightMode_desired = auv_core_helper::FlightMode::POSHOLD;
+    ctrlData->deisiredCtrlMode = auv_core_helper::BrigdeMode::PoseCtrl;
     return fsm::ok;
 }
 

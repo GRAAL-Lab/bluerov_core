@@ -9,6 +9,10 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
     ctrlData->armed_desired = true;
     ctrlData->flightMode_desired = auv_core_helper::FlightMode::GUIDED;
     ctrlData->deisiredCtrlMode = auv_core_helper::BrigdeMode::VelCtrl;
+     /* progress starts at 0 %                                        */
+    ctrlData->actionProgress = 0.0;
+    ctrlData->actionSuccess  = false;
+    ctrlData->actionFailed   = false;
 
     //update home
     ctrlData->homeGlobal.head<3>() = ctrlData->poseActualGlobal.head<3>();
@@ -179,6 +183,9 @@ fsm::retval PathFollowingState::Execute() noexcept {
         Eigen::Vector3d nextPoint = path->At(goalAbscissa);
         if ((path->EndParameter() - closestPointAbscissa_) < 1e-3) {                      // 1 mm safety margin
             RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path completed – switching to HOLD");
+            ctrlData->actionSuccess  = true;
+            ctrlData->actionFailed   = false;
+            ctrlData->actionMessage = "Path completed successfully";
             fsm_->SetNextState(States::HOLD);
             return fsm::ok;
         }
@@ -192,6 +199,10 @@ fsm::retval PathFollowingState::Execute() noexcept {
             direction = path->Derivate(1, closestPointAbscissa_).front().normalized();
         } else {
             RCLCPP_ERROR(rclcpp::get_logger("PathFollowingState"), "Unexpected pathPlanningMode: %s", ctrlData->pathPlanningMode.c_str());
+            ctrlData->actionSuccess  = false;
+            ctrlData->actionFailed   = true;
+            ctrlData->actionMessage = "Unexpected pathPlanningMode: " + ctrlData->pathPlanningMode;
+            ctrlData->velocityDesiredNED.setZero();
             fsm_->SetNextState(States::HOLD);
             return fsm::fail;
         }
@@ -214,6 +225,10 @@ fsm::retval PathFollowingState::Execute() noexcept {
         if (!alosSuccess) {
             RCLCPP_WARN(rclcpp::get_logger("PathFollowingState"), "ALOS3D failed to compute desired heading/pitch.");
             RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path completed – switching to HOLD");
+            ctrlData->actionSuccess  = false;
+            ctrlData->actionFailed   = true;
+            ctrlData->actionMessage = "ALOS3D failed to compute desired heading/pitch.";
+            ctrlData->velocityDesiredNED.setZero();
             fsm_->SetNextState(States::HOLD);
             return fsm::ok;
         }
@@ -252,7 +267,7 @@ fsm::retval PathFollowingState::Execute() noexcept {
         double tangentsDifferenceNorm = (goalDirection - currentDirection).norm();
         delta_ = alosController_->UpdateLookAheadDistance(crossTrackError_, verticalTrackError_, tangentsDifferenceNorm);
         double path_completed = (closestPointAbscissa_ / path->EndParameter()) * 100.0;
-
+        ctrlData->actionProgress = path_completed;
         //print cte, vte, delta, time, path_completed in diffrent lines
         RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Cross-track error: %f", crossTrackError_);
         RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Vertical-track error: %f", verticalTrackError_);
@@ -263,6 +278,9 @@ fsm::retval PathFollowingState::Execute() noexcept {
         currentAbscissa_ = closestPointAbscissa_;
         if (path_completed >= 99.95) {
             RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path has ended");
+            ctrlData->actionSuccess  = true;
+            ctrlData->actionFailed   = false;
+            ctrlData->actionMessage = "Path completed successfully";
             fsm_->SetNextState(States::HOLD);
             return fsm::ok;
         }
@@ -275,6 +293,7 @@ fsm::retval PathFollowingState::OnExit() noexcept {
     isVehicleOnPathDirection_ = false;
     closestPointAbscissa_ = 0.0;
     currentAbscissa_ = 0.0;
+    ctrlData->velocityDesiredNED.setZero();
     alosController_.reset();
     return fsm::ok;
 }
