@@ -73,7 +73,7 @@ rclcpp_action::GoalResponse KCL::HandleGoal(const rclcpp_action::GoalUUID &, std
 {
     RCLCPP_INFO(this->get_logger(), "Received goal request with state: %s", goal->desired_state.c_str());
     std::lock_guard<std::mutex> lock(goalMutex_);
-    return activeGoal_? rclcpp_action::GoalResponse::REJECT : rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
+    return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
 rclcpp_action::CancelResponse KCL::HandleCancel(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> /*goal_handle*/)
@@ -86,6 +86,12 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
 
     {   // remember the goal
         std::lock_guard<std::mutex> lock(goalMutex_);
+        if (activeGoal_ && activeGoal_->is_active()) {
+            auto res          = std::make_shared<SetKCL::Result>();
+            res->success      = false;
+            res->message      = "Pre-empted by a newer goal";
+            activeGoal_->abort(res);
+        }
         activeGoal_ = goal_handle;
     }
 
