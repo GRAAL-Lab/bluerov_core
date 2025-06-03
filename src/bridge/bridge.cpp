@@ -430,7 +430,8 @@ void BlueROVBridge::Execute(){
                 POSITION_TARGET_TYPEMASK_Z_IGNORE  |
                 POSITION_TARGET_TYPEMASK_AX_IGNORE  |
                 POSITION_TARGET_TYPEMASK_AY_IGNORE  |
-                POSITION_TARGET_TYPEMASK_AZ_IGNORE  ;
+                POSITION_TARGET_TYPEMASK_AZ_IGNORE  |
+                POSITION_TARGET_TYPEMASK_YAW_IGNORE;
         }
         else {
           position_target_global_.type_mask =
@@ -442,8 +443,7 @@ void BlueROVBridge::Execute(){
                 POSITION_TARGET_TYPEMASK_VZ_IGNORE  |
                 POSITION_TARGET_TYPEMASK_AX_IGNORE  |
                 POSITION_TARGET_TYPEMASK_AY_IGNORE  |
-                POSITION_TARGET_TYPEMASK_AZ_IGNORE  |
-                POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE;
+                POSITION_TARGET_TYPEMASK_AZ_IGNORE  ;
         }
         std::cout << "Pose or velocity goal changed, sending new target." << std::endl;
         condition_yaw_.target_system = target_system_;
