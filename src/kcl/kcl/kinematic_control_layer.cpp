@@ -91,6 +91,8 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
             res->success      = false;
             res->message      = "Pre-empted by a newer goal";
             activeGoal_->abort(res);
+            fsm_.SetNextState(States::HOLD);
+            fsm_.SwitchState();
 
         }
         activeGoal_ = goal_handle;
