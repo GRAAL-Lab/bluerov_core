@@ -66,6 +66,7 @@ private:
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseActualPublisher_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr globalVelocityActualPublisher_;
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr dvlDistancePublisher_;
+    rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr ekfStatusPublisher_;
     
     rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseDesiredSubscription_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr globalVelocityDesiredSubscription_;
@@ -121,7 +122,7 @@ private:
     const double LAT_LON_EPS   = 1e-6;   // ≈11 cm
     const double DEPTH_EPS     = 0.02;   // 2 cm
     const double YAW_EPS       = 0.01;   // ≈0.6°
-    Eigen::VectorXd velocityDesiredGlobal = Eigen::VectorXd(6); ///< Desired linear and angular velocities in global coordinates.
+    Eigen::VectorXd velocityGoalGlobal = Eigen::VectorXd(6); ///< Desired linear and angular velocities in global coordinates.
     
     Eigen::VectorXd velGoalGlobalLast = Eigen::VectorXd(6); ///< Last desired velocity goal in global coordinates.
 
@@ -136,7 +137,7 @@ private:
 
     //string to hold last flight mode
     std::string flightMode_actual = "MANUAL";
-    std::string flightMode = "NOT_SET"; ///< Current flight mode, default is PoseCtrl.
+    std::string ctrlMode = "NOT_SET"; ///< Current flight mode, default is PoseCtrl.
 
     //--------------------------------------------------------------------------
     // Internal Methods
@@ -179,6 +180,12 @@ private:
      * @param msg The received MAVLink message
      */
     void handleBatteryStatus(const mavlink_message_t& msg);
+
+    /**
+     * @brief Handle EKF_STATUS message
+     * @param msg The received MAVLink message
+     */
+    void handleEkfStatus(const mavlink_message_t& msg);
     
     /**
      * @brief Handle GLOBAL_POSITION_INT message
@@ -218,6 +225,13 @@ private:
     void setGlobalOriginServiceCallback(
         const std::shared_ptr<auv_core_helper::srv::SetGlobalOrigin::Request> request,
         std::shared_ptr<auv_core_helper::srv::SetGlobalOrigin::Response> response);
+
+    /**
+     * @brief Set the global origin via MAVLink
+     * @param set_gps_global_origin The MAVLink message containing global origin data
+     */
+    void setGlobalOrigin(mavlink_set_gps_global_origin_t& set_gps_global_origin);
+
     /**
      * @brief Service callback for arming/disarming the vehicle.
      * @param request Service request containing boolean for arm (true) or disarm (false).
@@ -227,7 +241,11 @@ private:
         const std::shared_ptr<rmw_request_id_t> header,
         const std::shared_ptr<SetBoolSrv::Request> request);
 
-
+    /**
+     * @brief Set the arm state
+     * @param arm The desired arm state
+     */
+    void setArmState(bool arm_vehicle);    
 
     /**
      * @brief Service callback for setting the vehicle's flight mode.
@@ -237,18 +255,6 @@ private:
     void flightModeServiceCallback(
         const std::shared_ptr<rmw_request_id_t> header,
         const std::shared_ptr<SetModeSrv::Request> request);
-    
-    /**
-     * @brief Set the global origin via MAVLink
-     * @param set_gps_global_origin The MAVLink message containing global origin data
-     */
-    void setGlobalOrigin(mavlink_set_gps_global_origin_t& set_gps_global_origin);
-
-    /**
-     * @brief Set the arm state
-     * @param arm The desired arm state
-     */
-    void setArmState(bool arm_vehicle);
 
     /**
      * @brief Set the flight mode
