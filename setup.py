@@ -27,7 +27,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'logger_node = logger.logger_node:main'
+            'logger_node = logger.main:main'
         ],
     },
 )
