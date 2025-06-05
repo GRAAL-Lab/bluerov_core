@@ -1,0 +1,2 @@
+float64 spiral_diameter
+float64 spiral_increment
