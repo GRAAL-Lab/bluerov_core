@@ -106,8 +106,27 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
     ctrlData_->poseGoalGlobal(1) = goal->position.longitude;
     ctrlData_->poseGoalGlobal(2) = -std::abs(goal->depth);
     ctrlData_->pathPlanningMode  = goal->path_mode;
-    ctrlData_->spiralDiameter    = goal->spiral_diameter;
-    ctrlData_->spiralIncrement   = goal->spiral_increment;
+    ctrlData_->resumePath     = goal->resume_path;
+
+    ctrlData_->spiralDiameter    = goal->spiral_data.spiral_diameter;
+    ctrlData_->spiralIncrement   = goal->spiral_data.spiral_increment;
+
+    ctrlData_->pathArea(0, 0) = goal->serpentine_data.origin.latitude;
+    ctrlData_->pathArea(1, 0) = goal->serpentine_data.origin.longitude;
+
+    ctrlData_->pathArea(0, 1) = goal->serpentine_data.front_left.latitude;
+    ctrlData_->pathArea(1, 1) = goal->serpentine_data.front_left.longitude;
+
+    ctrlData_->pathArea(0, 2) = goal->serpentine_data.front_right.latitude;
+    ctrlData_->pathArea(1, 2) = goal->serpentine_data.front_right.longitude;
+
+    ctrlData_->pathArea(0, 3) = goal->serpentine_data.right.latitude;
+    ctrlData_->pathArea(1, 3) = goal->serpentine_data.right.longitude;
+
+    std::cout << "pathArea:\n" << ctrlData_->pathArea << std::endl;
+
+
+
 
     ctrlData_->actionProgress = 0.0;
     ctrlData_->actionSuccess  = false;
@@ -131,7 +150,7 @@ void KCL::UpdateActionState()
     /* ---------- cancellation request ---------- */
     if (activeGoal_->is_canceling()) {
         auto res = std::make_shared<SetKCL::Result>();
-        res->success = false;
+        res->success = true;
         res->message = "Canceled by client";
         activeGoal_->canceled(res);
         activeGoal_.reset();
@@ -148,7 +167,7 @@ void KCL::UpdateActionState()
     if (ctrlData_->actionSuccess) {
         auto res = std::make_shared<SetKCL::Result>();
         res->success = true;
-        res->message = "Goal completed";
+        res->message = ctrlData_->actionMessage;
         activeGoal_->succeed(res);
         activeGoal_.reset();
         ctrlData_->actionSuccess = false;
@@ -158,7 +177,7 @@ void KCL::UpdateActionState()
     if (ctrlData_->actionFailed) {
         auto res = std::make_shared<SetKCL::Result>();
         res->success = false;
-        res->message = "Failed to complete goal";
+        res->message = ctrlData_->actionMessage;
         activeGoal_->abort(res);
         activeGoal_.reset();
         ctrlData_->actionFailed = false;

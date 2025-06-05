@@ -16,9 +16,17 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
 
     //update home
     ctrlData->homeGlobal.head<3>() = ctrlData->poseActualGlobal.head<3>();
-    
-    if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Serpentine2D) {
-        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path Planning Serpentine 2D");
+
+    if(!ctrlData->resumePath) {
+        //NEW PATH REQUEST, clear previous path data
+        ctrlData->plannedPath.poses.clear();
+        isVehicleOnPathDirection_ = false;
+        closestPointAbscissa_ = 0.0;
+        currentAbscissa_ = 0.0;
+        ctrlData->velocityDesiredNED.setZero();
+        alosController_.reset();
+        if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Serpentine2D) {
+            RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path Planning Serpentine 2D");
         if (ctrlData->serpentinePolygonVertices.empty()) {
             return fsm::fail;
         }
@@ -34,25 +42,33 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
             ctrlData->serpentinePolygonVertices
         );
 
-    } else if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Spiral2D) {
-        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path Planning Spiral 2D");
-        // set offset with a 90 degree which is pi/2 radians
-        path = sisl::PathFactory::NewOutwardSpiral(
-            Eigen::Vector3d(0, 0, 0),          // centre
-            ctrlData->spiralDiameter,          // max diameter (m)
-            ctrlData->spiralIncrement          // diameter increment (m)
-        );
-        std::cout << "Spiral path created with diameter: " << ctrlData->spiralDiameter << " and increment: " << ctrlData->spiralIncrement << std::endl;
+        } else if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Spiral2D) {
+            RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path Planning Spiral 2D");
+            // set offset with a 90 degree which is pi/2 radians
+            path = sisl::PathFactory::NewOutwardSpiral(
+                Eigen::Vector3d(0, 0, 0),          // centre
+                ctrlData->spiralDiameter,          // max diameter (m)
+                ctrlData->spiralIncrement          // diameter increment (m)
+            );
+            std::cout << "Spiral path created with diameter: " << ctrlData->spiralDiameter << " and increment: " << ctrlData->spiralIncrement << std::endl;
 
-    } else {
-        RCLCPP_ERROR(rclcpp::get_logger("PathFollowingState"), "Unexpected pathPlanningMode: %s", ctrlData->pathPlanningMode.c_str());
-        fsm_->SetNextState(States::HOLD);
-        return fsm::fail;
+        } else {
+            RCLCPP_ERROR(rclcpp::get_logger("PathFollowingState"), "Unexpected pathPlanningMode: %s", ctrlData->pathPlanningMode.c_str());
+            fsm_->SetNextState(States::HOLD);
+            return fsm::fail;
+        }
+
     }
 
 
     if (!path) {
         isCurveSet_ = false;
+        RCLCPP_ERROR(rclcpp::get_logger("PathFollowingState"), "Path is null during sampling – did you forget to create or resume it?");
+        ctrlData->actionSuccess  = false;
+        ctrlData->actionFailed   = true;
+        ctrlData->actionMessage = "Path is null during sampling – did you forget to create or resume it?";
+        ctrlData->velocityDesiredNED.setZero();
+        fsm_->SetNextState(States::HOLD);
         return fsm::fail;
     }
 
@@ -147,12 +163,12 @@ fsm::retval PathFollowingState::Execute() noexcept {
         yawError_       =  ctb::AngleDifference(ctrlData->poseGoalLocal(5), ctrlData->poseActualLocal(5));
 
         //print the errors
-        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Position X Error: %f", positionXError_);
-        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Position Y Error: %f", positionYError_);
-        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Position Z Error: %f", positionZError_);
-        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Roll Error: %f", rollError_);
-        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Pitch Error: %f", pitchError_);
-        RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Yaw Error: %f", yawError_);
+        // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Position X Error: %f", positionXError_);
+        // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Position Y Error: %f", positionYError_);
+        // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Position Z Error: %f", positionZError_);
+        // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Roll Error: %f", rollError_);
+        // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Pitch Error: %f", pitchError_);
+        // RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Yaw Error: %f", yawError_);
 
         // Normalize orientation errors for safety
         ctb::NormalizeAngle(rollError_);
@@ -166,9 +182,11 @@ fsm::retval PathFollowingState::Execute() noexcept {
         ctrlData->velocityDesiredNED(4) = -pidPitch_.Compute(0, pitchError_);
         ctrlData->velocityDesiredNED(5) = -pidYaw_.Compute(0, yawError_);
 
+        ctrlData->poseGoalGlobal(5) = ctrlData->poseGoalLocal(5);
+
         // Check if aligned
-        if (std::abs(positionXError_) < 0.1 && std::abs(positionYError_) < 0.1 && std::abs(positionZError_) < 0.1 &&
-            std::abs(rollError_) < 0.1 && std::abs(yawError_) < 0.1 && std::abs(pitchError_) < 0.1) {
+        if (std::abs(positionXError_) < 0.1 && std::abs(positionYError_) < 0.1 && std::abs(positionZError_) < 0.1 
+            && std::abs(yawError_) < 0.1 ) {
             RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Vehicle reached starting point and aligned with path direction");
             ctrlData->velocityDesiredNED.setZero();
             isVehicleOnPathDirection_ = true;
@@ -284,11 +302,6 @@ fsm::retval PathFollowingState::Execute() noexcept {
 }
 
 fsm::retval PathFollowingState::OnExit() noexcept {
-    ctrlData->plannedPath.poses.clear();
-    isVehicleOnPathDirection_ = false;
-    closestPointAbscissa_ = 0.0;
-    currentAbscissa_ = 0.0;
     ctrlData->velocityDesiredNED.setZero();
-    alosController_.reset();
     return fsm::ok;
 }

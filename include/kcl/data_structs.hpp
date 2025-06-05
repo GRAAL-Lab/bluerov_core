@@ -66,14 +66,17 @@ struct ControlData {
     std::string pathPlanningMode = "Serpentine2D"; ///< Path planning mode as string.
 
     // 2D Serpentine Path Parameters
-    double serpentineAngle = 0.0; ///< Angle for 2D serpentine path planning.
+    //TO DO: MOVE TO PARAM FILE 
+    Eigen::MatrixXd pathArea; /// Area for 2D serpentine path planning, defined by rows (latitude, longitude) and columns (vertices).
+    double serpentineAngle = 90.0; ///< Angle for 2D serpentine path planning.
     bool serpentineDirection = true; ///< Direction: true = forward, false = backward.
-    double serpentineOffset = 0.0; ///< Offset for the serpentine path.
+    double serpentineOffset = 1.0; ///< Offset for the serpentine path.
     std::vector<Eigen::Vector3d> serpentinePolygonVertices; ///< Polygon vertices for 2D serpentine planning.
 
     // 2D Spiral Path Parameters
     double spiralDiameter = 0.0; ///< Diameter for 2D spiral path planning.
     double spiralIncrement = 0.0; ///< Increment for the spiral path.
+    bool resumePath = false; ///< Flag to indicate if the path should be resumed.
 
     // ------------------------------
     // Planned Path
@@ -117,6 +120,9 @@ struct ControlData {
         homeGlobal(2) = 0.0;       // Default home depth.
         maxVelocity.setConstant(1.0); // Default maximum velocities.
         minVelocity.setConstant(0.0); // Default minimum velocities.
+        pathArea = Eigen::MatrixXd(2, 4);
+        pathArea.setZero(); // Initialize path area to zero.
+        serpentinePolygonVertices.clear();
     }
 };
 
