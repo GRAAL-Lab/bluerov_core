@@ -20,6 +20,7 @@ const std::string velocity_desired_global = "/auv/global/velocity_desired";
 const std::string heart_beat = "/auv/heart_beat";
 const std::string global_origin = "/auv/global/origin";
 const std::string battery_status = "/auv/battery_status";
+const std::string ekf_status = "/auv/ekf_status";
 
 const std::string pose_actual_global_ = "/auv/global/pose_actual";
 const std::string velocity_actual_global = "/auv/global/velocity_actual";
