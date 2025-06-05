@@ -9,17 +9,27 @@ import time
 class LoggerNode(Node):
     def __init__(self):
         super().__init__('logger_node')
-
+        
+         # Get team name and create RAMI-compliant folder structure
+        self.team_name = self.declare_parameter('team_name', 'UniGe_ISME').get_parameter_value().string_value
+        self.mission_start_time = datetime.now(tz=timezone.utc)
+        
+        # Create RAMI-compliant folder name: TEAM_X_YYYYMMDD_HHMM
+        folder_timestamp = self.mission_start_time.strftime("%Y%m%d_%H%M")
+        folder_name = f"{self.team_name}_{folder_timestamp}"
+        
+        # Create log directory with RAMI-compliant structure
+        log_dir = os.path.expanduser('~/mission_logs')
+        self.mission_dir = os.path.join(log_dir, folder_name)
+        os.makedirs(self.mission_dir, exist_ok=True)
+        file_timestamp = self.mission_start_time.strftime("%Y%m%d_%H%M%S")
+       
         # subscribers
         self.pose_sub = self.create_subscription(PoseStamped, "/auv/global/pose_actual", self.pose_callback, 10)
-        self.mission_sub = self.create_subscription(MissionStatus, "/auv/mission/status", self.pose_callback, 10)
+        self.mission_sub = self.create_subscription(MissionStatus, "/auv/mission/status", self.mission_callback, 10)
 
-        log_dir = os.path.expanduser('~/mission_logs')
-        os.makedirs(log_dir, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-        self.kml_path_nav = os.path.join(log_dir, f"vehicle_navigation_data_{timestamp}.kml")
-        self.kml_path_mission = os.path.join(log_dir, f"mission_status_data{timestamp}.kml")
+        self.kml_path_nav = os.path.join(self.mission_dir, f"vehicle_navigation_data_{file_timestamp}.kml")
+        self.kml_path_mission = os.path.join(self.mission_dir, f"mission_status_data_{file_timestamp}.kml")
         
         self.kml_nav = simplekml.Kml()
         self.kml_mission = simplekml.Kml()
@@ -29,6 +39,12 @@ class LoggerNode(Node):
         
         self.latest_pose = None
         self.latest_mission_status = None
+        
+        # Initialize mission status tracking variables
+        self.last_subtask = None
+        self.last_key_decision = None
+        self.last_event_message = None
+        
         # Log pose at 1 Hz
         self.timer = self.create_timer(1.0, self.log_pose)
 
