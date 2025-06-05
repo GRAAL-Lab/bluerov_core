@@ -1,29 +1,40 @@
 # README #
+# ROS 2 Logger Node (Mission KML Logger)
 
-This README would normally document whatever steps are necessary to get your application up and running.
+This ROS 2 package provides a logging node that records vehicle navigation data and mission status messages into KML files for post-mission analysis and visualization 
 
-### What is this repository for? ###
+## Usage
 
-* Quick summary
-* Version
-* [Learn Markdown](https://bitbucket.org/tutorials/markdowndemo)
+### 1. Build the package
 
-### How do I get set up? ###
+```bash
+colcon build --packages-select logger
+source install/setup.bash
+```
+### 2. Run the logger node
+```
+ros2 run logger logger_node
+```
 
-* Summary of set up
-* Configuration
-* Dependencies
-* Database configuration
-* How to run tests
-* Deployment instructions
+## Features
 
-### Contribution guidelines ###
+- Subscribes to:
+  - `/auv/global/pose_actual` (`PoseStamped`): vehicle geolocation and orientation
+  - `/auv/mission/status` (`MissionStatus`): mission progress updates
+- Logs data into:
+  - `vehicle_navigation_data_<timestamp>.kml`
+  - `mission_status_data_<timestamp>.kml`
+- RAMI-compliant folder structure:
+  - `~/mission_logs/UniGe_ISME_YYYYMMDD_HHMM/`
+- Periodic log saving every 10 seconds
 
-* Writing tests
-* Code review
-* Other guidelines
+## Output Structure
 
-### Who do I talk to? ###
+All logs are saved to a mission folder using this format:
 
-* Repo owner or admin
-* Other community or team contact
+```text
+~/mission_logs/UniGe_ISME_20250605_1126/
+├── vehicle_navigation_data_20250605_112647.kml
+└── mission_status_data_20250605_112647.kml
+```
+
