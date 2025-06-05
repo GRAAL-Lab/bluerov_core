@@ -10,7 +10,13 @@ project(ctrl_station)
 find_library(PAHO_MQTTPP3_LIB paho-mqttpp3 REQUIRED)
 find_library(PAHO_MQTT3AS_LIB paho-mqtt3as REQUIRED)
 
+include_directories("${CMAKE_SOURCE_DIR}/include/jsoncons/include")
+include_directories("${CMAKE_SOURCE_DIR}/include/ctrl_toolbox/include/")
+include_directories("${CMAKE_SOURCE_DIR}/include/json_utils")
+include_directories("${CMAKE_SOURCE_DIR}/include")
+include_directories("/usr/local/include")
 
+link_directories("/usr/local/lib")
 
 # Default to C99
 if(NOT CMAKE_C_STANDARD)
@@ -32,15 +38,6 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(auv_core_helper REQUIRED)
 find_package(ament_index_cpp REQUIRED)
-
-
-# Include directories
-include_directories(
-  "${CMAKE_SOURCE_DIR}/include/ctrl_toolbox/include/"
-  "${CMAKE_SOURCE_DIR}/include/json_utils"
-  "${CMAKE_SOURCE_DIR}/include"
-  "${CMAKE_SOURCE_DIR}/include/jsoncons/include"
-)
 
 
 # uncomment the following section in order to fill in

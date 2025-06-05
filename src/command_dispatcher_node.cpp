@@ -85,29 +85,30 @@ private:
   if (!LoadConfiguration(conf_)) {
       RCLCPP_ERROR(this->get_logger(), "Failed to load initial configuration");
   }
-    
-  auto request = std::make_shared<MissionCommand::Request>();
-  BuildMissionRequest(request);
+  if(conf_){
+  	auto request = std::make_shared<MissionCommand::Request>();
+        BuildMissionRequest(request);
 
-  if (!client_->wait_for_service(std::chrono::seconds(5))) {
-    RCLCPP_ERROR(this->get_logger(), "Service non disponibile");
-    return;
+        if (!client_->wait_for_service(std::chrono::seconds(5))) {
+            RCLCPP_ERROR(this->get_logger(), "Service non disponibile");
+            return;
+        }
+
+	  // corretta firma del callback:
+	  client_->async_send_request(
+	    request,
+	    [this](rclcpp::Client<MissionCommand>::SharedFuture future) {
+	      if (future.valid()) {
+		RCLCPP_INFO(this->get_logger(),
+		            "Service response: res=%s, text='%s'",
+		            future.get()->res ? "true" : "false",
+		            future.get()->text.c_str());
+	      } else {
+		RCLCPP_ERROR(this->get_logger(), "Service call failed");
+	      }
+	    }
+	  );
   }
-
-  // corretta firma del callback:
-  client_->async_send_request(
-    request,
-    [this](rclcpp::Client<MissionCommand>::SharedFuture future) {
-      if (future.valid()) {
-        RCLCPP_INFO(this->get_logger(),
-                    "Service response: res=%s, text='%s'",
-                    future.get()->res ? "true" : "false",
-                    future.get()->text.c_str());
-      } else {
-        RCLCPP_ERROR(this->get_logger(), "Service call failed");
-      }
-    }
-  );
 }
 
   bool LoadConfiguration(std::shared_ptr<TaskBenchmarkSettings>& conf)

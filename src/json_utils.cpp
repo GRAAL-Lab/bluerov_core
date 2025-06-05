@@ -538,7 +538,7 @@ namespace ctljsn {
       return regionMsg;
     }
 
-    double* CreateLatLongPositionFromJson(const jsoncons::json& jsonData) {
+    /*double* CreateLatLongPositionFromJson(const jsoncons::json& jsonData) {
       static double lat_long[2];
       if (jsonData["body"]["resources"]["spatial_primitives"]["objects"][0]["position"].contains("horizontal")) {
           lat_long[0] = jsonData["body"]["resources"]["spatial_primitives"]["objects"][0]["position"]["horizontal"]["latitude"].as<double>();
@@ -547,6 +547,37 @@ namespace ctljsn {
       } 
       else {
           std::cerr << "Errore: json non valido o malformato" << std::endl;
+          return nullptr;
+      }
+    }*/
+    
+    double* CreateLatLongPositionFromJson(const jsoncons::json& jsonData) {
+      static double lat_long[2];
+
+      try {
+          // Caso 1: formato STATUS (lat/long in body -> position -> horizontal)
+          /*if (jsonData["body"].contains("position")) {
+              const auto& horizontal = jsonData["body"]["position"]["horizontal"];
+              lat_long[0] = horizontal["latitude"].as<double>();
+              lat_long[1] = horizontal["longitude"].as<double>();
+              return lat_long;
+          }*/
+
+          // Caso 2: formato DYNAMIC_UPDATE (lat/long in body -> operations[0] -> value -> position -> horizontal)
+          if (jsonData["body"].contains("operations") &&
+              !jsonData["body"]["operations"].empty() &&
+              jsonData["body"]["operations"][0].contains("value")) {
+              
+              const auto& horizontal = jsonData["body"]["operations"][0]["value"]["position"]["horizontal"];
+              lat_long[0] = horizontal["latitude"].as<double>();
+              lat_long[1] = horizontal["longitude"].as<double>();
+              return lat_long;
+          }
+
+          std::cerr << "Errore: formato JSON non riconosciuto" << std::endl;
+          return nullptr;
+      } catch (const std::exception& e) {
+          std::cerr << "Errore nell'estrazione di lat/long: " << e.what() << std::endl;
           return nullptr;
       }
     }
