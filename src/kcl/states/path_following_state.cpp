@@ -27,20 +27,46 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
         alosController_.reset();
         if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Serpentine2D) {
             RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path Planning Serpentine 2D");
-        if (ctrlData->serpentinePolygonVertices.empty()) {
-            return fsm::fail;
-        }
+                std::cout << "pathArea:\n" << ctrlData->pathArea << std::endl;
 
-        sisl::Path::Direction direction = ctrlData->serpentineDirection
-                                            ? sisl::Path::Direction::Backward
-                                            : sisl::Path::Direction::Forward;
 
-        path = sisl::PathFactory::NewSerpentine(
-            ctrlData->serpentineAngle,
-            direction,
-            ctrlData->serpentineOffset,
-            ctrlData->serpentinePolygonVertices
-        );
+                ctb::LatLong pathArea0(ctrlData->pathArea(0, 0), ctrlData->pathArea(1, 0));
+                ctb::LatLong pathArea1(ctrlData->pathArea(0, 1), ctrlData->pathArea(1, 1));
+                ctb::LatLong pathArea2(ctrlData->pathArea(0, 2), ctrlData->pathArea(1, 2));
+                ctb::LatLong pathArea3(ctrlData->pathArea(0, 3), ctrlData->pathArea(1, 3));
+
+                ctrlData->serpentinePolygonVertices.clear();
+                ctrlData->serpentinePolygonVertices.resize(4);
+                ctb::LatLong2LocalNED(pathArea0, -std::abs(ctrlData->homeGlobal(2)), ctrlData->homeLL,  ctrlData->serpentinePolygonVertices[0]);
+                ctb::LatLong2LocalNED(pathArea1, -std::abs(ctrlData->homeGlobal(2)), ctrlData->homeLL,  ctrlData->serpentinePolygonVertices[1]);
+                ctb::LatLong2LocalNED(pathArea2, -std::abs(ctrlData->homeGlobal(2)), ctrlData->homeLL,  ctrlData->serpentinePolygonVertices[2]);
+                ctb::LatLong2LocalNED(pathArea3, -std::abs(ctrlData->homeGlobal(2)), ctrlData->homeLL,  ctrlData->serpentinePolygonVertices[3]);
+
+
+            if (!ctrlData->serpentinePolygonVertices.empty()) {
+                sisl::Path::Direction direction = ctrlData->serpentineDirection
+                                                ? sisl::Path::Direction::Backward
+                                                : sisl::Path::Direction::Forward;
+
+                path = sisl::PathFactory::NewSerpentine(
+                    ctrlData->serpentineAngle,
+                    direction,
+                    ctrlData->serpentineOffset,
+                    ctrlData->serpentinePolygonVertices
+                );
+            }
+            else{
+                RCLCPP_ERROR(rclcpp::get_logger("PathFollowingState"), "Serpentine polygon vertices are empty. Cannot create path.");
+
+                ctrlData->actionSuccess  = false;
+                ctrlData->actionFailed   = true;
+                ctrlData->actionMessage = "Serpentine polygon vertices are empty. Cannot create path.";
+                fsm_->SetNextState(States::HOLD);
+                fsm_->SwitchState();
+                return fsm::fail;
+            }
+
+        
 
         } else if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Spiral2D) {
             RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path Planning Spiral 2D");
@@ -55,6 +81,7 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
         } else {
             RCLCPP_ERROR(rclcpp::get_logger("PathFollowingState"), "Unexpected pathPlanningMode: %s", ctrlData->pathPlanningMode.c_str());
             fsm_->SetNextState(States::HOLD);
+            fsm_->SwitchState();
             return fsm::fail;
         }
 
@@ -204,6 +231,7 @@ fsm::retval PathFollowingState::Execute() noexcept {
             ctrlData->actionFailed   = false;
             ctrlData->actionMessage = "Path completed successfully";
             fsm_->SetNextState(States::HOLD);
+            fsm_->SwitchState();
             return fsm::ok;
         }
          
@@ -234,6 +262,7 @@ fsm::retval PathFollowingState::Execute() noexcept {
             ctrlData->actionMessage = "ALOS3D failed to compute desired heading/pitch.";
             ctrlData->velocityDesiredNED.setZero();
             fsm_->SetNextState(States::HOLD);
+            fsm_->SwitchState();
             return fsm::ok;
         }
         }
@@ -295,6 +324,7 @@ fsm::retval PathFollowingState::Execute() noexcept {
             ctrlData->actionFailed   = false;
             ctrlData->actionMessage = "Path completed successfully";
             fsm_->SetNextState(States::HOLD);
+            fsm_->SwitchState();
             return fsm::ok;
         }
     }

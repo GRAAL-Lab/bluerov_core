@@ -123,8 +123,6 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
     ctrlData_->pathArea(0, 3) = goal->serpentine_data.right.latitude;
     ctrlData_->pathArea(1, 3) = goal->serpentine_data.right.longitude;
 
-    std::cout << "pathArea:\n" << ctrlData_->pathArea << std::endl;
-
 
 
 
@@ -274,10 +272,12 @@ void KCL::ExecuteFSM() {
     // Convert global pose to local NED coordinates
     Eigen::Vector3d tmpHomeLocal;
     Eigen::Vector3d tmpPoseLocal;
-    ctb::LatLong homeLL(ctrlData_->homeGlobal(0), ctrlData_->homeGlobal(1));
-    ctb::LatLong curLL(ctrlData_->poseActualGlobal(0), ctrlData_->poseActualGlobal(1));
-    ctb::LatLong2LocalNED(homeLL, -std::abs(ctrlData_->homeGlobal(2)), homeLL, tmpHomeLocal);
-    ctb::LatLong2LocalNED(curLL,  -std::abs(ctrlData_->poseActualGlobal(2)), homeLL, tmpPoseLocal);
+
+    ctrlData_->poseActualLL = ctb::LatLong(ctrlData_->poseActualGlobal(0), ctrlData_->poseActualGlobal(1)); //update current pose in global coordinates
+
+    ctb::LatLong2LocalNED(ctrlData_->homeLL, -std::abs(ctrlData_->homeGlobal(2)), ctrlData_->homeLL, tmpHomeLocal);
+    ctb::LatLong2LocalNED(ctrlData_->poseActualLL,  -std::abs(ctrlData_->poseActualGlobal(2)), ctrlData_->homeLL, tmpPoseLocal);
+
     ctrlData_->homeLocal.head<3>() = tmpHomeLocal;
     ctrlData_->poseActualLocal.head<3>() = tmpPoseLocal - tmpHomeLocal;
     ctrlData_->poseActualLocal.tail<3>() = ctrlData_->poseActualGlobal.tail<3>();

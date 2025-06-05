@@ -38,6 +38,8 @@ struct ControlData {
     // ------------------------------
     Eigen::VectorXd poseActualGlobal = Eigen::VectorXd(6); ///< Current AUV pose (lat, long, z, roll, pitch, yaw) in global coordinates.
     Eigen::VectorXd homeGlobal = Eigen::VectorXd(6);
+    ctb::LatLong homeLL; ///< Home position in global coordinates (latitude, longitude).
+    ctb::LatLong poseActualLL; ///< Current AUV pose in global coordinates (latitude, longitude).
     Eigen::VectorXd poseGoalGlobal = Eigen::VectorXd(6); ///< Desired pose goal in global coordinates.
     Eigen::VectorXd velocityDesiredGlobal = Eigen::VectorXd(6); ///< Desired linear and angular velocities in global coordinates.
 
@@ -123,6 +125,9 @@ struct ControlData {
         pathArea = Eigen::MatrixXd(2, 4);
         pathArea.setZero(); // Initialize path area to zero.
         serpentinePolygonVertices.clear();
+        homeLL = ctb::LatLong(homeGlobal(0), homeGlobal(1));    
+        poseActualLL = ctb::LatLong(poseActualGlobal(0), poseActualGlobal(1));
+
     }
 };
 
