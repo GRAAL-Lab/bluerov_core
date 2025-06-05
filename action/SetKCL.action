@@ -7,10 +7,10 @@ float64 depth
 
 ## Path following params
 string path_mode
-float64 spiral_diameter
-float64 spiral_increment
-float64 resume_path_from_progress
+bool resume_path
 
+SpiralPathData spiral_data
+SerpentinePathData serpentine_data
 ---
 # Result
 bool success
