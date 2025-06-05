@@ -13,9 +13,7 @@ setup(
     ],
     install_requires=[
         'setuptools'
-        'pandas',
         'simplekml',
-        'numpy',
     ],
     zip_safe=True,
     maintainer='Paolo',
