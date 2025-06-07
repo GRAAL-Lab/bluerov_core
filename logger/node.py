@@ -1,6 +1,7 @@
 from rclpy.node import Node
 from auv_core_helper.msg import PoseStamped, MissionStatus
 from datetime import datetime, timezone
+from logger.utilities import STATE_NAME_MAP
 import os
 import math
 import simplekml
@@ -41,9 +42,8 @@ class LoggerNode(Node):
         self.latest_mission_status = None
         
         # Initialize mission status tracking variables
-        self.last_subtask = None
-        self.last_key_decision = None
-        self.last_event_message = None
+        self.last_state = None
+        self.last_state_object = None
         
         # Log pose at 1 Hz
         self.timer = self.create_timer(1.0, self.log_pose)
@@ -63,39 +63,35 @@ class LoggerNode(Node):
             self.get_logger().error(f"[MISSION] Logging error: {e}")
 
     def is_mission_status_changed(self, msg: MissionStatus) -> bool:
-        subtask = getattr(msg, 'subtask', None)
-        key_decision = getattr(msg, 'key_decision', None)
-        event_message = getattr(msg, 'event_message', None)
+        state = getattr(msg, 'state', None)
+        state_object = getattr(msg, 'state_object', None)
 
         changed = (
-            subtask != self.last_subtask or
-            key_decision != self.last_key_decision or
-            event_message != self.last_event_message
+            state != self.last_state or
+            state_object != self.last_state_object
         )
         return changed
 
     def log_mission_status(self, msg: MissionStatus):
-        subtask = getattr(msg, 'subtask', None)
-        key_decision = getattr(msg, 'key_decision', None)
-        event_message = getattr(msg, 'event_message', None)
+        state = getattr(msg, 'state', None)
+        state_object = getattr(msg, 'state_object', None)
 
-        t = msg.header.stamp
+        t = msg.stamp
         timestamp = t.sec + t.nanosec * 1e-9
         dt = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
 
-        name = f"Subtask: {subtask if subtask else 'Unknown'}"
+        readable_state = STATE_NAME_MAP.get(state, state if state else "Unknown")
+        name = f"Subtask: {readable_state}"
 
         p = self.kml_mission.newpoint(name=name, coords=[(0, 0)])  # coords optional here
 
         p.timestamp.when = dt
-        p.extendeddata.newdata(name="Key Decision", value=str(key_decision))
-        p.extendeddata.newdata(name="Event Message", value=str(event_message))
+        p.extendeddata.newdata(name="Key Decision and Event Message", value=str(state_object))
 
-        self.get_logger().info(f"[MISSION] Logged new status at {dt}")
+        self.get_logger().info(f"[MISSION] Logged new status '{readable_state}' at {dt}")
 
-        self.last_subtask = subtask
-        self.last_key_decision = key_decision
-        self.last_event_message = event_message
+        self.last_state = state
+        self.last_state_object = state_object
 
     def log_pose(self):
         if self.latest_pose is None:
