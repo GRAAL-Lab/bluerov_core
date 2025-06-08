@@ -43,7 +43,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
 
   // Timers
   data_timer_ = this->create_wall_timer(std::chrono::milliseconds(125), std::bind(&BlueROVBridge::receiveData, this)); // ~8Hz
-  mainTimer_ = this->create_wall_timer(std::chrono::milliseconds(200),std::bind(&BlueROVBridge::Execute, this)); // ~8Hz
+  mainTimer_ = this->create_wall_timer(std::chrono::milliseconds(250),std::bind(&BlueROVBridge::Execute, this)); // ~4Hz
 
   // Initialize the goal variables
   poseGoalGlobal.setZero();
@@ -402,6 +402,8 @@ void BlueROVBridge::handleAttitude(const mavlink_message_t& msg){
   
 }
 
+
+
 void BlueROVBridge::armingServiceCallback(
     const std::shared_ptr<rmw_request_id_t> header,
     const std::shared_ptr<SetBoolSrv::Request> request)
@@ -614,11 +616,6 @@ void BlueROVBridge::Execute(){
                 POSITION_TARGET_TYPEMASK_YAW_IGNORE|
                 POSITION_TARGET_TYPEMASK_YAW_RATE_IGNORE;
         }
-
-        double yaw_deg = poseGoalGlobal(5) * 180.0 / M_PI;
-        if (yaw_deg < 0.0)
-          yaw_deg += 360.0; // Ensure yaw is in [0, 360) range
-        condition_yaw_.param1 = yaw_deg;
         
         position_target_global_.time_boot_ms     = static_cast<uint32_t>(this->now().nanoseconds() / 1e6);
         position_target_global_.target_system    = target_system_;
@@ -632,7 +629,11 @@ void BlueROVBridge::Execute(){
         position_target_global_.vx = velocityGoalGlobal(0);
         position_target_global_.vy = velocityGoalGlobal(1);
         position_target_global_.vz = velocityGoalGlobal(2);
-        position_target_global_.yaw_rate = velocityGoalGlobal(5);
+
+        double yaw_deg = poseGoalGlobal(5) * 180.0 / M_PI;
+        if (yaw_deg < 0.0)
+          yaw_deg += 360.0; // Ensure yaw is in [0, 360) range
+        condition_yaw_.param1 = yaw_deg; // Set the yaw angle in degrees
 
         // Send the condition yaw and the position target to the autopilot
         sendConditionYaw(condition_yaw_);
@@ -680,30 +681,6 @@ void BlueROVBridge::SetPositionTargetGlobalInt(const mavlink_set_position_target
   );
   
   sendMavlinkMessage(msg);
-}
-
-void BlueROVBridge::SetAttitudeTarget(const mavlink_set_attitude_target_t& attitude_target_)
-{
-
-  mavlink_message_t msg;
-  mavlink_msg_set_attitude_target_pack(
-      system_id_,
-      component_id_,
-      &msg,
-      attitude_target_.time_boot_ms,
-      attitude_target_.target_system,
-      attitude_target_.target_component,
-      attitude_target_.type_mask, 
-      attitude_target_.q, 
-      0,           // body_roll_rate (not used)
-      0,           // body_pitch_rate (not used)
-      0,           // body_yaw_rate (not used)
-      0,           // thrust (not used)
-      0            // thrust_body (not used) 
-  );
-  
-  sendMavlinkMessage(msg);
-  RCLCPP_INFO(this->get_logger(), "ATTITUDE_TARGET command sent");
 }
 
 void BlueROVBridge::sendConditionYaw(const mavlink_command_long_t& condition_yaw_)

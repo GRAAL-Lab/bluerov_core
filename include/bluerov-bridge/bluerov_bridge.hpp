@@ -108,7 +108,6 @@ private:
     mavlink_heartbeat_t hb;
     mavlink_command_ack_t ack;
     mavlink_set_position_target_global_int_t position_target_global_;
-    mavlink_set_attitude_target_t attitude_target_;
     mavlink_command_long_t condition_yaw_ ;
     mavlink_gps_global_origin_t gps_global_origin;
     
@@ -117,14 +116,13 @@ private:
 
     Eigen::VectorXd poseGoalGlobal = Eigen::VectorXd(6); ///< Desired pose goal in global coordinates.
     Eigen::VectorXd poseGoalGlobalLast = Eigen::VectorXd(6); ///< Last desired pose goal in global coordinates.
+    Eigen::VectorXd velocityGoalGlobal = Eigen::VectorXd(6); ///< Desired linear and angular velocities in global coordinates.
+    Eigen::VectorXd velGoalGlobalLast = Eigen::VectorXd(6); ///< Last desired velocity goal in global coordinates.
 
     bool poseGoalGlobalChanged = false; ///< Flag indicating if the pose goal has changed.
     const double LAT_LON_EPS   = 1e-6;   // ≈11 cm
     const double DEPTH_EPS     = 0.02;   // 2 cm
     const double YAW_EPS       = 0.01;   // ≈0.6°
-    Eigen::VectorXd velocityGoalGlobal = Eigen::VectorXd(6); ///< Desired linear and angular velocities in global coordinates.
-    
-    Eigen::VectorXd velGoalGlobalLast = Eigen::VectorXd(6); ///< Last desired velocity goal in global coordinates.
 
     bool velGoalGlobalChanged = false; ///< Flag indicating if the velocity goal has changed.
     const double VELX_EPS = 0.01; ///< Velocity X tolerance
@@ -133,7 +131,6 @@ private:
     const double ANGX_EPS = 0.01; ///< Angular X tolerance
     const double ANGY_EPS = 0.01; ///< Angular Y tolerance
     const double ANGZ_EPS = 0.01; ///< Angular Z tolerance
-
 
     //string to hold last flight mode
     std::string flightMode_actual = "MANUAL";
@@ -284,29 +281,10 @@ private:
     void SetPositionTargetGlobalInt(const mavlink_set_position_target_global_int_t& position_target_global_);
 
     /**
-     * @brief Set the attitude target
-     * @param attitude_target The desired attitude target
-     */
-    void SetAttitudeTarget(const mavlink_set_attitude_target_t& attitude_target_);
-
-    /**
      * @brief Send MAV_CMD_CONDITION_YAW command to set vehicle heading
      * 
      */
     void sendConditionYaw(const mavlink_command_long_t& condition_yaw_);                                
-
-    /**
-     * @brief Send MAV_CMD_DO_SET_HOME command to set the home position
-     * 
-     * This sets the home position of the vehicle, which is used as the reference
-     * for RTL mode and relative positions.
-     * 
-     * @param latitude Latitude in degrees (use NAN to use current position)
-     * @param longitude Longitude in degrees (use NAN to use current position)
-     * @param altitude Altitude in meters (above MSL)
-     * @param use_current If true, ignore lat/lon/alt and use current position
-     */
-    void sendSetHome(float latitude, float longitude, float altitude, bool use_current = false);
 
     /**
      * @brief Main loop for processing MAVLink messages and ROS callbacks
@@ -340,6 +318,4 @@ private:
 
 
     int32_t mapModeStringToNumber(const std::string & mode) const;
-
-
 };
