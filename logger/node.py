@@ -1,5 +1,5 @@
 from rclpy.node import Node
-from auv_core_helper.msg import PoseStamped, MissionStatus, MissionCommandLog
+from auv_core_helper.msg import PoseStamped, MissionStatus, MissionCommandLog, DtcList
 from datetime import datetime, timezone
 from logger.utilities import STATE_NAME_MAP
 import os
@@ -29,13 +29,16 @@ class LoggerNode(Node):
         self.pose_sub = self.create_subscription(PoseStamped, "/auv/global/pose_actual", self.pose_callback, 10)
         self.mission_sub = self.create_subscription(MissionStatus, "/auv/mission/status", self.mission_callback, 10)
         self.mission_command_log_sub = self.create_subscription(MissionCommandLog, '/auv/mission_command_log', self.mission_command_log_callback, 10)
+        self.perception_sub = self.create_subscription(DtcList,"/auv/perception/objects",self.perception_callback,10)
 
         self.kml_path_nav = os.path.join(self.mission_dir, f"vehicle_navigation_data_{file_timestamp}.kml")
         self.kml_path_mission = os.path.join(self.mission_dir, f"mission_status_data_{file_timestamp}.kml")
         self.ctrl_station_log_path = os.path.join(self.mission_dir, f"ctrl_station_comm_{file_timestamp}.log")
+        self.kml_path_objects = os.path.join(self.mission_dir, f"object_recognition_data_{file_timestamp}.kml")
         
         self.kml_nav = simplekml.Kml()
         self.kml_mission = simplekml.Kml()
+        self.kml_objects = simplekml.Kml()
         
         self.last_save_time = time.time()
         self.save_interval = 10  # seconds
@@ -52,6 +55,8 @@ class LoggerNode(Node):
 
         self.get_logger().info(f"Logging navigation data to: {self.kml_path_nav}")
         self.get_logger().info(f"Logging mission status to: {self.kml_path_mission}")
+        self.get_logger().info(f"Logging control station communication to: {self.ctrl_station_log_path}")
+        self.get_logger().info(f"Logging object recognition data to: {self.kml_path_objects}")
         
 
     def pose_callback(self, msg: PoseStamped):
@@ -162,11 +167,71 @@ class LoggerNode(Node):
         except Exception as e:
             self.get_logger().error(f"Error logging mission command: {e}")
 
+    def perception_callback(self, msg: DtcList):
+        try:
+            timestamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+            dt = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+
+            # === PIPE ===
+            pipe = msg.pipeline_pipe
+            if pipe.pipe_in_fov:
+                p = self.kml_objects.newpoint(name="Pipeline")
+                p.timestamp.when = dt
+                lat = pipe.point_on_pipe.latitude
+                lon = pipe.point_on_pipe.longitude
+                depth = pipe.vertical_distance
+                p.coords = [(lon, lat, -depth)]
+                p.extendeddata.newdata(name="Pipeline Code", value=pipe.pipeline_pipe_code)
+                p.extendeddata.newdata(name="Vertical Distance", value=str(pipe.vertical_distance))
+                p.extendeddata.newdata(name="Direction", value=str(pipe.pipe_direction))
+                p.extendeddata.newdata(name="Toward Structure", value=str(pipe.move_toward_structure))
+
+            # === RED MARKER ===
+            if pipe.found_red_marker:
+                red = self.kml_objects.newpoint(name="Red Marker")
+                red.timestamp.when = dt
+                lat = pipe.red_marker_position.latitude
+                lon = pipe.red_marker_position.longitude
+                red.coords = [(lon, lat)]
+                red.extendeddata.newdata(name="Found", value="True")
+
+            # === NUMBER MARKER ===
+            if pipe.found_number:
+                num = self.kml_objects.newpoint(name="Number Marker")
+                num.timestamp.when = dt
+                lat = pipe.number_position.latitude
+                lon = pipe.number_position.longitude
+                num.coords = [(lon, lat)]
+                num.extendeddata.newdata(name="Number", value=str(pipe.number))
+
+            # === BUOYS ===
+            for buoy in msg.buoys:
+                b = self.kml_objects.newpoint(name=f"Buoy {buoy.id}")
+                b.timestamp.when = dt
+                lat = buoy.position.latitude
+                lon = buoy.position.longitude
+                b.coords = [(lon, lat)]
+                b.extendeddata.newdata(name="Color", value=buoy.color)
+                b.extendeddata.newdata(name="Color Confidence", value=str(buoy.color_confidence))
+                b.extendeddata.newdata(name="Radius", value=str(buoy.radius))
+
+            # === Save periodically ===
+            current_time = time.time()
+            if current_time - self.last_save_time > self.save_interval:
+                self.save_logs()
+                self.last_save_time = current_time
+
+            self.get_logger().info(f"[PERCEPTION] Logged perception data at {dt}")
+
+        except Exception as e:
+            self.get_logger().error(f"[PERCEPTION] Logging error: {e}")
+
             
     def save_logs(self):
         try:
             self.kml_nav.save(self.kml_path_nav)
             self.kml_mission.save(self.kml_path_mission)
+            self.kml_objects.save(self.kml_path_objects)
             self.get_logger().info("KMLs saved.")
         except Exception as e:
             self.get_logger().error(f"Error saving KMLs: {e}")
