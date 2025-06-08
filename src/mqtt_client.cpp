@@ -33,14 +33,33 @@ public:
 
         client_->set_callback(*this);
 
-        try {
-            RCLCPP_INFO(this->get_logger(), "Connecting to MQTT broker...");
-            client_->connect(connOpts)->wait();
-            RCLCPP_INFO(this->get_logger(), "Connected to broker.");
-            client_->subscribe(TOPIC_UPDATE, QOS)->wait();
-        } catch (const mqtt::exception& e) {
-            RCLCPP_ERROR(this->get_logger(), "MQTT connection error: %s", e.what());
-        }
+        bool connected = false;
+	for (int attempts = 0; attempts < 5 && !connected; ++attempts) {
+	    try {
+		RCLCPP_INFO(this->get_logger(), "Attempt %d: Connecting to MQTT broker...", attempts + 1);
+		client_->connect(connOpts)->wait();
+		RCLCPP_INFO(this->get_logger(), "Connected to broker.");
+		client_->subscribe(TOPIC_UPDATE, QOS)->wait();
+		connected = true;
+	    } catch (const mqtt::exception& e) {
+		RCLCPP_WARN(this->get_logger(), "Connection attempt %d failed: %s", attempts + 1, e.what());
+		std::this_thread::sleep_for(std::chrono::seconds(2));
+	    }
+	}
+	if (!connected) {
+	    RCLCPP_ERROR(this->get_logger(), "Failed to connect to MQTT broker after multiple attempts.");
+	}
+    }
+    
+    ~MqttRosNode() {
+	    try {
+		if (client_ && client_->is_connected()) {
+		    RCLCPP_INFO(this->get_logger(), "Disconnecting MQTT client...");
+		    client_->disconnect()->wait();
+		}
+	    } catch (const mqtt::exception& e) {
+		RCLCPP_WARN(this->get_logger(), "Error during MQTT disconnect: %s", e.what());
+	    }
     }
 
 private:
@@ -60,8 +79,8 @@ private:
 		if (type != "DYNAMIC_UPDATE") return;
 
 		// Parsing temporale e geografico
-		std::shared_ptr<ctljsn::time::AbsoluteTime> extractedAbsTime = ctljsn::time::CreateAbsoluteTimeFromJson(wm_json);
-		std::shared_ptr<ctljsn::time::DirectTime> extractedDirTime = std::dynamic_pointer_cast<ctljsn::time::DirectTime>(extractedAbsTime);
+		//std::shared_ptr<ctljsn::time::AbsoluteTime> extractedAbsTime = ctljsn::time::CreateAbsoluteTimeFromJson(wm_json);
+		//std::shared_ptr<ctljsn::time::DirectTime> extractedDirTime = std::dynamic_pointer_cast<ctljsn::time::DirectTime>(extractedAbsTime);
 		double* lat_long = ctljsn::geographic::CreateLatLongPositionFromJson(wm_json);
 
 		if (lat_long != nullptr) {
