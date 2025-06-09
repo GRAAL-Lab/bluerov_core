@@ -23,9 +23,6 @@ find_package(ament_index_cpp REQUIRED)
 find_package(PkgConfig REQUIRED)
 find_package(action_msgs REQUIRED)
 
-# Manually find qpOASES library
-find_library(QPOASES_LIBRARY NAMES qpOASES REQUIRED)
-
 # Collect all .msg and .srv files
 file(GLOB_RECURSE MSG_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "msg/*.msg")
 file(GLOB_RECURSE SRV_FILES RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "srv/*.srv")
@@ -68,7 +65,6 @@ target_include_directories(${PROJECT_NAME}_lib PUBLIC
 
 # Link additional libraries
 target_link_libraries(${PROJECT_NAME}_lib
-  ${QPOASES_LIBRARY}
   config++
 )
 
