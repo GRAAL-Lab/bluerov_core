@@ -2,7 +2,7 @@
 #include "marine_tracking_ros2.h"
 
 MarineTrackingROS2::MarineTrackingROS2(const std::string& bagPath, const bool isSim) : Node("marine_detector") {
-    filtersPub_ = this->create_publisher<auv_core_helper::msg::DtcList>("/trk/tracks", 10);
+    filtersPub_ = this->create_publisher<auv_core_helper::msg::DtcList>("/detections", 10);
     std::map<std::string, odtc::IDAssocParams> assocParams;
     odtc::TrackingParams trackingParams;
 

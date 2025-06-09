@@ -141,7 +141,7 @@ bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::Const
 
         auto lookForBuoys = (state == PerceptionState::ALL) || (state == PerceptionState::BUOYS) || (currentRequest_.buoys) || (currentRequest_.obstacles);
         auto lookForMainPipe = (state == PerceptionState::ALL) || (state == PerceptionState::PIPES) || (currentRequest_.obstacles);
-        auto lookForPipes = (state == PerceptionState::ALL) || (state == PerceptionState::MAIN_PIPE) || (currentRequest_.obstacles);
+        auto lookForPipes = false; // (state == PerceptionState::ALL) || (state == PerceptionState::MAIN_PIPE) || (currentRequest_.obstacles);
         auto lookForOthers = (state == PerceptionState::ALL) || (currentRequest_.obstacles);
 
         if ((lookForBuoys && !yoloDetectionsReceived) && (lookForPipes && !pipesInfoReceived) && (lookForMainPipe && !mainPipeInfoReceived)) {

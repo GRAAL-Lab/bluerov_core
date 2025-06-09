@@ -37,7 +37,7 @@
 #include <image_pipeline_msgs/msg/obst_detection_stats.hpp>
 #include <auv_core_helper/msg/mission_status.hpp>
 #include <auv_core_helper/msg/buoy.hpp>
-#include <auv_core_helper/msg/generic_obstacle.hpp>
+#include <auv_core_helper/msg/generic_object.hpp>
 #include <auv_core_helper/msg/dtc_request.hpp>
 #include <auv_core_helper/msg/dtc_list.hpp>
 
