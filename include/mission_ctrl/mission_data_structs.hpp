@@ -152,24 +152,14 @@ struct ControlData {
 };
 
 struct BuoysArea {
-    bool enabled = false;
-    ctb::LatLong centroid;
-    std::vector<double> size;
-    double orientation;
+    std::vector<ctb::LatLong> points;
 
     friend std::ostream& operator<<(std::ostream& os, BuoysArea const& area)
     {
         os << "BuoysArea {\n";
-        os << "  enabled: " << std::boolalpha << area.enabled << "\n";
-        os << "  centroid: (" << area.centroid.latitude << ", " << area.centroid.longitude << ")\n";
-        os << "  size: [";
-        for (size_t i = 0; i < area.size.size(); ++i) {
-            os << area.size[i];
-            if (i != area.size.size() - 1)
-                os << ", ";
+        for (const auto& point : area.points) {
+            os << "  Point: (" << point.latitude << ", " << point.longitude << ")\n";
         }
-        os << "]\n";
-        os << "  orientation: " << area.orientation << "\n";
         os << "}\n";
         return os;
     }
@@ -224,7 +214,7 @@ struct TaskBenchmarkSettings {
     uint selectedPipelineStructureId;
     BuoysArea buoysArea;
     double surfaceDepth = 0.0;
-    double diveDepth = 1.0;
+    double diveDepth = 1.5;
 
     TaskBenchmarkSettings() = default;
 
@@ -240,12 +230,14 @@ struct TaskBenchmarkSettings {
                 this->pipelineStructures.push_back(pStruct);
             }
             this->selectedPipelineStructureId = request->selected_pipeline_structure_id;
-            this->buoysArea.enabled = true;
-            this->buoysArea.centroid.latitude = request->buoys_area.centroid.latitude;
-            this->buoysArea.centroid.longitude = request->buoys_area.centroid.longitude;
-            this->buoysArea.size.push_back(request->buoys_area.size[0]);
-            this->buoysArea.size.push_back(request->buoys_area.size[1]);
-            this->buoysArea.orientation = request->buoys_area.orientation;
+            auto buoysArea = request->buoys_area_points;
+            for(size_t i = 0; i < buoysArea.size(); ++i) {
+                const auto& point = buoysArea[i];
+                ctb::LatLong latLong;
+                latLong.latitude = point.latitude;
+                latLong.longitude = point.longitude;
+                this->buoysArea.points.push_back(latLong);
+            }
         } catch (...) {
             return false;
         }
@@ -269,18 +261,19 @@ struct TaskBenchmarkSettings {
         if (!ctb::GetParam(confObj, selectedPipelineStructureId, "selectedPipelineStructureId"))
             return false;
 
-        if (!ctb::GetParam(confObj, buoysArea.enabled, "enableBuoysArea"))
+        const libconfig::Setting& buoyAreaSetting = root["buoysArea"];
+        for (int i = 0; i < buoyAreaSetting.getLength(); ++i) {
+            const libconfig::Setting& point = buoyAreaSetting[i];
+            ctb::LatLong latLong;
+            if (!LatLongFromConfig(point, latLong, "point")) {
+                std::cerr << "Failed to load buoy area point from file" << std::endl;
+                return false;
+            };
+            buoysArea.points.push_back(latLong);
+        }
+        if(buoysArea.points.size() < 4) {
+            std::cerr << "Buoys area must have 4 points" << std::endl;
             return false;
-        if (buoysArea.enabled) {
-            if (!LatLongFromConfig(root, buoysArea.centroid, "buoysAreaCentroid"))
-                return false;
-            Eigen::VectorXd sizeTmp;
-            if (!ctb::GetParamVector(confObj, sizeTmp, "buoysAreaSize"))
-                return false;
-            buoysArea.size.push_back(sizeTmp[0]);
-            buoysArea.size.push_back(sizeTmp[1]);
-            if (!ctb::GetParam(root, buoysArea.orientation, "buoysAreaOrientation"))
-                return false;
         }
 
         return true;
@@ -376,8 +369,7 @@ protected:
         for (auto const& ps : pipelineStructures)
             os << ps;
         os << "SelectedPipelineStructureId: " << selectedPipelineStructureId << "\n";
-        os << "BuoysArea:\n"
-           << buoysArea;
+        os << buoysArea;
     }
 
     // 2) Make operator<< non‐overload, always dispatch via dump()

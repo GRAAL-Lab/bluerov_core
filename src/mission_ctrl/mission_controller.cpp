@@ -57,13 +57,6 @@ MissionController::MissionController()
     // std::cout << "Controller Rate: " << conf_->controlLoopRate << "Hz" << std::endl;
     runTimer_ = this->create_wall_timer(std::chrono::milliseconds(msRunPeriod), std::bind(&MissionController::Run, this));
 
-    if (systemStatus_->conf.simBridge)
-        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No bridge");
-    if (systemStatus_->conf.simKcl)
-        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No KCL");
-    if (systemStatus_->conf.simPerception)
-        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No Perception");
-
     if (systemStatus_->conf.simCtrlStation) {
         SimulateMissionCmdFromFile();
         SetTaskDataFSM();
@@ -71,6 +64,13 @@ MissionController::MissionController()
     } else {
         RCLCPP_WARN(this->get_logger(), "Waiting for task data to be set by ctrl station");
     }
+
+    if (systemStatus_->conf.simBridge)
+        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No bridge");
+    if (systemStatus_->conf.simKcl)
+        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No KCL");
+    if (systemStatus_->conf.simPerception)
+        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No Perception");
 };
 
 void MissionController::StatusPub()
@@ -127,6 +127,7 @@ void MissionController::Run()
     auto now = this->get_clock()->now();
     if (rFsm_.GetCurrentStateName() != rFsm_.GetNextStateName()) {
         systemStatus_->lastStateSwitchTime = now;
+        RCLCPP_INFO(this->get_logger(), "FSM switched to state %s", rFsm_.GetCurrentStateName().c_str());
     } else {
         double timeSinceLastSwitch = now.seconds() - systemStatus_->lastStateSwitchTime.seconds();
         if (timeSinceLastSwitch > 20.0 && std::fmod(timeSinceLastSwitch, 10.0) < 1.0) {
@@ -293,6 +294,10 @@ void MissionController::MissionCommandCB(
         response->text = "Failed to configure task data from request";
         return;
     }
+
+    taskData_->surfaceDepth = ctrlData_->depth;
+    RCLCPP_INFO(this->get_logger(), "Setting surface depth to current depth: [%f]", taskData_->surfaceDepth);
+    
     SetTaskDataFSM();
     response->res = true;
     rFsm_.SetInitState(mission::states::ID::init);
@@ -300,13 +305,11 @@ void MissionController::MissionCommandCB(
     stateHoming_->homePosition.latitude = ctrlData_->inertialF_linearPosition.latitude;
     stateHoming_->homePosition.longitude = ctrlData_->inertialF_linearPosition.longitude;
     RCLCPP_INFO(this->get_logger(), "Mission command received, tbm_id: %d", request->tbm_id);
-    RCLCPP_INFO(this->get_logger(), "Set home position to: %f, %f",
+    RCLCPP_INFO(this->get_logger(), "Set home position as current one: [%f, %f]",
         stateHoming_->homePosition.latitude, stateHoming_->homePosition.longitude);
 
-    if (systemStatus_->conf.debugPrints) {
-        std::cerr << "===== TaskBenchMark " << taskData_->taskType << " =====" << std::endl;
-        std::cerr << *taskData_ << std::endl;
-    }
+    RCLCPP_INFO(this->get_logger(), " ===== TaskBenchMark %s =====", taskData_->taskType.c_str());
+    RCLCPP_INFO(this->get_logger(), "%s", *taskData_);
 }
 
 void MissionController::PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg)
@@ -357,10 +360,10 @@ void MissionController::LoadConfiguration()
         RCLCPP_INFO(this->get_logger(), "systemLivenessTimeout: %f", systemStatus_->conf.systemLivenessTimeout);
 
     } catch (const libconfig::FileIOException& fioex) {
-        std::cerr << "I/O error while reading file: " << fioex.what() << std::endl;
-        std::cerr << "  Path: '" << confPath << "'. Make sure the file exists and is readable." << std::endl;
+        RCLCPP_ERROR(this->get_logger(), "I/O error while reading file: %s", fioex.what());
+        RCLCPP_ERROR(this->get_logger(), "  Path: '%s'. Make sure the file exists and is readable.", confPath.c_str());
     } catch (const libconfig::ParseException& pex) {
-        std::cerr << "Parse error at " << pex.getFile() << ":" << pex.getLine() << " - " << pex.getError() << std::endl;
+        RCLCPP_ERROR(this->get_logger(), "Parse error at %s:%d - %s", pex.getFile(), pex.getLine(), pex.getError());
     }
 }
 

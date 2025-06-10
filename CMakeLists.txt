@@ -94,29 +94,43 @@ target_link_libraries(controller_node
 
 
 # --- Install rules ---
-# export both library and executable
+# Install the library so the executable can find it at runtime,
+# but DO NOT export it to other packages.
 install(
-  TARGETS mission_ctrl_lib controller_node
-  EXPORT export_${PROJECT_NAME}
-  ARCHIVE DESTINATION lib/${PROJECT_NAME}
-  LIBRARY DESTINATION lib/${PROJECT_NAME}
+  TARGETS mission_ctrl_lib
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+)
+
+# Install the executable so it can be run by ROS 2.
+# A more standard destination for executables is lib/${PROJECT_NAME}.
+install(
+  TARGETS controller_node
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 
-# install headers
+# Install headers so other packages can include them.
 install(
   DIRECTORY include/
   DESTINATION include
 )
 
-# install non-code resources
+# Install configuration files.
 install(
   DIRECTORY conf
   DESTINATION share/${PROJECT_NAME}
 )
 
-# export include dirs & libraries for downstream
-ament_export_include_directories(include)
-ament_export_libraries(mission_ctrl_lib)
 
+# Keep this: It makes the "include" directory available to other packages
+# that need your header files (like your ctrl_station package).
+ament_export_include_directories(include)
+
+# Remove these lines: They are responsible for making your library
+# linkable by other packages.
+# ament_export_targets(export_${PROJECT_NAME}) <-- REMOVE
+# ament_export_libraries(mission_ctrl_lib)      <-- REMOVE
+
+# This is the final command for the package.
 ament_package()
+

@@ -15,6 +15,8 @@ namespace states {
 
         uint numberOfBuoys;
         uint numberOfBuoysInspected;
+        bool resumeSearch = false;
+
     };
 
 }
