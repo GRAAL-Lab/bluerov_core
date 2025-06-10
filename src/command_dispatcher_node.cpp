@@ -155,12 +155,11 @@ private:
       request->pipeline_structures[1].longitude = conf_->pipelineStructures[1].centroid.longitude;
     }
     // Buoys area
-    if (conf_->buoysArea.enabled) {
-      request->buoys_area.centroid.latitude  = conf_->buoysArea.centroid.latitude;
-      request->buoys_area.centroid.longitude = conf_->buoysArea.centroid.longitude;
-      request->buoys_area.size[0]          = conf_->buoysArea.size[0];
-      request->buoys_area.size[1]          = conf_->buoysArea.size[1];
-      request->buoys_area.orientation        = conf_->buoysArea.orientation;
+    if (conf_->buoysArea.points.size() >= 4) {
+      for( size_t i = 0; i < 4; ++i) {
+        request->buoys_area_points[i].latitude  = conf_->buoysArea.points[i].latitude;
+        request->buoys_area_points[i].longitude = conf_->buoysArea.points[i].longitude;
+      }
     }
     // Defaults
     request->uav_wp.latitude    = 0.0;
@@ -177,9 +176,9 @@ private:
         auv_core_helper::msg::PipelinePipe pipe_msg;
         pipe_msg.number                = p.number;
         pipe_msg.pipeline_structure_id = p.number;
-        pipe_msg.orientation           = p.angleWithNorth;
-        pipe_msg.centroid.latitude     = p.position.latitude;
-        pipe_msg.centroid.longitude    = p.position.longitude;
+        pipe_msg.orientation           = p.orientation;
+        pipe_msg.centroid.latitude     = p.position.latlong.latitude;
+        pipe_msg.centroid.longitude    = p.position.latlong.longitude;
         request->pipes.push_back(pipe_msg);
       }
     } else if (auto inter = std::dynamic_pointer_cast<Intervention>(conf_)) {
@@ -187,9 +186,9 @@ private:
       const auto &d = inter->damagedPipeOnPipeline;
       request->damaged_pipe.number                = d.number;
       request->damaged_pipe.pipeline_structure_id = d.number;
-      request->damaged_pipe.orientation           = d.angleWithNorth;
-      request->damaged_pipe.centroid.latitude     = d.position.latitude;
-      request->damaged_pipe.centroid.longitude    = d.position.longitude;
+      request->damaged_pipe.orientation           = d.orientation;
+      request->damaged_pipe.centroid.latitude     = d.position.latlong.latitude;
+      request->damaged_pipe.centroid.longitude    = d.position.latlong.longitude;
     } else if (auto combo = std::dynamic_pointer_cast<InspectionAndIntervention>(conf_)) {
       request->n_buoys            = combo->numberOfBuoys;
       request->n_damage_markers   = combo->numberOfMainPipeDamageMarkers;
@@ -197,9 +196,9 @@ private:
         auv_core_helper::msg::PipelinePipe pipe_msg;
         pipe_msg.number                = p.number;
         pipe_msg.pipeline_structure_id = p.number;
-        pipe_msg.orientation           = p.angleWithNorth;
-        pipe_msg.centroid.latitude     = p.position.latitude;
-        pipe_msg.centroid.longitude    = p.position.longitude;
+        pipe_msg.orientation           = p.orientation;
+        pipe_msg.centroid.latitude     = p.position.latlong.latitude;
+        pipe_msg.centroid.longitude    = p.position.latlong.longitude;
         request->pipes.push_back(pipe_msg);
       }
     }

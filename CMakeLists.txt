@@ -38,6 +38,8 @@ find_package(rclcpp REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(auv_core_helper REQUIRED)
 find_package(ament_index_cpp REQUIRED)
+find_package(mission_ctrl REQUIRED)
+find_package(ctrl_toolbox REQUIRED)
 
 
 # uncomment the following section in order to fill in
@@ -82,7 +84,7 @@ target_link_libraries(cmd_dispatcher config++)
 
 #ament_target_dependencies(my_test rclcpp std_msgs auv_core_helper)
 #ament_target_dependencies(my_terminal rclcpp std_msgs auv_core_helper ament_index_cpp)
-ament_target_dependencies(cmd_dispatcher rclcpp std_msgs auv_core_helper ament_index_cpp)
+ament_target_dependencies(cmd_dispatcher rclcpp std_msgs auv_core_helper ament_index_cpp mission_ctrl ctrl_toolbox)
 ament_target_dependencies(mqtt_client rclcpp std_msgs)
 ament_target_dependencies(terminal rclcpp std_msgs)
 
