@@ -8,7 +8,7 @@
 #include "auv_core_helper/srv/mission_command.hpp"
 #include <libconfig.h++>
 #include "ament_index_cpp/get_package_share_directory.hpp"
-#include <mission_ctrl/mission_data_structs.hpp>
+#include "mission_ctrl/mission_data_structs.hpp"
 #include "std_msgs/msg/empty.hpp" 
 
 using MissionCommand = auv_core_helper::srv::MissionCommand;
