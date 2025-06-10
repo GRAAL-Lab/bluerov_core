@@ -74,7 +74,7 @@ private:
     rclcpp::Service<auv_core_helper::srv::SetGlobalOrigin>::SharedPtr setGlobalOriginService_;
 
 
-    /* How long we’re willing to wait before we fail the request */
+    /* How long we're willing to wait before we fail the request */
     static const rclcpp::Duration kSrvTimeout;      ///< watchdog for deferred services
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr armingService_;
     rclcpp::Service<auv_core_helper::srv::SetFlightMode>::SharedPtr flightModeService_;
@@ -92,10 +92,12 @@ private:
     //--------------------------------------------------------------------------
     int sock_fd_{-1};                   // UDP socket file descriptor
     struct sockaddr_in remote_addr_{};  // Remote address for sending MAVLink
+    int port_{} ;
+    std::string remote_addr_str_ = "";
 
     // Our GCS system ID
-    uint8_t system_id_{255};            // MAVLink system ID (255 = ground station)
-    uint8_t component_id_{190};         // MAVLink component ID
+    uint8_t system_id_{0};            // MAVLink system ID (255 = ground station)
+    uint8_t component_id_{0};         // MAVLink component ID
 
     // Autopilot IDs (discovered from heartbeat)
     uint8_t target_system_{0};          // Target system ID (from heartbeat)
@@ -120,20 +122,18 @@ private:
     Eigen::VectorXd velGoalGlobalLast = Eigen::VectorXd(6); ///< Last desired velocity goal in global coordinates.
 
     bool poseGoalGlobalChanged = false; ///< Flag indicating if the pose goal has changed.
-    const double LAT_LON_EPS   = 1e-6;   // ≈11 cm
-    const double DEPTH_EPS     = 0.02;   // 2 cm
-    const double YAW_EPS       = 0.01;   // ≈0.6°
+    const double LAT_LON_EPS{1e-6};   // ≈11 cm
+    const double DEPTH_EPS{0.02};   // 2 cm
+    const double YAW_EPS{0.01};   // ≈0.6°
 
     bool velGoalGlobalChanged = false; ///< Flag indicating if the velocity goal has changed.
-    const double VELX_EPS = 0.01; ///< Velocity X tolerance
-    const double VELY_EPS = 0.01; ///< Velocity Y tolerance
-    const double VELZ_EPS = 0.01; ///< Velocity Z tolerance
-    const double ANGX_EPS = 0.01; ///< Angular X tolerance
-    const double ANGY_EPS = 0.01; ///< Angular Y tolerance
-    const double ANGZ_EPS = 0.01; ///< Angular Z tolerance
+    const double VELX_EPS{0.01}; ///< Velocity X tolerance
+    const double VELY_EPS{0.01}; ///< Velocity Y tolerance
+    const double VELZ_EPS{0.01}; ///< Velocity Z tolerance
+    const double ANGX_EPS{0.01}; ///< Angular X tolerance
+    const double ANGY_EPS{0.01}; ///< Angular Y tolerance
+    const double ANGZ_EPS{0.01}; ///< Angular Z tolerance
 
-    //string to hold last flight mode
-    std::string flightMode_actual = "MANUAL";
     std::string ctrlMode = "NOT_SET"; ///< Current flight mode, default is PoseCtrl.
 
     //--------------------------------------------------------------------------
@@ -315,7 +315,6 @@ private:
     rclcpp::Time                               deadline;
     };
     std::optional<PendingMode> pending_mode_;
-
 
     int32_t mapModeStringToNumber(const std::string & mode) const;
 };

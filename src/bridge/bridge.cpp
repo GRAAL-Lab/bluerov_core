@@ -1,4 +1,5 @@
 #include "bluerov-bridge/bluerov_bridge.hpp"
+#include "auv_core_helper/helper_lib.hpp"
 
 // C / C++ Includes
 #include <chrono>
@@ -19,9 +20,25 @@ const rclcpp::Duration BlueROVBridge::kSrvTimeout =
  * Communication is via MAVLink over UDP, using the standard ArduSub protocol.
  */
 BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_bridge", options){
-  RCLCPP_INFO(this->get_logger(), "Starting BlueROVBridge node (UDP port 14551)...");
+  // Declare and get config_name parameter
+  this->declare_parameter<std::string>("config_name", "bridge");
+  std::string configNameParam;
+  this->get_parameter("config_name", configNameParam);
 
-  // Initialize the MAVLink UDP connection on local port=14551
+  std::string remote_addr;
+  int system_id, component_id, port;
+
+  LoadBridgeParamsFromConf( configNameParam , &remote_addr , &system_id, &component_id , &port );
+
+  system_id_ = static_cast<uint8_t>(system_id);
+  component_id_ = static_cast<uint8_t>(component_id);
+  port_ = port;
+  remote_addr_str_ = remote_addr;
+
+  RCLCPP_INFO(this->get_logger(), "Starting BlueROVBridge node (UDP port %d, remote_addr: %s, sysid: %d, compid: %d)",
+    port_, remote_addr_str_.c_str(), system_id_, component_id_);
+
+  // Initialize the MAVLink UDP connection on local port
   initMavlinkConnection();
 
   // Setup ROS pubs/subs
@@ -89,29 +106,25 @@ void BlueROVBridge::initMavlinkConnection(){
   std::memset(&local_addr, 0, sizeof(local_addr));
   local_addr.sin_family      = AF_INET;
   local_addr.sin_addr.s_addr = INADDR_ANY; // 0.0.0.0 (listen on all interfaces)
-  local_addr.sin_port        = htons(14551);  // Match BlueOS MAVLink endpoint
+  local_addr.sin_port        = htons(port_);  // Match BlueOS MAVLink endpoint
 
   // Bind the socket
   if (bind(sock_fd_, reinterpret_cast<struct sockaddr*>(&local_addr), sizeof(local_addr)) < 0) {
-    const std::string err_msg = "Socket bind failed on port 14551: " + std::string(strerror(errno));
+    const std::string err_msg = "Socket bind failed on port " + std::to_string(port_) + ": " + std::string(strerror(errno));
     RCLCPP_ERROR(this->get_logger(), "%s", err_msg.c_str());
     close(sock_fd_);
     throw std::runtime_error(err_msg);
   }
 
   RCLCPP_INFO(this->get_logger(),
-      "Bound to 0.0.0.0:14551, waiting for ArduSub telemetry (will initially send to 127.0.0.1:14551)");
+      "Bound to %s:%d ", remote_addr_str_.c_str(), port_);
 
   // Initialize remote address (will be updated when first heartbeat is received)
   std::memset(&remote_addr_, 0, sizeof(remote_addr_));
   remote_addr_.sin_family = AF_INET;
-  remote_addr_.sin_addr.s_addr = inet_addr("127.0.0.1");  // Default for simulation
-  remote_addr_.sin_port = htons(14551); // Send commands to ArduPilot on 14551
+  remote_addr_.sin_addr.s_addr = inet_addr(remote_addr_str_.c_str());  // Default for simulation
+  remote_addr_.sin_port = htons(port_); // Send commands to ArduPilot on port_
 
-  // Initialize ArduPilot-related fields
-  target_system_   = 0;
-  target_component_= 0;
-  got_heartbeat_   = false;
 }
 
 void BlueROVBridge::receiveData(){
