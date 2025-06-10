@@ -3,7 +3,7 @@ uint8 tbm_id
 
 #  Fixed Environment data
 LatLong[2] pipeline_structures
-DtcArea buoys_area
+LatLong[4] buoys_area_points
 
 LatLong uav_wp          #tbm 1
 uint8 selected_pipeline_structure_id #tbm 1, 2, 3
