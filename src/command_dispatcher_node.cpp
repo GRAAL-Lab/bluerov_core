@@ -19,6 +19,11 @@ class CommandDispatcherNode : public rclcpp::Node
 public:
   
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr dispatch_sub_;
+  int tbm_id_{0};
+  int wp_LatLong[2]={0,0};
+  bool tbm_done = false;
+  bool lat_done = false;
+  bool long_done = false;
   
   CommandDispatcherNode()
   : Node("command_dispatcher")
@@ -48,7 +53,6 @@ public:
   }
 
 private:
-  int tbm_id_{0};
   std::shared_ptr<TaskBenchmarkSettings> conf_;
   rclcpp::Client<MissionCommand>::SharedPtr client_;
   rclcpp::Subscription<std_msgs::msg::Int32>::SharedPtr tbm_id_sub_;
@@ -58,24 +62,50 @@ private:
   void tbmIdCallback(const std_msgs::msg::Int32::SharedPtr msg)
   {
     tbm_id_ = msg->data;
-    RCLCPP_INFO(this->get_logger(), "Received new TBM ID: %d", tbm_id_);
- 
+    
+    if(tbm_id_){
+    	RCLCPP_INFO(this->get_logger(), "Received new TBM ID: %d", tbm_id_);
+    	tbm_done = true;
+    }
+    	
+    else
+    	RCLCPP_INFO(this->get_logger(), "Not valid tbm_id received");
+ 	
   }
 
   void latitudeCallback(const std_msgs::msg::Float64::SharedPtr msg)
   {
-    if (auto insp = std::dynamic_pointer_cast<Inspection>(conf_)) {
+    /*if (auto insp = std::dynamic_pointer_cast<Inspection>(conf_)) {
       insp->uavWaypoint.latitude = msg->data;
       RCLCPP_INFO(this->get_logger(), "[/latitude] %f", insp->uavWaypoint.latitude);
+    }*/
+    wp_LatLong[0] = msg->data;
+    
+    if(wp_LatLong[0]){
+    	RCLCPP_INFO(this->get_logger(), "[/latitude] %f", wp_LatLong[0]);
+    	lat_done = true;
     }
+    	
+    else
+    	RCLCPP_INFO(this->get_logger(), "Not valid latitude received");
   }
 
   void longitudeCallback(const std_msgs::msg::Float64::SharedPtr msg)
   {
-    if (auto insp = std::dynamic_pointer_cast<Inspection>(conf_)) {
+    /*if (auto insp = std::dynamic_pointer_cast<Inspection>(conf_)) {
       insp->uavWaypoint.longitude = msg->data;
       RCLCPP_INFO(this->get_logger(), "[/longitude] %f", insp->uavWaypoint.longitude);
+    }*/
+    
+    wp_LatLong[1] = msg->data;
+    
+    if(wp_LatLong[1]){
+    	RCLCPP_INFO(this->get_logger(), "[/longitude] %f", wp_LatLong[1]);
+    	long_done = true;
     }
+    	
+    else
+    	RCLCPP_INFO(this->get_logger(), "Not valid longitude received");
   }
   
   void dispatchCallback(const std_msgs::msg::Empty::SharedPtr)
@@ -85,7 +115,8 @@ private:
   if (!LoadConfiguration(conf_)) {
       RCLCPP_ERROR(this->get_logger(), "Failed to load initial configuration");
   }
-  if(conf_){
+  
+  if(conf_ && tbm_done && lat_done && long_done){
   	auto request = std::make_shared<MissionCommand::Request>();
         BuildMissionRequest(request);
 
@@ -108,6 +139,9 @@ private:
 	      }
 	    }
 	  );
+	tbm_done = false;
+	//lat_done = false;
+	//long_done = false;
   }
 }
 
@@ -162,15 +196,15 @@ private:
       }
     }
     // Defaults
-    request->uav_wp.latitude    = 0.0;
-    request->uav_wp.longitude   = 0.0;
+    //request->uav_wp.latitude    = 0.0;
+    //request->uav_wp.longitude   = 0.0;
     request->n_buoys            = 0;
     request->n_damage_markers   = 0;
     request->pipes.clear();
     // TBM-specific
     if (auto insp = std::dynamic_pointer_cast<Inspection>(conf_)) {
-      request->uav_wp.latitude  = insp->uavWaypoint.latitude;
-      request->uav_wp.longitude = insp->uavWaypoint.longitude;
+      request->uav_wp.latitude  = wp_LatLong[0];
+      request->uav_wp.longitude = wp_LatLong[1];
       request->n_buoys          = insp->numberOfBuoys;
       for (const auto &p : insp->pipelinePipes) {
         auv_core_helper::msg::PipelinePipe pipe_msg;
