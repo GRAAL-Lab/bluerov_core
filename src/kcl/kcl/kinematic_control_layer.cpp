@@ -311,7 +311,7 @@ void KCL::ExecuteFSM() {
 
 
     // Publish the planned path
-    pathPublisher_->publish(ctrlData_->plannedPath);
+    // pathPublisher_->publish(ctrlData_->plannedPath);
 
 
     //do clinet call if desired != actual

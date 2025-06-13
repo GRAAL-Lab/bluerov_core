@@ -102,25 +102,25 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
 
     // UNCOMMENT THIS BLOCK TO VEIW THE PATH IN RVIZ
 
-    // auto sampledPointsSharedPtr = path->Sampling(1500);
-    // if (!sampledPointsSharedPtr || sampledPointsSharedPtr->empty()) {
-    //     RCLCPP_ERROR(rclcpp::get_logger("PathFollowingState"), "Failed to sample points from SISL path.");
-    //     return fsm::fail;
-    // }
+    auto sampledPointsSharedPtr = path->Sampling(1500);
+    if (!sampledPointsSharedPtr || sampledPointsSharedPtr->empty()) {
+        RCLCPP_ERROR(rclcpp::get_logger("PathFollowingState"), "Failed to sample points from SISL path.");
+        return fsm::fail;
+    }
 
-    // nav_msgs::msg::Path nav_path;
-    // nav_path.header.frame_id = "map";
-    // nav_path.header.stamp = rclcpp::Clock().now();
+    nav_msgs::msg::Path nav_path;
+    nav_path.header.frame_id = "map";
+    nav_path.header.stamp = rclcpp::Clock().now();
 
-    // for (const auto& point : *sampledPointsSharedPtr) {
-    //     geometry_msgs::msg::PoseStamped pose_stamped;
-    //     pose_stamped.pose.position.x = point.x();
-    //     pose_stamped.pose.position.y = point.y();
-    //     pose_stamped.pose.position.z = point.z();
-    //     pose_stamped.pose.orientation.w = 1.0;
-    //     nav_path.poses.push_back(pose_stamped);
-    // }
-    // ctrlData->plannedPath = nav_path;
+    for (const auto& point : *sampledPointsSharedPtr) {
+        geometry_msgs::msg::PoseStamped pose_stamped;
+        pose_stamped.pose.position.x = point.x();
+        pose_stamped.pose.position.y = point.y();
+        pose_stamped.pose.position.z = point.z();
+        pose_stamped.pose.orientation.w = 1.0;
+        nav_path.poses.push_back(pose_stamped);
+    }
+    ctrlData->plannedPath = nav_path;
 
     // Initialize PID controllers
     ctb::PIDGains gainsX = {ctrlData->gainsX(0), ctrlData->gainsX(1), ctrlData->gainsX(2), ctrlData->gainsX(3), ctrlData->gainsX(4), ctrlData->gainsX(5)};
