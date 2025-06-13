@@ -148,6 +148,7 @@ private:
   }
   else
   	RCLCPP_ERROR(this->get_logger(), "tbm_id not selected");
+}
 
   bool LoadConfiguration(std::shared_ptr<TaskBenchmarkSettings>& conf)
   {
