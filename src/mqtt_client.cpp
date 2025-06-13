@@ -11,7 +11,7 @@ using namespace std::chrono_literals;
 
 using namespace ctljsn;
 
-const std::string ADDRESS = "tcp://localhost:1883";
+const std::string ADDRESS = "tcp://192.168.4.2:8888";
 const std::string CLIENT_ID = "ros2_client";
 const std::string USERNAME = "teamA";
 const std::string PASSWORD = "passwordA";
