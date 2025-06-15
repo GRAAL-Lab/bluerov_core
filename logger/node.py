@@ -1,5 +1,5 @@
 from rclpy.node import Node
-from auv_core_helper.msg import PoseStamped, MissionStatus, MissionCommandLog, DtcList
+from auv_core_helper.msg import PoseStamped, MissionStatus, DtcList
 from datetime import datetime, timezone
 from logger.utilities import STATE_NAME_MAP
 import os
@@ -28,12 +28,10 @@ class LoggerNode(Node):
         # subscribers
         self.pose_sub = self.create_subscription(PoseStamped, "/auv/global/pose_actual", self.pose_callback, 10)
         self.mission_sub = self.create_subscription(MissionStatus, "/auv/mission/status", self.mission_callback, 10)
-        self.mission_command_log_sub = self.create_subscription(MissionCommandLog, '/auv/mission_command_log', self.mission_command_log_callback, 10)
         self.perception_sub = self.create_subscription(DtcList,"/auv/perception/objects",self.perception_callback,10)
 
         self.kml_path_nav = os.path.join(self.mission_dir, f"vehicle_navigation_data_{file_timestamp}.kml")
         self.kml_path_mission = os.path.join(self.mission_dir, f"mission_status_data_{file_timestamp}.kml")
-        self.ctrl_station_log_path = os.path.join(self.mission_dir, f"ctrl_station_comm_{file_timestamp}.log")
         self.kml_path_objects = os.path.join(self.mission_dir, f"object_recognition_data_{file_timestamp}.kml")
         
         self.kml_nav = simplekml.Kml()
@@ -55,7 +53,6 @@ class LoggerNode(Node):
 
         self.get_logger().info(f"Logging navigation data to: {self.kml_path_nav}")
         self.get_logger().info(f"Logging mission status to: {self.kml_path_mission}")
-        self.get_logger().info(f"Logging control station communication to: {self.ctrl_station_log_path}")
         self.get_logger().info(f"Logging object recognition data to: {self.kml_path_objects}")
         
 
@@ -140,32 +137,6 @@ class LoggerNode(Node):
                 return str(field)
         # For complex objects you might want custom string formatting (add as needed)
         return str(field)
-
-    def mission_command_log_callback(self, msg: MissionCommandLog):
-        try:    
-            log_line = f"[{datetime.now(timezone.utc).isoformat()}] MissionCommand received:\n"
-            log_line += f"  tbm_id: {self.format_field(msg.tbm_id)}\n"
-            log_line += f"  pipeline_structures: {self.format_field(msg.pipeline_structures)}\n"
-            log_line += f"  buoys_area: {self.format_field(msg.buoys_area)}\n"
-            log_line += f"  uav_wp: {self.format_field(msg.uav_wp)}\n"
-            log_line += f"  selected_pipeline_structure_id: {self.format_field(msg.selected_pipeline_structure_id)}\n"
-            log_line += f"  n_damage_markers: {self.format_field(msg.n_damage_markers)}\n"
-            log_line += f"  n_buoys: {self.format_field(msg.n_buoys)}\n"
-            log_line += f"  buoys_action: {self.format_field(msg.buoys_action)}\n"
-            log_line += f"  pipes: {self.format_field(msg.pipes)}\n"
-            log_line += f"  damaged_pipe: {self.format_field(msg.damaged_pipe)}\n"
-            log_line += f"Response:\n"
-            log_line += f"  res: {self.format_field(msg.res)}\n"
-            log_line += f"  text: {self.format_field(msg.text)}\n"
-            log_line += "\n"
-
-            with open(self.ctrl_station_log_path, 'a') as f:
-                f.write(log_line)
-
-            self.get_logger().info(f"Logged mission command (tbm_id={msg.tbm_id})")
-
-        except Exception as e:
-            self.get_logger().error(f"Error logging mission command: {e}")
 
     def perception_callback(self, msg: DtcList):
         try:
