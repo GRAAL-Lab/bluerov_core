@@ -12,9 +12,10 @@
     rclcpp::NodeOptions options;
     auto node = std::make_shared<BlueROVBridge>(options);
 
-    // Spin the ROS 2 node
-    rclcpp::spin(node);
-
+    rclcpp::executors::MultiThreadedExecutor exe;
+    exe.add_node(node);
+    exe.spin();
+    
     // Shut down the ROS 2 system
     rclcpp::shutdown();
 

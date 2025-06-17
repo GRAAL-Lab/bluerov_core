@@ -10,8 +10,7 @@
 #include <thread>
 
 
-const rclcpp::Duration BlueROVBridge::kSrvTimeout =
-        rclcpp::Duration::from_seconds(3.0);
+const rclcpp::Duration BlueROVBridge::kSrvTimeout =rclcpp::Duration::from_seconds(3.0);
 
 /**
  * @file bluerov_bridge.cpp
@@ -25,18 +24,16 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   std::string configNameParam;
   this->get_parameter("config_name", configNameParam);
 
-  std::string remote_addr;
-  int system_id, component_id, port;
-
-  LoadBridgeParamsFromConf( configNameParam , &remote_addr , &system_id, &component_id , &port );
-
-  system_id_ = static_cast<uint8_t>(system_id);
-  component_id_ = static_cast<uint8_t>(component_id);
-  port_ = port;
-  remote_addr_str_ = remote_addr;
+  LoadBridgeParamsFromConf(
+      configNameParam,
+      &simulation_mode_,
+      &remote_addr_str_,
+      reinterpret_cast<int*>(&system_id_),
+      reinterpret_cast<int*>(&component_id_),
+      &port_);
 
   RCLCPP_INFO(this->get_logger(), "Starting BlueROVBridge node (UDP port %d, remote_addr: %s, sysid: %d, compid: %d)",
-    port_, remote_addr_str_.c_str(), system_id_, component_id_);
+              port_, remote_addr_str_.c_str(), system_id_, component_id_);
 
   // Initialize the MAVLink UDP connection on local port
   initMavlinkConnection();
@@ -59,8 +56,8 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   flightModeService_ = this->create_service<SetModeSrv>(auv_core_helper::topicnames::flight_mode_service,std::bind(&BlueROVBridge::flightModeServiceCallback,this, std::placeholders::_1, std::placeholders::_2));
 
   // Timers
-  data_timer_ = this->create_wall_timer(std::chrono::milliseconds(125), std::bind(&BlueROVBridge::receiveData, this)); // ~8Hz
-  mainTimer_ = this->create_wall_timer(std::chrono::milliseconds(250),std::bind(&BlueROVBridge::Execute, this)); // ~4Hz
+  data_timer_ = this->create_wall_timer(std::chrono::milliseconds(10), std::bind(&BlueROVBridge::receiveData, this)); // ~100Hz
+  mainTimer_ = this->create_wall_timer(std::chrono::milliseconds(33),std::bind(&BlueROVBridge::Execute, this)); // ~30Hz
 
   // Initialize the goal variables
   poseGoalGlobal.setZero();
@@ -80,9 +77,8 @@ BlueROVBridge::~BlueROVBridge(){
  * @brief Initialize MAVLink UDP connection
  * 
  * This method:
- * 1. Creates a UDP socket bound to port 14551 (standard ArduSub port)
- * 2. Sets up initial remote_addr_ to the simulation address (127.0.0.1)
- * 3. Will update remote_addr_ when the first heartbeat is received
+ * 1. Creates a UDP socket bound to port (standard ArduSub port)
+ * 2. Sets up initial remote_addr_ 
  * 
  * @throws std::runtime_error if socket creation or binding fails
  */
@@ -259,24 +255,6 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
 
   mavlink_msg_heartbeat_decode(&msg, &hb);
 
-  if (pending_arm_) {
-    bool armed_flag = hb.base_mode & MAV_MODE_FLAG_SAFETY_ARMED;
-    if (armed_flag == pending_arm_->want_arm) {
-      pending_arm_->resp->success = true;
-      pending_arm_->resp->message = armed_flag ? "Vehicle armed." : "Vehicle disarmed.";
-      armingService_->send_response(*pending_arm_->header, *pending_arm_->resp);
-      pending_arm_.reset();
-    }
-  }
-  if (pending_mode_) {
-    if (static_cast<int32_t>(hb.custom_mode) == pending_mode_->desired_custom) {
-      pending_mode_->resp->success = true;
-      pending_mode_->resp->message = "Flight mode engaged.";
-      flightModeService_->send_response(*pending_mode_->header, *pending_mode_->resp);
-      pending_mode_.reset();
-    }
-  }
-
   auto heartBeatMsg = std::make_unique<auv_core_helper::msg::HeartBeat>();
   heartBeatMsg->type = hb.type;
   heartBeatMsg->base_mode = hb.base_mode;
@@ -291,7 +269,9 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
     got_heartbeat_    = true;
 
     // Overwrite remote_addr_ with the sender's IP:port
-    remote_addr_ = sender_addr;
+    if (simulation_mode_){
+      remote_addr_ = sender_addr;
+    }
 
     char ip_str[INET_ADDRSTRLEN];
     inet_ntop(AF_INET, &(sender_addr.sin_addr), ip_str, sizeof(ip_str));
@@ -310,6 +290,43 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
     setMessageInterval(MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN, 8.0f);   // #32
     setMessageInterval(MAVLINK_MSG_ID_ESTIMATOR_STATUS, 8.0f);   // #278
   }
+}
+
+void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg)
+{
+  mavlink_command_ack_t ack;
+  mavlink_msg_command_ack_decode(&msg, &ack);
+
+  auto failed = (ack.result == MAV_RESULT_DENIED ||
+                 ack.result == MAV_RESULT_FAILED ||
+                 ack.result == MAV_RESULT_TEMPORARILY_REJECTED);
+
+  if (pending_arm_) {
+    bool armed_flag = hb.base_mode & MAV_MODE_FLAG_SAFETY_ARMED;
+    if (armed_flag == pending_arm_->want_arm) {
+      pending_arm_->resp->success = true;
+      pending_arm_->resp->message = armed_flag ? "Vehicle armed." : "Vehicle disarmed.";
+      armingService_->send_response(*pending_arm_->header, *pending_arm_->resp);
+      pending_arm_.reset();
+    }
+  } else if (pending_arm_ && ack.command == MAV_CMD_COMPONENT_ARM_DISARM && failed) {
+    pending_arm_->resp->success = false;
+    pending_arm_->resp->message = "Autopilot rejected arming/disarming.";
+    armingService_->send_response(*pending_arm_->header, *pending_arm_->resp);
+    pending_arm_.reset();
+  }
+
+  if (pending_mode_ && ack.command == MAV_CMD_DO_SET_MODE && ack.result == MAV_RESULT_ACCEPTED) {
+      pending_mode_->resp->success = true;
+      pending_mode_->resp->message = "Flight mode engaged.";
+      flightModeService_->send_response(*pending_mode_->header, *pending_mode_->resp);
+      pending_mode_.reset();
+  } else  if (pending_mode_ && ack.command == MAV_CMD_DO_SET_MODE && failed) {
+    pending_mode_->resp->success = false;
+    pending_mode_->resp->message = "Autopilot rejected flight-mode change.";
+    flightModeService_->send_response(*pending_mode_->header, *pending_mode_->resp);
+    pending_mode_.reset();
+  } 
 }
 
 void BlueROVBridge::handleGlobalOrigin(const mavlink_message_t& msg){
@@ -362,30 +379,6 @@ void BlueROVBridge::handleBatteryStatus(const mavlink_message_t& msg){
    batteryStatusPublisher_->publish(*battery_status_);
  }
 
-void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg)
-{
-  mavlink_command_ack_t ack;
-  mavlink_msg_command_ack_decode(&msg, &ack);
-
-  auto failed = (ack.result == MAV_RESULT_DENIED ||
-                 ack.result == MAV_RESULT_FAILED ||
-                 ack.result == MAV_RESULT_TEMPORARILY_REJECTED);
-
-  if (pending_arm_ && ack.command == MAV_CMD_COMPONENT_ARM_DISARM && failed) {
-    pending_arm_->resp->success = false;
-    pending_arm_->resp->message = "Autopilot rejected arming/disarming.";
-    armingService_->send_response(*pending_arm_->header, *pending_arm_->resp);
-    pending_arm_.reset();
-  }
-
-  if (pending_mode_ && ack.command == MAV_CMD_DO_SET_MODE && failed) {
-    pending_mode_->resp->success = false;
-    pending_mode_->resp->message = "Autopilot rejected flight-mode change.";
-    flightModeService_->send_response(*pending_mode_->header, *pending_mode_->resp);
-    pending_mode_.reset();
-  }
-}
-
 void BlueROVBridge::handleGlobalPositionInt(const mavlink_message_t& msg){
   mavlink_global_position_int_t pos_int;
   mavlink_msg_global_position_int_decode(&msg, &pos_int);
@@ -414,8 +407,6 @@ void BlueROVBridge::handleAttitude(const mavlink_message_t& msg){
   global_velocity_msg->angular.z = attitude.yawspeed;           //Yaw rate in rad/s
   
 }
-
-
 
 void BlueROVBridge::armingServiceCallback(
     const std::shared_ptr<rmw_request_id_t> header,
@@ -587,12 +578,26 @@ void BlueROVBridge::globalVelocityDesiredCallback(const geometry_msgs::msg::Twis
 }
 
 void BlueROVBridge::Execute(){
+
+  /* TIMEOUT ARM */
+  if (pending_arm_ && this->now() > pending_arm_->deadline) {
+          armingService_->send_response(*pending_arm_->header, *pending_arm_->resp);
+          RCLCPP_WARN(get_logger(), "Arming/disarming request timed out.");
+          pending_arm_.reset();
+  }
+
+  /* TIMEOUT MODE */
+  if (pending_mode_ && this->now() > pending_mode_->deadline) {
+          flightModeService_->send_response(*pending_mode_->header, *pending_mode_->resp);
+          RCLCPP_WARN(get_logger(), "Flight-mode change timed out.");
+          pending_mode_.reset();
+  } 
+
   if (global_pose_msg && global_velocity_msg && got_heartbeat_) {
       globalPoseActualPublisher_->publish(*global_pose_msg);
       globalVelocityActualPublisher_->publish(*global_velocity_msg);
 
-      if (poseGoalGlobalChanged || velGoalGlobalChanged){
-        // If the pose or velocity goal has changed, send the new goal to the autopilot
+      if (poseGoalGlobalChanged || velGoalGlobalChanged){        // If the pose or velocity goal has changed, send the new goal to the autopilot
         if(ctrlMode == auv_core_helper::BrigdeMode::PoseCtrl){
           position_target_global_.type_mask =
                 POSITION_TARGET_TYPEMASK_VX_IGNORE  |
@@ -656,20 +661,6 @@ void BlueROVBridge::Execute(){
         poseGoalGlobalChanged = false; // Reset the flag
         velGoalGlobalLast = velocityGoalGlobal;
         velGoalGlobalChanged = false; // Reset the flag
-
-        /* TIMEOUT ARM */
-        if (pending_arm_ && this->now() > pending_arm_->deadline) {
-          armingService_->send_response(*pending_arm_->header, *pending_arm_->resp);
-          RCLCPP_WARN(get_logger(), "Arming/disarming request timed out.");
-          pending_arm_.reset();
-        }
-
-        /* TIMEOUT MODE */
-        if (pending_mode_ && this->now() > pending_mode_->deadline) {
-          flightModeService_->send_response(*pending_mode_->header, *pending_mode_->resp);
-          RCLCPP_WARN(get_logger(), "Flight-mode change timed out.");
-          pending_mode_.reset();
-        }
       }
     }
     else {

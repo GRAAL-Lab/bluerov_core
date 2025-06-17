@@ -107,6 +107,8 @@ private:
     //--------------------------------------------------------------------------
     //Declarations
     //--------------------------------------------------------------------------
+    bool simulation_mode_;
+    
     mavlink_heartbeat_t hb;
     mavlink_command_ack_t ack;
     mavlink_set_position_target_global_int_t position_target_global_;
