@@ -149,7 +149,7 @@ void LoadParamsFromConf(const std::string& config_name, Eigen::VectorXd* thruste
     }
 }
 
-void LoadBridgeParamsFromConf(const std::string& config_name, std::string* remote_addr, int* system_id, int* component_id, int* port)
+void LoadBridgeParamsFromConf(const std::string& config_name, bool* simulation_mode, std::string* remote_addr, int* system_id, int* component_id, int* port)
  {
     libconfig::Config cfg;
     try {
@@ -164,6 +164,7 @@ void LoadBridgeParamsFromConf(const std::string& config_name, std::string* remot
         cfg.readFile(conf_file_path.c_str());
         const libconfig::Setting& bridge = cfg.lookup(config_name);
 
+        if(simulation_mode)   *simulation_mode  = bridge["simulation_mode"];
         if (remote_addr)      *remote_addr      = (std::string)bridge["remote_addr"];
         if (system_id)        *system_id        = bridge["system_id"];
         if (component_id)     *component_id     = bridge["component_id"];

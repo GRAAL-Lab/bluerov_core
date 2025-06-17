@@ -24,6 +24,6 @@ void PublishEigenVelocity(const rclcpp::Publisher<geometry_msgs::msg::Twist>::Sh
 void PublishEigenAcceleration(const rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr& publisher, const Eigen::Matrix<double, 6, 1>& acceleration);
 Eigen::Vector3d ConvertAngularVelocitiesToEulerRates(double rollActual, double pitchActual, const Eigen::Vector3d& bOmegaDesired);
 
-void LoadBridgeParamsFromConf(const std::string& config_name, std::string* remote_addr, int* system_id, int* component_id, int* port);
+void LoadBridgeParamsFromConf(const std::string& config_name, bool* simulation_mode, std::string* remote_addr, int* system_id, int* component_id, int* port);
 
 #endif // HELPER_LIB_HPP
