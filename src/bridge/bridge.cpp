@@ -251,20 +251,20 @@ const char* BlueROVBridge::get_message_name(uint16_t message_id) {
   switch (message_id) {
     case MAVLINK_MSG_ID_HEARTBEAT:
       return "HEARTBEAT";
-    case MAVLINK_MSG_ID_SYS_STATUS:
-      return "SYS_STATUS";
     case MAVLINK_MSG_ID_GLOBAL_POSITION_INT:
       return "GLOBAL_POSITION_INT";
     case MAVLINK_MSG_ID_ATTITUDE:
       return "ATTITUDE";
     case MAVLINK_MSG_ID_BATTERY_STATUS:
       return "BATTERY_STATUS";
-    case MAVLINK_MSG_ID_COMMAND_LONG:
-      return "COMMAND_LONG";
-    case MAVLINK_MSG_ID_SET_GPS_GLOBAL_ORIGIN:
-      return "SET_GPS_GLOBAL_ORIGIN";
-    case MAVLINK_MSG_ID_SET_POSITION_TARGET_GLOBAL_INT:
-      return "SET_POSITION_TARGET_GLOBAL_INT";
+    case MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN:
+      return "GPS_GLOBAL_ORIGIN";
+    case MAVLINK_MSG_ID_DISTANCE_SENSOR:
+      return "DISTANCE_SENSOR";
+    case MAVLINK_MSG_ID_COMMAND_ACK:
+      return "COMMAND_ACK";  
+    case MAVLINK_MSG_ID_ESTIMATOR_STATUS:  
+      return "ESTIMATOR_STATUS";  
     default:
       return "Unknown";
   }
