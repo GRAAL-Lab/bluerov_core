@@ -27,13 +27,13 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   LoadBridgeParamsFromConf(
       configNameParam,
       &simulation_mode_,
-      &remote_addr_,
+      &remote_addr_str_,
       reinterpret_cast<int*>(&system_id_),
       reinterpret_cast<int*>(&component_id_),
       &port_);
 
   RCLCPP_INFO(this->get_logger(), "Starting BlueROVBridge node (UDP port %d, remote_addr: %s, sysid: %d, compid: %d)",
-              port_, remote_addr_.c_str(), system_id_, component_id_);
+              port_, remote_addr_str_.c_str(), system_id_, component_id_);
 
   // Initialize the MAVLink UDP connection on local port
   initMavlinkConnection();
@@ -113,12 +113,12 @@ void BlueROVBridge::initMavlinkConnection(){
   }
 
   RCLCPP_INFO(this->get_logger(),
-      "Bound to %s:%d ", remote_addr_.c_str(), port_);
+      "Bound to %s:%d ", remote_addr_str_.c_str(), port_);
 
   // Initialize remote address (will be updated when first heartbeat is received)
   std::memset(&remote_addr_, 0, sizeof(remote_addr_));
   remote_addr_.sin_family = AF_INET;
-  remote_addr_.sin_addr.s_addr = inet_addr(remote_addr_.c_str()); 
+  remote_addr_.sin_addr.s_addr = inet_addr(remote_addr_str_.c_str()); 
   remote_addr_.sin_port = htons(port_); 
 
 }
@@ -241,10 +241,33 @@ void BlueROVBridge::setMessageInterval(uint16_t message_id, float frequency_hz){
 
   sendMavlinkMessage(msg);
   
-  const char* message_name = mavlink_get_message_info_by_id(message_id)->name;
+  const char* message_name = get_message_name(message_id);
   RCLCPP_INFO(this->get_logger(),
       "Requested message #%d '%s' at %.1f Hz (%.0f us).",
       message_id, message_name, frequency_hz, interval_us);
+}
+
+const char* BlueROVBridge::get_message_name(uint16_t message_id) {
+  switch (message_id) {
+    case MAVLINK_MSG_ID_HEARTBEAT:
+      return "HEARTBEAT";
+    case MAVLINK_MSG_ID_SYS_STATUS:
+      return "SYS_STATUS";
+    case MAVLINK_MSG_ID_GLOBAL_POSITION_INT:
+      return "GLOBAL_POSITION_INT";
+    case MAVLINK_MSG_ID_ATTITUDE:
+      return "ATTITUDE";
+    case MAVLINK_MSG_ID_BATTERY_STATUS:
+      return "BATTERY_STATUS";
+    case MAVLINK_MSG_ID_COMMAND_LONG:
+      return "COMMAND_LONG";
+    case MAVLINK_MSG_ID_SET_GPS_GLOBAL_ORIGIN:
+      return "SET_GPS_GLOBAL_ORIGIN";
+    case MAVLINK_MSG_ID_SET_POSITION_TARGET_GLOBAL_INT:
+      return "SET_POSITION_TARGET_GLOBAL_INT";
+    default:
+      return "Unknown";
+  }
 }
 
 void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr_in& sender_addr){

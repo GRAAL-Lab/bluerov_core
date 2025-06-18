@@ -286,7 +286,15 @@ private:
      * @brief Send MAV_CMD_CONDITION_YAW command to set vehicle heading
      * 
      */
-    void sendConditionYaw(const mavlink_command_long_t& condition_yaw_);                                
+    void sendConditionYaw(const mavlink_command_long_t& condition_yaw_);
+
+  /**
+   * @brief Get the string name of a MAVLink message from its ID.
+   * 
+   * @param message_id The ID of the MAVLink message.
+   * @return const char* The name of the message, or "Unknown".
+   */
+  const char* get_message_name(uint16_t message_id);                                
 
     /**
      * @brief Main loop for processing MAVLink messages and ROS callbacks
