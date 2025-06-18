@@ -27,13 +27,13 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   LoadBridgeParamsFromConf(
       configNameParam,
       &simulation_mode_,
-      &remote_addr_str_,
+      &remote_addr_,
       reinterpret_cast<int*>(&system_id_),
       reinterpret_cast<int*>(&component_id_),
       &port_);
 
   RCLCPP_INFO(this->get_logger(), "Starting BlueROVBridge node (UDP port %d, remote_addr: %s, sysid: %d, compid: %d)",
-              port_, remote_addr_str_.c_str(), system_id_, component_id_);
+              port_, remote_addr_.c_str(), system_id_, component_id_);
 
   // Initialize the MAVLink UDP connection on local port
   initMavlinkConnection();
@@ -113,13 +113,13 @@ void BlueROVBridge::initMavlinkConnection(){
   }
 
   RCLCPP_INFO(this->get_logger(),
-      "Bound to %s:%d ", remote_addr_str_.c_str(), port_);
+      "Bound to %s:%d ", remote_addr_.c_str(), port_);
 
   // Initialize remote address (will be updated when first heartbeat is received)
   std::memset(&remote_addr_, 0, sizeof(remote_addr_));
   remote_addr_.sin_family = AF_INET;
-  remote_addr_.sin_addr.s_addr = inet_addr(remote_addr_str_.c_str());  // Default for simulation
-  remote_addr_.sin_port = htons(port_); // Send commands to ArduPilot on port_
+  remote_addr_.sin_addr.s_addr = inet_addr(remote_addr_.c_str()); 
+  remote_addr_.sin_port = htons(port_); 
 
 }
 
@@ -240,18 +240,14 @@ void BlueROVBridge::setMessageInterval(uint16_t message_id, float frequency_hz){
   );
 
   sendMavlinkMessage(msg);
+  
+  const char* message_name = mavlink_get_message_info_by_id(message_id)->name;
   RCLCPP_INFO(this->get_logger(),
-      "Requested message #%d at %.1f Hz (%.0f us).",
-      message_id, frequency_hz, interval_us);
+      "Requested message #%d '%s' at %.1f Hz (%.0f us).",
+      message_id, message_name, frequency_hz, interval_us);
 }
 
 void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr_in& sender_addr){
-  // Ignore if it's our own GCS heartbeat
-  if (msg.sysid == system_id_ && msg.compid == component_id_) {
-    RCLCPP_INFO(this->get_logger(),
-       "Ignoring GCS heartbeat (sys=%d, comp=%d).", msg.sysid, msg.compid);
-    return;
-  }
 
   mavlink_msg_heartbeat_decode(&msg, &hb);
 
@@ -271,6 +267,9 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
     // Overwrite remote_addr_ with the sender's IP:port
     if (simulation_mode_){
       remote_addr_ = sender_addr;
+      RCLCPP_INFO(this->get_logger(),
+          "In simulation mode, overriding remote address with sender's IP:port %s:%d",
+          inet_ntoa(sender_addr.sin_addr), ntohs(sender_addr.sin_port));
     }
 
     char ip_str[INET_ADDRSTRLEN];
@@ -278,17 +277,18 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
     uint16_t sender_port = ntohs(sender_addr.sin_port);
 
     RCLCPP_INFO(this->get_logger(),
-        "Got AUTOPILOT heartbeat from sys=%d, comp=%d at %s:%d => storing remote_addr_",
+        "Got AUTOPILOT heartbeat from sys=%d, comp=%d at %s:%d ",
         target_system_, target_component_, ip_str, sender_port);
 
     // Configure data streams directly 
-    setMessageInterval(MAVLINK_MSG_ID_ATTITUDE, 8.0f);            // #30
-    setMessageInterval(MAVLINK_MSG_ID_GLOBAL_POSITION_INT, 8.0f); // #33
-    setMessageInterval(MAVLINK_MSG_ID_DISTANCE_SENSOR, 8.0f);     // #34
+    setMessageInterval(MAVLINK_MSG_ID_HEARTBEAT, 1.0f);          // #0
+    setMessageInterval(MAVLINK_MSG_ID_ATTITUDE,  10.0f);            // #30
+    setMessageInterval(MAVLINK_MSG_ID_GLOBAL_POSITION_INT, 10.0f); // #33
+    setMessageInterval(MAVLINK_MSG_ID_DISTANCE_SENSOR, 5.0f);     // #34
     setMessageInterval(MAVLINK_MSG_ID_COMMAND_ACK, 8.0f);         // #35
-    setMessageInterval(MAVLINK_MSG_ID_BATTERY_STATUS, 8.0f);      // #147
-    setMessageInterval(MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN, 8.0f);   // #32
-    setMessageInterval(MAVLINK_MSG_ID_ESTIMATOR_STATUS, 8.0f);   // #278
+    setMessageInterval(MAVLINK_MSG_ID_BATTERY_STATUS, 2.0f);      // #147
+    setMessageInterval(MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN, 1.0f);   // #32
+    setMessageInterval(MAVLINK_MSG_ID_ESTIMATOR_STATUS, 5.0f);   // #278
   }
 }
 
