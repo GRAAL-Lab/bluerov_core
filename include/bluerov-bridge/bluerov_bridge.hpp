@@ -84,8 +84,9 @@ private:
     //--------------------------------------------------------------------------
     // Timers
     //--------------------------------------------------------------------------
+    rclcpp::TimerBase::SharedPtr heartbeat_timer_;    // Timer for sending heartbeat
     rclcpp::TimerBase::SharedPtr data_timer_;         // Timer for MAVLink data reception
-    rclcpp::TimerBase::SharedPtr mainTimer_;         // Timer for main loop
+    rclcpp::TimerBase::SharedPtr exec_timer_;         // Timer for execution loop
 
     //--------------------------------------------------------------------------
     // MAVLink Socket / Connection
@@ -155,6 +156,11 @@ private:
      * @brief Send a MAVLink message to ArduSub
      */
     void sendMavlinkMessage(const mavlink_message_t& msg);
+
+    /**
+     * @brief Send a MAVLink heartbeat message to ArduSub
+     */
+    void sendHeartbeat();   
     
     /**
      * @brief Set the update interval for MAVLink messages

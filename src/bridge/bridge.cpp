@@ -56,8 +56,9 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   flightModeService_ = this->create_service<SetModeSrv>(auv_core_helper::topicnames::flight_mode_service,std::bind(&BlueROVBridge::flightModeServiceCallback,this, std::placeholders::_1, std::placeholders::_2));
 
   // Timers
+  heartbeat_timer_ = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&BlueROVBridge::sendHeartbeat, this)); // ~1Hz
   data_timer_ = this->create_wall_timer(std::chrono::milliseconds(10), std::bind(&BlueROVBridge::receiveData, this)); // ~100Hz
-  mainTimer_ = this->create_wall_timer(std::chrono::milliseconds(33),std::bind(&BlueROVBridge::Execute, this)); // ~30Hz
+  exec_timer_ = this->create_wall_timer(std::chrono::milliseconds(33),std::bind(&BlueROVBridge::Execute, this)); // ~30Hz
 
   // Initialize the goal variables
   poseGoalGlobal.setZero();
@@ -213,6 +214,21 @@ void BlueROVBridge::sendMavlinkMessage(const mavlink_message_t& msg){
     RCLCPP_ERROR(this->get_logger(),
         "Failed sending MAVLink message (errno=%d).", errno);
   }
+}
+
+void BlueROVBridge::sendHeartbeat() {
+  mavlink_message_t msg;
+  mavlink_msg_heartbeat_pack(
+      system_id_,
+      component_id_,
+      &msg,
+      MAV_TYPE_ONBOARD_CONTROLLER,
+      MAV_AUTOPILOT_INVALID,
+      MAV_MODE_FLAG_CUSTOM_MODE_ENABLED | MAV_MODE_FLAG_GUIDED_ENABLED,
+      0,
+      MAV_STATE_ACTIVE);
+
+  sendMavlinkMessage(msg);
 }
 
 void BlueROVBridge::setMessageInterval(uint16_t message_id, float frequency_hz){
