@@ -11,6 +11,7 @@
 
 
 const rclcpp::Duration BlueROVBridge::kSrvTimeout =rclcpp::Duration::from_seconds(3.0);
+const rclcpp::Duration BlueROVBridge::HeartbeatTimeout = rclcpp::Duration::from_seconds(3.0);
 
 /**
  * @file bluerov_bridge.cpp
@@ -56,7 +57,8 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   flightModeService_ = this->create_service<SetModeSrv>(auv_core_helper::topicnames::flight_mode_service,std::bind(&BlueROVBridge::flightModeServiceCallback,this, std::placeholders::_1, std::placeholders::_2));
 
   // Timers
-  heartbeat_timer_ = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&BlueROVBridge::sendHeartbeat, this)); // ~1Hz
+  system_heartbeat_timer_ = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&BlueROVBridge::systemHeartbeat, this)); // ~1Hz
+  autopilot_heartbeat_watchdog_timer_ = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&BlueROVBridge::autopilotHeartbeatWatchdog, this)); // ~1Hz
   data_timer_ = this->create_wall_timer(std::chrono::milliseconds(10), std::bind(&BlueROVBridge::receiveData, this)); // ~100Hz
   exec_timer_ = this->create_wall_timer(std::chrono::milliseconds(33),std::bind(&BlueROVBridge::Execute, this)); // ~30Hz
 
@@ -216,7 +218,8 @@ void BlueROVBridge::sendMavlinkMessage(const mavlink_message_t& msg){
   }
 }
 
-void BlueROVBridge::sendHeartbeat() {
+void BlueROVBridge::systemHeartbeat() {
+
   mavlink_message_t msg;
   mavlink_msg_heartbeat_pack(
       system_id_,
@@ -293,6 +296,8 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
   // If the message is not from an autopilot, ignore it
   if (hb.type == MAV_AUTOPILOT_INVALID) return;
 
+  uint64_t now = this->now().nanoseconds();
+
   auto heartBeatMsg = std::make_unique<auv_core_helper::msg::HeartBeat>();
   heartBeatMsg->type = hb.type;
   heartBeatMsg->base_mode = hb.base_mode;
@@ -306,7 +311,7 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
     target_component_ = msg.compid;
     got_heartbeat_    = true;
 
-    // Overwrite remote_addr_ with the sender's IP:port
+    // Overwrite remote_addr_ with the sender's IP:port for simulation mode
     if (simulation_mode_){
       remote_addr_ = sender_addr;
       RCLCPP_INFO(this->get_logger(),
@@ -331,6 +336,24 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
     setMessageInterval(MAVLINK_MSG_ID_BATTERY_STATUS, 2.0f);      // #147
     setMessageInterval(MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN, 1.0f);   // #32
     setMessageInterval(MAVLINK_MSG_ID_ESTIMATOR_STATUS, 5.0f);   // #278
+  } 
+  else if (msg.sysid == target_system_ && msg.compid == target_component_) {
+    last_heartbeat_time_ = now;
+  }
+}
+
+void BlueROVBridge::autopilotHeartbeatWatchdog() {
+  
+  if (!got_heartbeat_) return;
+
+  rclcpp::Time now = this->now();
+  rclcpp::Duration elapsed = now - rclcpp::Time(last_heartbeat_time_);
+
+  if (elapsed > HeartbeatTimeout) {
+    RCLCPP_WARN(get_logger(), "Heartbeat timeout—autopilot disconnected/rebooted");
+    got_heartbeat_ = false;
+    target_system_ = 0;
+    target_component_ = 0;
   }
 }
 

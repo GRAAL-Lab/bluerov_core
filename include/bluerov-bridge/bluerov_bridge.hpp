@@ -74,6 +74,7 @@ private:
 
     /* How long we're willing to wait before we fail the request */
     static const rclcpp::Duration kSrvTimeout;      ///< watchdog for deferred services
+    static const rclcpp::Duration HeartbeatTimeout; ///< watchdog for autopilot heartbeat
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr armingService_;
     rclcpp::Service<auv_core_helper::srv::SetFlightMode>::SharedPtr flightModeService_;
     rclcpp::Service<auv_core_helper::srv::SetGlobalOrigin>::SharedPtr setGlobalOriginService_;   
@@ -81,9 +82,11 @@ private:
     //--------------------------------------------------------------------------
     // Timers
     //--------------------------------------------------------------------------
-    rclcpp::TimerBase::SharedPtr heartbeat_timer_;    // Timer for sending heartbeat
+    rclcpp::TimerBase::SharedPtr system_heartbeat_timer_; 
+    rclcpp::TimerBase::SharedPtr autopilot_heartbeat_watchdog_timer_;
     rclcpp::TimerBase::SharedPtr data_timer_;         // Timer for MAVLink data reception
     rclcpp::TimerBase::SharedPtr exec_timer_;         // Timer for execution loop
+
 
     //--------------------------------------------------------------------------
     // MAVLink Socket / Connection
@@ -101,6 +104,8 @@ private:
     uint8_t target_system_{0};          // Target system ID (from heartbeat)
     uint8_t target_component_{0};       // Target component ID (from heartbeat)
     bool got_heartbeat_{false};         // Flag indicating if heartbeat was received
+    uint64_t last_heartbeat_time_{0};   // Timestamp of last heartbeat
+
 
     //--------------------------------------------------------------------------
     //Declarations
@@ -157,7 +162,12 @@ private:
     /**
      * @brief Send a MAVLink heartbeat message to ArduSub
      */
-    void sendHeartbeat();   
+    void systemHeartbeat();  
+    
+    /**
+     * @brief Watchdog for autopilot heartbeat
+     */
+     void autopilotHeartbeatWatchdog();
     
     /**
      * @brief Set the update interval for MAVLink messages
