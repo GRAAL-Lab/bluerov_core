@@ -87,7 +87,6 @@ private:
     rclcpp::TimerBase::SharedPtr data_timer_;         // Timer for MAVLink data reception
     rclcpp::TimerBase::SharedPtr exec_timer_;         // Timer for execution loop
 
-
     //--------------------------------------------------------------------------
     // MAVLink Socket / Connection
     //--------------------------------------------------------------------------
@@ -104,7 +103,7 @@ private:
     uint8_t target_system_{0};          // Target system ID (from heartbeat)
     uint8_t target_component_{0};       // Target component ID (from heartbeat)
     bool got_heartbeat_{false};         // Flag indicating if heartbeat was received
-    uint64_t last_heartbeat_time_{0};   // Timestamp of last heartbeat
+    rclcpp::Time last_heartbeat_time_;   // Timestamp of last heartbeat
 
 
     //--------------------------------------------------------------------------
