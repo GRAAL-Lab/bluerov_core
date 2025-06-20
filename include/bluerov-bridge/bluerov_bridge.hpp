@@ -70,17 +70,14 @@ private:
     
     rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseDesiredSubscription_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr globalVelocityDesiredSubscription_;
-
-    rclcpp::Service<auv_core_helper::srv::SetGlobalOrigin>::SharedPtr setGlobalOriginService_;
-
+    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr desiredCtrlModeSubscription_;
 
     /* How long we're willing to wait before we fail the request */
     static const rclcpp::Duration kSrvTimeout;      ///< watchdog for deferred services
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr armingService_;
     rclcpp::Service<auv_core_helper::srv::SetFlightMode>::SharedPtr flightModeService_;
+    rclcpp::Service<auv_core_helper::srv::SetGlobalOrigin>::SharedPtr setGlobalOriginService_;   
 
-    rclcpp::Subscription<std_msgs::msg::String>::SharedPtr desiredCtrlModeSubscription_;
-    
     //--------------------------------------------------------------------------
     // Timers
     //--------------------------------------------------------------------------
@@ -166,6 +163,14 @@ private:
      * @brief Set the update interval for MAVLink messages
      */
     void setMessageInterval(uint16_t message_id, float frequency_hz);
+
+    /**
+   * @brief Get the string name of a MAVLink message from its ID.
+   * 
+   * @param message_id The ID of the MAVLink message.
+   * @return const char* The name of the message, or "Unknown".
+   */
+    const char* get_message_name(uint16_t message_id);    
     
     /**
      * @brief Handle HEARTBEAT message
@@ -292,15 +297,7 @@ private:
      * @brief Send MAV_CMD_CONDITION_YAW command to set vehicle heading
      * 
      */
-    void sendConditionYaw(const mavlink_command_long_t& condition_yaw_);
-
-  /**
-   * @brief Get the string name of a MAVLink message from its ID.
-   * 
-   * @param message_id The ID of the MAVLink message.
-   * @return const char* The name of the message, or "Unknown".
-   */
-  const char* get_message_name(uint16_t message_id);                                
+    void sendConditionYaw(const mavlink_command_long_t& condition_yaw_);                            
 
     /**
      * @brief Main loop for processing MAVLink messages and ROS callbacks

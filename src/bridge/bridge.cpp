@@ -290,6 +290,9 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
 
   mavlink_msg_heartbeat_decode(&msg, &hb);
 
+  // If the message is not from an autopilot, ignore it
+  if (hb.type == MAV_AUTOPILOT_INVALID) return;
+
   auto heartBeatMsg = std::make_unique<auv_core_helper::msg::HeartBeat>();
   heartBeatMsg->type = hb.type;
   heartBeatMsg->base_mode = hb.base_mode;
@@ -298,7 +301,7 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
 
   heartBeatPublisher_->publish(*heartBeatMsg);
 
-  if (!got_heartbeat_) {
+  if (!got_heartbeat_ && (hb.type == MAV_TYPE_SUBMARINE) ) {
     target_system_    = msg.sysid;
     target_component_ = msg.compid;
     got_heartbeat_    = true;
@@ -316,7 +319,7 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
     uint16_t sender_port = ntohs(sender_addr.sin_port);
 
     RCLCPP_INFO(this->get_logger(),
-        "Got AUTOPILOT heartbeat from sys=%d, comp=%d at %s:%d ",
+        "Got AUTOPILOT heartbeat from target sys=%d, target comp=%d at %s:%d ",
         target_system_, target_component_, ip_str, sender_port);
 
     // Configure data streams directly 
