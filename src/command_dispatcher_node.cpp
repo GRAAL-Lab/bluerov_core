@@ -25,7 +25,7 @@ public:
   
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr dispatch_sub_;
   int tbm_id_{0};
-  double wp_LatLong[2]={0.0,0.0};
+  double wpLatLong[2]={0.0,0.0};
   bool tbm_done = false;
   bool lat_done = false;
   bool long_done = false;
@@ -38,22 +38,22 @@ public:
   {
     tbm_id_sub_ = this->create_subscription<std_msgs::msg::Int32>(
       "/tbm_id", 10,
-      std::bind(&CommandDispatcherNode::tbmIdCallback, this, std::placeholders::_1)
+      std::bind(&CommandDispatcherNode::TbmIdCallback, this, std::placeholders::_1)
     );
 
     latitude_sub_ = this->create_subscription<std_msgs::msg::Float64>(
       "/latitude", 10,
-      std::bind(&CommandDispatcherNode::latitudeCallback, this, std::placeholders::_1)
+      std::bind(&CommandDispatcherNode::LatitudeCallback, this, std::placeholders::_1)
     );
 
     longitude_sub_ = this->create_subscription<std_msgs::msg::Float64>(
       "/longitude", 10,
-      std::bind(&CommandDispatcherNode::longitudeCallback, this, std::placeholders::_1)
+      std::bind(&CommandDispatcherNode::LongitudeCallback, this, std::placeholders::_1)
     );
     
     dispatch_sub_ = this->create_subscription<std_msgs::msg::Empty>(
     "/dispatch_request", 10,
-    std::bind(&CommandDispatcherNode::dispatchCallback, this, std::placeholders::_1)
+    std::bind(&CommandDispatcherNode::DispatchCallback, this, std::placeholders::_1)
    );
 
     client_ = this->create_client<MissionCommand>("/auv/service/mission_cmd");
@@ -79,7 +79,7 @@ private:
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr latitude_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr longitude_sub_;
 
-  void tbmIdCallback(const std_msgs::msg::Int32::SharedPtr msg)
+  void TbmIdCallback(const std_msgs::msg::Int32::SharedPtr msg)
   {
     tbm_id_ = msg->data;
     
@@ -93,16 +93,16 @@ private:
  	
   }
 
-  void latitudeCallback(const std_msgs::msg::Float64::SharedPtr msg)
+  void LatitudeCallback(const std_msgs::msg::Float64::SharedPtr msg)
   {
     /*if (auto insp = std::dynamic_pointer_cast<Inspection>(conf_)) {
       insp->uavWaypoint.latitude = msg->data;
       RCLCPP_INFO(this->get_logger(), "[/latitude] %f", insp->uavWaypoint.latitude);
     }*/
-    wp_LatLong[0] = msg->data;
+    wpLatLong[0] = msg->data;
     
-    if(wp_LatLong[0]){
-    	RCLCPP_INFO(this->get_logger(), "[/latitude] %f", wp_LatLong[0]);
+    if(wpLatLong[0]){
+    	RCLCPP_INFO(this->get_logger(), "[/latitude] %f", wpLatLong[0]);
     	lat_done = true;
     }
     	
@@ -110,17 +110,17 @@ private:
     	RCLCPP_INFO(this->get_logger(), "Not valid latitude received");
   }
 
-  void longitudeCallback(const std_msgs::msg::Float64::SharedPtr msg)
+  void LongitudeCallback(const std_msgs::msg::Float64::SharedPtr msg)
   {
     /*if (auto insp = std::dynamic_pointer_cast<Inspection>(conf_)) {
       insp->uavWaypoint.longitude = msg->data;
       RCLCPP_INFO(this->get_logger(), "[/longitude] %f", insp->uavWaypoint.longitude);
     }*/
     
-    wp_LatLong[1] = msg->data;
+    wpLatLong[1] = msg->data;
     
-    if(wp_LatLong[1]){
-    	RCLCPP_INFO(this->get_logger(), "[/longitude] %f", wp_LatLong[1]);
+    if(wpLatLong[1]){
+    	RCLCPP_INFO(this->get_logger(), "[/longitude] %f", wpLatLong[1]);
     	long_done = true;
     }
     	
@@ -128,7 +128,7 @@ private:
     	RCLCPP_INFO(this->get_logger(), "Not valid longitude received");
   }
   
-  void dispatchCallback(const std_msgs::msg::Empty::SharedPtr)
+  void DispatchCallback(const std_msgs::msg::Empty::SharedPtr)
 {
   RCLCPP_INFO(this->get_logger(), "Trigger ricevuto: invio MissionCommand");
   
@@ -242,8 +242,8 @@ private:
 	    request->pipes.clear();
 	    // TBM-specific
 	    if (auto insp = std::dynamic_pointer_cast<Inspection>(conf_)) {
-	      request->uav_wp.latitude  = wp_LatLong[0];
-	      request->uav_wp.longitude = wp_LatLong[1];
+	      request->uav_wp.latitude  = wpLatLong[0];
+	      request->uav_wp.longitude = wpLatLong[1];
 	      request->n_buoys          = insp->numberOfBuoys;
 	      for (const auto &p : insp->pipelinePipes) {
 		auv_core_helper::msg::PipelinePipe pipe_msg;
