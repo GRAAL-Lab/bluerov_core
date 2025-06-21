@@ -1,6 +1,11 @@
 // command_dispatcher_node.cpp
 #include <memory>
 #include <vector>
+#include <fstream>
+#include <sstream>
+#include <iomanip>
+#include <ctime>
+#include <mutex>
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/int32.hpp"
@@ -24,6 +29,9 @@ public:
   bool tbm_done = false;
   bool lat_done = false;
   bool long_done = false;
+
+  std::ofstream log_file_;
+  std::mutex log_mutex_;
   
   CommandDispatcherNode()
   : Node("command_dispatcher")
@@ -50,7 +58,19 @@ public:
 
     client_ = this->create_client<MissionCommand>("/auv/service/mission_cmd");
 
+    log_file_.open("robot_ctrlstation_communication.log", std::ios_base::app);
+    if (!log_file_.is_open()) {
+      RCLCPP_ERROR(this->get_logger(), "Failed to open log file.");
+    }
+
   }
+
+  ~CommandDispatcherNode() {
+    if (log_file_.is_open()) {
+      log_file_.close();
+    }
+  }
+
 
 private:
   std::shared_ptr<TaskBenchmarkSettings> conf_;
@@ -120,7 +140,12 @@ private:
   	if(conf_ && lat_done && long_done){
   		auto request = std::make_shared<MissionCommand::Request>();
 		BuildMissionRequest(request);
-		
+
+    std::ostringstream req_log;
+    req_log << "Sending MissionCommand Request: TBM ID: " << request->tbm_id
+            << ", UAV WP: (" << request->uav_wp.latitude << ", " << request->uav_wp.longitude << ")";
+    logToFile(req_log.str());
+
 
 		if (!client_->wait_for_service(std::chrono::seconds(5))) {
 		    RCLCPP_ERROR(this->get_logger(), "Service non disponibile");
@@ -136,6 +161,10 @@ private:
 				    "Service response: res=%s, text='%s'",
 				    future.get()->res ? "true" : "false",
 				    future.get()->text.c_str());
+             std::ostringstream resp_log;
+            resp_log << "Received MissionCommand Response: res=" << (future.get()->res ? "true" : "false")
+                    << ", text='" <<  future.get()->text.c_str() << "'";
+            logToFile(resp_log.str());
 		      } else {
 			RCLCPP_ERROR(this->get_logger(), "Service call failed");
 		      }
@@ -241,6 +270,13 @@ private:
         request->pipes.push_back(pipe_msg);
       }
     }
+  }
+
+  void logToFile(const std::string &message)
+  {
+    std::lock_guard<std::mutex> lock(log_mutex_);
+    auto now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
+    log_file_ << "[" << std::put_time(std::localtime(&now), "%F %T") << "] " << message << std::endl;
   }
 };
 
