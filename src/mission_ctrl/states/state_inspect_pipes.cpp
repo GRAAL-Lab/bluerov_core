@@ -93,20 +93,20 @@ namespace states {
             }
 
             ctb::LatLong currentGoal;
-            currentGoal.latitude = ctrlData->kclData.new_kcl_command.position.latitude;
-            currentGoal.longitude = ctrlData->kclData.new_kcl_command.position.longitude;
+            currentGoal.latitude = ctrlData->kclData.currentCmd.goal.position.latitude;
+            currentGoal.longitude = ctrlData->kclData.currentCmd.goal.position.longitude;
             ctb::DistanceAndAzimuthRad(currentGoal, pointOnPipe, distance, azimuthRad);
-            if (ctrlData->kclData.executingCommand && distance < 0.5) {
+            if (!ctrlData->kclData.currentCmd.completed && distance < 0.5) {
                 return fsm::ok;
             }
 
             // tell kcl to move to point on pipe and align to direction
             ctrlData->perceptionData.currentPipeDtc.pipe_direction;
-            ctrlData->kclData.newCommand = true;
-            ctrlData->kclData.new_kcl_command.desired_state = "WAYPOINT_NAVIGATION";
-            ctrlData->kclData.new_kcl_command.position.latitude = pointOnPipe.latitude;
-            ctrlData->kclData.new_kcl_command.position.longitude = pointOnPipe.longitude;
-            ctrlData->kclData.new_kcl_command.depth = taskData_->diveDepth;
+            ctrlData->kclData.currentCmd = mission::kclCmd();
+            ctrlData->kclData.currentCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+            ctrlData->kclData.currentCmd.goal.position.latitude = pointOnPipe.latitude;
+            ctrlData->kclData.currentCmd.goal.position.longitude = pointOnPipe.longitude;
+            ctrlData->kclData.currentCmd.goal.depth = taskData_->diveDepth;
 
         } else if (currentPhase == PipelinePipeInspectionPhase::MOVING_AWAY_FROM_PIPELINE_STRUCTURE) {
             // We are close to the structure, so we have to move away from it
@@ -134,7 +134,7 @@ namespace states {
                 auto& pipe = (currentPipeDtcCode == "A") ? pipeA : pipeB;
                 pipe.startPosition.latitude = ctrlData->perceptionData.currentPipeDtc.point_on_pipe.latitude;
                 pipe.startPosition.longitude = ctrlData->perceptionData.currentPipeDtc.point_on_pipe.longitude;
-                
+
                 pipe.numberOfLaps++;
                 currentPhase = PipelinePipeInspectionPhase::ADDITIONAL_INSPECTION_LAP;
                 // Maybe cleaner to ask the KCL to compute a path of n laps over the pipe

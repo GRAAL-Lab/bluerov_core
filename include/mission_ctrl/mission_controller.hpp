@@ -1,35 +1,36 @@
 
-#include <cmath>
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
+#include <cmath>
 
 #include "mission_ctrl/mission_data_structs.hpp"
 #include "mission_ctrl/states/state_base.hpp"
-#include "mission_ctrl/states/state_init.hpp"
-#include "mission_ctrl/states/state_latlong.hpp"
-#include "mission_ctrl/states/state_homing.hpp"
-#include "mission_ctrl/states/state_search_object.hpp"
 #include "mission_ctrl/states/state_cross_gate.hpp"
-#include "mission_ctrl/states/state_search_buoy_area.hpp"
+#include "mission_ctrl/states/state_homing.hpp"
+#include "mission_ctrl/states/state_init.hpp"
 #include "mission_ctrl/states/state_inspect_buoy.hpp"
 #include "mission_ctrl/states/state_inspect_pipes.hpp"
+#include "mission_ctrl/states/state_latlong.hpp"
+#include "mission_ctrl/states/state_search_buoy_area.hpp"
+#include "mission_ctrl/states/state_search_object.hpp"
 #include "mission_ctrl/states/state_update_localization.hpp"
 
-
-#include "auv_core_helper/topicnames.hpp"
+#include "auv_core_helper/msg/system_status.hpp"
 #include "auv_core_helper/action/set_kcl.hpp"
-#include "auv_core_helper/srv/mission_command.hpp"
-#include "auv_core_helper/msg/mission_status.hpp"
 #include "auv_core_helper/msg/dtc_list.hpp"
-#include "auv_core_helper/msg/pose_stamped.hpp"
+#include "auv_core_helper/msg/heart_beat.hpp"
 #include "auv_core_helper/msg/kcl_status.hpp"
+#include "auv_core_helper/msg/mission_status.hpp"
+#include "auv_core_helper/msg/pose_stamped.hpp"
+#include "auv_core_helper/srv/mission_command.hpp"
+#include "auv_core_helper/topicnames.hpp"
 
 namespace mission {
 
 class MissionController : public rclcpp::Node {
 
     double stateTimeout = 20.0; // seconds, temp
-    
+
     std::shared_ptr<SystemStatus> systemStatus_;
     std::shared_ptr<ControlData> ctrlData_;
     std::shared_ptr<TaskBenchmarkSettings> taskData_;
@@ -46,20 +47,25 @@ class MissionController : public rclcpp::Node {
     std::shared_ptr<states::StateInspectBuoy> stateInspectBuoy_;
     std::shared_ptr<states::StateInspectPipes> stateInspectPipes_;
     std::shared_ptr<states::StateUpdateLocalization> stateUpdateLocalization_;
-    
+
     // Pubs and Subs, action client to KCL and service for mission command
     rclcpp::Publisher<auv_core_helper::msg::MissionStatus>::SharedPtr missionStatusPub_;
-    rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr poseSub_;    
+    rclcpp::Subscription<auv_core_helper::msg::SystemStatus>::SharedPtr systemStatusSub_;
+    rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr poseSub_;
     rclcpp::Subscription<auv_core_helper::msg::DtcList>::SharedPtr perceptionSub_;
     rclcpp::Subscription<auv_core_helper::msg::KclStatus>::SharedPtr KclSub_;
     rclcpp_action::Client<auv_core_helper::action::SetKCL>::SharedPtr setKCLClient_;
     rclcpp::Service<auv_core_helper::srv::MissionCommand>::SharedPtr missionCommandService_;
-       
-    rclcpp::TimerBase::SharedPtr runTimer_; 
 
+    rclcpp::TimerBase::SharedPtr runTimer_;
+
+    rclcpp_action::Client<auv_core_helper::action::SetKCL>::SendGoalOptions kclSendGoalOptions_;
 
     void SimulateMissionCmdFromFile();
     void LoadConfiguration();
+
+    bool IsPointWithinBoundaries(const ctb::LatLong& point);
+    bool kclCmd(std::string cmd = "");
 
     // FSM
     void SetUpFSM();
@@ -70,11 +76,16 @@ class MissionController : public rclcpp::Node {
     void StatusPub();
 
     // Callbacks
+    void SystemStatusCB(const auv_core_helper::msg::SystemStatus::SharedPtr msg);
     void PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
     void PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg);
     void KclCB(const auv_core_helper::msg::KclStatus::SharedPtr msg);
     void MissionCommandCB(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request,
-                           std::shared_ptr<auv_core_helper::srv::MissionCommand::Response> response);
+        std::shared_ptr<auv_core_helper::srv::MissionCommand::Response> response);
+    void ActionResultCallback(const rclcpp_action::ClientGoalHandle<auv_core_helper::action::SetKCL>::WrappedResult& result);
+    void ActionFeedbackCallback(
+        rclcpp_action::ClientGoalHandle<auv_core_helper::action::SetKCL>::SharedPtr,
+        const std::shared_ptr<const auv_core_helper::action::SetKCL::Feedback>& feedback);
 
 public:
     MissionController();

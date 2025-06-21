@@ -14,21 +14,20 @@ namespace states {
 
     fsm::retval StateSearchBuoyArea::OnEntry()
     {
+        debugCounter = 0;
+        sentPathFollowingCommand = false;
 
         // tell perception to look for buoys
         ctrlData->perceptionData.enableDtcBuoys = true;
 
-        // tell kcl to follow area coverage path
-        ctrlData->kclData.newCommand = true;
-        ctrlData->kclData.new_kcl_command.desired_state = "PATH_FOLLOWING";
-        ctrlData->kclData.new_kcl_command.path_mode = "Serpentine2D";
-
-        if (resumeSearch) {
-            ctrlData->kclData.new_kcl_command.resume_path = true;
+        if (resumeSearch && reachedLeftmostPoint) {
             return fsm::ok;
-        } else {
+        }
+
+        if (!resumeSearch) {
+            areaPoints = std::queue<ctb::LatLong>();
+
             numberOfBuoysInspected = 0;
-            ctrlData->kclData.new_kcl_command.resume_path = false;
             if (taskData_->taskType == taskBenchmarks::INSPECTION) {
                 std::shared_ptr<Inspection> inspectionConf = std::dynamic_pointer_cast<Inspection>(taskData_);
                 numberOfBuoys = inspectionConf->numberOfBuoys;
@@ -39,84 +38,58 @@ namespace states {
                 this->SetNextMissionState();
                 return fsm::ok; // No buoys to search for
             }
-        }
 
-        auto points = taskData_->buoysArea.points;
-        auto removePoint = [&points](const ctb::LatLong& point) {
-            points.erase(
-                std::remove_if(points.begin(), points.end(),
-                    [&point](const ctb::LatLong& p) {
-                        return p.latitude == point.latitude && p.longitude == point.longitude;
-                    }),
-                points.end());
-        };
-        // Get first point as the closest to current position
-        ctb::LatLong firstPoint;
-        double minDistance = std::numeric_limits<double>::max();
-        for (const auto& point : points) {
-            double distance, azimuthRad;
-            ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, point, distance, azimuthRad);
-            if (distance < minDistance) {
-                minDistance = distance;
-                firstPoint = point;
+            // Ordering points for the area coverage path (depening on current position)
+            auto points = taskData_->buoysArea.points;
+            auto removePoint = [&points](const ctb::LatLong& point) {
+                points.erase(
+                    std::remove_if(points.begin(), points.end(),
+                        [&point](const ctb::LatLong& p) {
+                            return p.latitude == point.latitude && p.longitude == point.longitude;
+                        }),
+                    points.end());
+            };
+            auto findLeftmostPoint = [&](const ctb::LatLong& reference) -> std::optional<ctb::LatLong> {
+                if (points.empty())
+                    return std::nullopt;
+                ctb::LatLong leftmostPoint = points.front();
+                double minAzimuthRad = M_PI;
+                for (const auto& point : points) {
+                    double distance, azimuthRad;
+                    ctb::DistanceAndAzimuthRad(reference, point, distance, azimuthRad);
+                    if (azimuthRad < minAzimuthRad) {
+                        minAzimuthRad = azimuthRad;
+                        leftmostPoint = point;
+                    }
+                }
+                return leftmostPoint;
+            };
+            for (int i = 0; i < taskData_->buoysArea.points.size(); ++i) {
+                auto maybePoint = findLeftmostPoint(ctrlData->inertialF_linearPosition);
+                if (!maybePoint)
+                    break; // no more points
+                areaPoints.push(*maybePoint);
+                removePoint(*maybePoint);
             }
         }
-        removePoint(firstPoint);
-        ctrlData->kclData.new_kcl_command.serpentine_data.origin.latitude = firstPoint.latitude;
-        ctrlData->kclData.new_kcl_command.serpentine_data.origin.longitude = firstPoint.longitude;
-        // Get the leftmost from the remaining points
-        ctb::LatLong leftmostPoint = points[0];
-        double minAzimuthRad = M_PI;
-        for (const auto& point : points) {
-            double distance, azimuthRad;
-            ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, point, distance, azimuthRad);
-            if (azimuthRad < minAzimuthRad || minAzimuthRad == 0.0) {
-                minAzimuthRad = azimuthRad;
-                leftmostPoint = point;
-            }
-        }
-        removePoint(leftmostPoint);
-        // Get the rightmost from the remaining points
-        ctb::LatLong rightmostPoint = points[0];
-        double maxAzimuthRad = -M_PI;
-        for (const auto& point : points) {
-            double distance, azimuthRad;
-            ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, point, distance, azimuthRad);
-            if (azimuthRad > maxAzimuthRad || maxAzimuthRad == 0.0) {
-                maxAzimuthRad = azimuthRad;
-                rightmostPoint = point;
-            }
-        }
-        removePoint(rightmostPoint);
 
-        ctrlData->kclData.new_kcl_command.serpentine_data.origin.latitude = firstPoint.latitude;
-        ctrlData->kclData.new_kcl_command.serpentine_data.origin.longitude = firstPoint.longitude;
-        ctrlData->kclData.new_kcl_command.serpentine_data.front_left.latitude = leftmostPoint.latitude;
-        ctrlData->kclData.new_kcl_command.serpentine_data.front_left.longitude = leftmostPoint.longitude;
-        ctrlData->kclData.new_kcl_command.serpentine_data.right.latitude = rightmostPoint.latitude;
-        ctrlData->kclData.new_kcl_command.serpentine_data.right.longitude = rightmostPoint.longitude;
-        ctrlData->kclData.new_kcl_command.serpentine_data.front_right.latitude = points[0].latitude;
-        ctrlData->kclData.new_kcl_command.serpentine_data.front_right.longitude = points[0].longitude;
-
+        // Move to leftmost point
+        ctrlData->kclData.currentCmd = mission::kclCmd();
+        ctrlData->kclData.currentCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+        ctrlData->kclData.currentCmd.goal.position.latitude = areaPoints.front().latitude;
+        ctrlData->kclData.currentCmd.goal.position.longitude = areaPoints.front().longitude;
+        ctrlData->kclData.currentCmd.goal.depth = taskData_->diveDepth;
         return fsm::ok;
     }
 
     fsm::retval StateSearchBuoyArea::Execute()
     {
-
         if (numberOfBuoysInspected >= numberOfBuoys) {
             // tell kcl to stop following area coverage path
             // tell perception to stop looking for buoys
             ctrlData->perceptionData.enableDtcBuoys = false;
             resumeSearch = false;
             return this->SetNextMissionState();
-        }
-
-        if (systemStatus_->conf.simPerception) {
-            std::cerr << "Simulating perception, mock up buoy search." << std::endl;
-            resumeSearch = true;
-            numberOfBuoysInspected++;
-            return fsm_->SetNextState(states::ID::inspectBuoy);
         }
 
         for (auto& db : ctrlData->perceptionData.detectedBuoys) {
@@ -133,6 +106,52 @@ namespace states {
             if (systemStatus_->conf.debugPrints)
                 std::cerr << "\nGoing to inspect a buoy." << std::endl;
 
+            numberOfBuoysInspected++;
+            return fsm_->SetNextState(states::ID::inspectBuoy);
+        }
+
+        if (!reachedLeftmostPoint) {
+            double distance, azimuthRad;
+            ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, areaPoints.front(), distance, azimuthRad);
+            if (distance < systemStatus_->conf.latlongTolerance) {
+                reachedLeftmostPoint = true;
+            }
+            return fsm::ok;
+        }
+
+        if (reachedLeftmostPoint && !sentPathFollowingCommand) {
+            sentPathFollowingCommand = true;
+            if (resumeSearch) {
+                ctrlData->kclData.currentCmd.goal.resume_path = true;
+            } else {
+                ctrlData->kclData.currentCmd.goal.resume_path = false;
+            }
+            // tell kcl to follow area coverage path
+            ctrlData->kclData.currentCmd = mission::kclCmd();
+
+            ctrlData->kclData.currentCmd.goal.desired_state = "PATH_FOLLOWING";
+            ctrlData->kclData.currentCmd.goal.path_mode = "Serpentine2D";
+
+            auto points = areaPoints;
+
+            ctrlData->kclData.currentCmd.goal.serpentine_data.origin.latitude = points.front().latitude;
+            ctrlData->kclData.currentCmd.goal.serpentine_data.origin.longitude = points.front().longitude;
+            points.pop();
+            ctrlData->kclData.currentCmd.goal.serpentine_data.front_left.longitude = points.front().longitude;
+            ctrlData->kclData.currentCmd.goal.serpentine_data.front_left.latitude = points.front().latitude;
+            points.pop();
+            ctrlData->kclData.currentCmd.goal.serpentine_data.front_right.longitude = points.front().longitude;
+            ctrlData->kclData.currentCmd.goal.serpentine_data.front_right.latitude = points.front().latitude;
+            points.pop();
+            ctrlData->kclData.currentCmd.goal.serpentine_data.right.longitude = points.front().longitude;
+            ctrlData->kclData.currentCmd.goal.serpentine_data.right.latitude = points.front().latitude;
+            return fsm::ok;
+        }
+
+        debugCounter++;
+        if (systemStatus_->conf.simPerception && debugCounter >= 160) {
+            std::cerr << "Simulating perception, mock up buoy search." << std::endl;
+            resumeSearch = true;
             numberOfBuoysInspected++;
             return fsm_->SetNextState(states::ID::inspectBuoy);
         }

@@ -20,6 +20,7 @@ namespace states {
         StateBase();
         virtual ~StateBase(void);
 
+        double stateTimeout = 60; //too long within the state
         fsm::retval SetNextMissionState();
     };
 }

@@ -33,15 +33,17 @@ namespace states {
 
                 //taskData_->taskPhases.push(std::make_pair(states::ID::updateLocalization, ""));
 
-                //taskData_->taskPhases.push(std::make_pair(states::ID::searchForObject, opis::gate));
+                taskData_->taskPhases.push(std::make_pair(states::ID::searchForObject, opis::gate));
 
                 
-                // taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "SURFACE"));
+
+                
+                taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "SURFACE"));
                 // taskData_->taskPhases.push(std::make_pair(states::ID::crossGate, ""));
-                taskData_->taskPhases.push(std::make_pair(states::ID::searchBuoyArea, ""));
+                //taskData_->taskPhases.push(std::make_pair(states::ID::searchBuoyArea, ""));
                 // taskData_->taskPhases.push_back(std::make_pair(states::ID::moveToWp, opis::pipelineStructure));
                 // taskData_->taskPhases.push_back(std::make_pair(states::ID::inspectPipes, ""));
-                taskData_->taskPhases.push(std::make_pair(states::ID::homing, ""));
+                //taskData_->taskPhases.push(std::make_pair(states::ID::homing, ""));
             } else if (taskData_->taskType == taskBenchmarks::INTERVENTION) {
                 taskData_->taskPhases.push(std::make_pair(states::ID::init, ""));
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DIVE"));

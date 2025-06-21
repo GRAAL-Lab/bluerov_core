@@ -39,17 +39,18 @@ namespace states {
                           << ctrlData->inertialF_linearPosition.latitude << ", "
                           << ctrlData->inertialF_linearPosition.longitude << ") and Depth: "
                           << ctrlData->depth << "\n";
-                std::cerr << " to LatLong: ("
+                std::cerr << "         to LatLong: ("
                           << goalPose.at(0) << ", "
                           << goalPose.at(1) << ") and Depth: "
                           << goalPose.at(2) << "\n";
             }
 
-            ctrlData->kclData.newCommand = true;
-            ctrlData->kclData.new_kcl_command.desired_state = "WAYPOINT_NAVIGATION";
-            ctrlData->kclData.new_kcl_command.position.latitude = goalPose.at(0);
-            ctrlData->kclData.new_kcl_command.position.longitude = goalPose.at(1);
-            ctrlData->kclData.new_kcl_command.depth = goalPose.at(2);
+  
+            ctrlData->kclData.currentCmd = mission::kclCmd();
+            ctrlData->kclData.currentCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+            ctrlData->kclData.currentCmd.goal.position.latitude = goalPose.at(0);
+            ctrlData->kclData.currentCmd.goal.position.longitude = goalPose.at(1);
+            ctrlData->kclData.currentCmd.goal.depth = goalPose.at(2);
 
             doneInit = true;
             return fsm::ok;

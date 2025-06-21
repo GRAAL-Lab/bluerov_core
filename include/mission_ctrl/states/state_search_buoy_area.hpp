@@ -1,4 +1,5 @@
 #include "mission_ctrl/states/state_base.hpp"
+#include "queue"
 
 namespace mission {
 
@@ -16,6 +17,12 @@ namespace states {
         uint numberOfBuoys;
         uint numberOfBuoysInspected;
         bool resumeSearch = false;
+
+        bool reachedLeftmostPoint = false;
+        bool sentPathFollowingCommand = false;
+        std::queue<ctb::LatLong> areaPoints;
+
+        int debugCounter = 0;
 
     };
 

@@ -92,6 +92,24 @@ target_link_libraries(controller_node
   ${auv_core_helper_LIBRARIES}
 )
 
+add_executable(monitor_node src/monitor_node.cpp src/system_monitor/system_status_monitor.cpp)
+
+target_include_directories(monitor_node
+  PRIVATE
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    ${auv_core_helper_INCLUDE_DIRS}
+)
+
+ament_target_dependencies(monitor_node
+  rclcpp rclcpp_action ament_index_cpp auv_core_helper
+)
+
+target_link_libraries(monitor_node
+  config++
+  ${auv_core_helper_LIBRARIES}
+)
+
+
 
 # --- Install rules ---
 # Install the library so the executable can find it at runtime,
@@ -105,7 +123,7 @@ install(
 # Install the executable so it can be run by ROS 2.
 # A more standard destination for executables is lib/${PROJECT_NAME}.
 install(
-  TARGETS controller_node
+  TARGETS controller_node monitor_node
   RUNTIME DESTINATION lib/${PROJECT_NAME}
 )
 

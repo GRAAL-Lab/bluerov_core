@@ -16,6 +16,7 @@ namespace states {
         fsm::retval OnExit() override;
 
         ctb::LatLong homePosition;
+        bool homePositionSet = false;
 
     };
 

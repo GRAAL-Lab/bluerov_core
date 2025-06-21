@@ -29,6 +29,9 @@ namespace states {
 
     fsm::retval StateSearchObject::Execute()
     {
+        if (ctrlData->kclData.currentCmd.completed) {
+            return SetNextMissionState();
+        }
         // if(ctrlData->perceptionData.newDtcFromPerception){
         //     ctrlData->perceptionData.newDtcFromPerception = false;
         //     if (taskData_->taskPhases.front().second == opis::gate) {
@@ -48,11 +51,11 @@ namespace states {
         //             }
 
         //         }
-                
+
         //     } else if (taskData_->taskPhases.front().second == opis::mainPipe) {
-                
+
         //     } else if (taskData_->taskPhases.front().second == opis::manipulationConsole) {
-               
+
         //     }
         // }
 
@@ -71,8 +74,8 @@ namespace states {
         // }
 
         if (systemStatus_->conf.debugPrints) {
-            //std::cerr << ".";
-            std::cerr << "      Cumulative angle: " << cumulativeAngle << "\n";
+            // std::cerr << ".";
+            // std::cerr << "      Cumulative angle: " << cumulativeAngle << "\n";
         }
 
         // if (systemStatus_->conf.simPerception)
@@ -92,11 +95,11 @@ namespace states {
         previous_bodyF_angularPosition = ctrlData->bodyF_angularPosition;
         cumulativeAngle = 0;
 
-        ctrlData->kclData.newCommand = true;
-        ctrlData->kclData.new_kcl_command.desired_state = "PATH_FOLLOWING";
-        ctrlData->kclData.new_kcl_command.path_mode = "Spiral2D";
-        ctrlData->kclData.new_kcl_command.spiral_data.spiral_diameter = 10.0; 
-        ctrlData->kclData.new_kcl_command.spiral_data.spiral_increment = 1.0;
+        ctrlData->kclData.currentCmd = mission::kclCmd();
+        ctrlData->kclData.currentCmd.goal.desired_state = "PATH_FOLLOWING";
+        ctrlData->kclData.currentCmd.goal.path_mode = "Spiral2D";
+        ctrlData->kclData.currentCmd.goal.spiral_data.spiral_diameter = 5.0;
+        ctrlData->kclData.currentCmd.goal.spiral_data.spiral_increment = 0.5;
 
         return fsm::ok;
     }

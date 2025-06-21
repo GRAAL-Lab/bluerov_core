@@ -16,6 +16,7 @@
 namespace mission {
 
 // === Forward declarations ===
+struct MissionCtrlConf;
 
 struct DtcBuoy;
 struct GateBuoy;
@@ -38,6 +39,13 @@ struct InspectionAndIntervention;
 
 // ===========================
 
+// struct KclAction{
+//     std::string desired_action;
+//     double feedback_progress;
+
+    
+// }
+
 struct MissionCtrlConf {
     bool simKcl;
     bool simPerception;
@@ -52,6 +60,11 @@ struct MissionCtrlConf {
     double kclLivenessTimeout = 2.0;
     double perceptionLivenessTimeout = 2.0;
     double systemLivenessTimeout = 2.0; 
+
+    std::vector<ctb::LatLong> safetyBoundary;
+
+    bool debugBuoys = false;
+    std::vector<ctb::LatLong> debugBuoysPositions;
 };
 
 struct BuoyActionColorMap {
@@ -128,17 +141,21 @@ struct PerceptionData {
     std::map<std::string, Buoy> detectedBuoys;
 };
 
+struct kclCmd {
+    bool sentToKcl = false;
+    bool completed = false;
+    auv_core_helper::action::SetKCL::Goal goal;
+    auv_core_helper::action::SetKCL::Result result;
+    auv_core_helper::action::SetKCL::Feedback feedback;
+};
+
 struct KinematicData {
     bool isAlive;
     std::string state;
 
     bool cancelCommand;
 
-    bool newCommand;
-    auv_core_helper::action::SetKCL::Goal new_kcl_command;
-
-    bool executingCommand;
-    auv_core_helper::action::SetKCL::Goal last_kcl_command;
+    kclCmd currentCmd;
 };
 
 struct ControlData {
@@ -553,70 +570,35 @@ struct InspectionAndIntervention : public TaskBenchmarkSettings {
 };
 
 struct SystemStatus {
-
-    rclcpp::Time lastBridgeTime;
-    rclcpp::Time lastPerceptionTime;
-    rclcpp::Time lastKCLTime;
+    MissionCtrlConf conf;
+    bool vehicleReachedSafetyArea = false;
+    rclcpp::Time timeOutsideSafetyArea;
+    rclcpp::Time lastStateSwitchTime;
     rclcpp::Time lastSystemTime;
 
-    rclcpp::Time lastStateSwitchTime;
-
-    bool perceptionAlive = false;
-    bool kclAlive = false;
-    bool kclActionServerAlive = true; // assumed working untile proven otherwise
+    bool missionCtrlRunning = false;
     bool bridgeAlive = false;
-    bool systemAlive = true;
-
-    MissionCtrlConf conf;
-
+    bool kclAlive = false;
+    bool perceptionAlive = false;
+    //bool kclActionServerAlive = false; 
+    
     SystemStatus(rcl_clock_type_t clockType)
     {
         if (clockType == 1) {
-            lastBridgeTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
-            lastPerceptionTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
-            lastKCLTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
             lastSystemTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
             lastStateSwitchTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
+            timeOutsideSafetyArea = rclcpp::Time(0, 0, RCL_ROS_TIME);
         } else {
-            lastBridgeTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
-            lastPerceptionTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
-            lastKCLTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
             lastSystemTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
             lastStateSwitchTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
+            timeOutsideSafetyArea = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
         }
     }
 
-    bool WasDeadForTooLong(rclcpp::Time now)
-    {
-
-        bool systemAliveNow = lastSystemTime < (now - rclcpp::Duration::from_seconds(conf.systemLivenessTimeout));
-        if(!systemAliveNow){
-            systemAlive = false;
-        }
-        return systemAlive;
-    }
-
-    bool IsAlive(rclcpp::Time now)
-    {
-        perceptionAlive = lastPerceptionTime > (now - rclcpp::Duration::from_seconds(conf.perceptionLivenessTimeout));
-        kclAlive = lastKCLTime > (now - rclcpp::Duration::from_seconds(conf.kclLivenessTimeout));
-        bridgeAlive = lastBridgeTime > (now - rclcpp::Duration::from_seconds(conf.bridgeLivenessTimeout));
-
-        if (conf.simBridge) {
-            bridgeAlive = true;
-        }
-        if (conf.simPerception) {
-            perceptionAlive = true;
-        }
-        if (conf.simKcl) {
-            kclAlive = true;
-        }
-
-        if(perceptionAlive && kclAlive && bridgeAlive && kclActionServerAlive){
-            lastSystemTime = now;
-            return true;
-        }
-        return false;
+    bool IsSystemAlive(rclcpp::Time now) const
+    {   
+        auto timeWithoutSystemUpdate = now - lastSystemTime;
+        return perceptionAlive && kclAlive && bridgeAlive && timeWithoutSystemUpdate < rclcpp::Duration(5, 0);
     }
 };
 

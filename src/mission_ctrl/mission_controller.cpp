@@ -31,6 +31,10 @@ MissionController::MissionController()
     missionStatusPub_ = this->create_publisher<auv_core_helper::msg::MissionStatus>(
         auv_core_helper::topicnames::mission_status, rclcpp::SystemDefaultsQoS());
 
+    systemStatusSub_ = this->create_subscription<auv_core_helper::msg::SystemStatus>(
+        auv_core_helper::topicnames::system_status, rclcpp::SystemDefaultsQoS(),
+        std::bind(&mission::MissionController::SystemStatusCB, this, std::placeholders::_1));
+
     setKCLClient_ = rclcpp_action::create_client<auv_core_helper::action::SetKCL>(
         this, auv_core_helper::topicnames::kcl_setter_action);
 
@@ -50,15 +54,30 @@ MissionController::MissionController()
         auv_core_helper::topicnames::mission_cmd_service,
         std::bind(&MissionController::MissionCommandCB, this, std::placeholders::_1, std::placeholders::_2));
 
+    kclSendGoalOptions_ = rclcpp_action::Client<auv_core_helper::action::SetKCL>::SendGoalOptions();
+    kclSendGoalOptions_.result_callback = std::bind(&MissionController::ActionResultCallback, this, std::placeholders::_1);
+    kclSendGoalOptions_.feedback_callback = std::bind(&MissionController::ActionFeedbackCallback, this,
+        std::placeholders::_1, std::placeholders::_2);
+
     SetUpFSM();
+    systemStatus_->lastSystemTime = this->get_clock()->now();
     systemStatus_->lastStateSwitchTime = this->get_clock()->now();
+    systemStatus_->timeOutsideSafetyArea = this->get_clock()->now();
 
     int msRunPeriod = 1.0 / (systemStatus_->conf.ctrlRate) * 1000;
-    // std::cout << "Controller Rate: " << conf_->controlLoopRate << "Hz" << std::endl;
     runTimer_ = this->create_wall_timer(std::chrono::milliseconds(msRunPeriod), std::bind(&MissionController::Run, this));
 
     if (systemStatus_->conf.simCtrlStation) {
         SimulateMissionCmdFromFile();
+        for (const auto& point : taskData_->buoysArea.points) {
+            if (!IsPointWithinBoundaries(point)) {
+                RCLCPP_ERROR(this->get_logger(), "Buoys area point is outside of safety boundaries: [%f, %f]",
+                    point.latitude, point.longitude);
+                // kill the node
+                rclcpp::shutdown();
+                return;
+            }
+        }
         SetTaskDataFSM();
         RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No control station");
     } else {
@@ -71,6 +90,10 @@ MissionController::MissionController()
         RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No KCL");
     if (systemStatus_->conf.simPerception)
         RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No Perception");
+
+    RCLCPP_INFO(this->get_logger(), "Waiting for components to be alive...");
+    // while(!systemStatus_->IsSystemAlive(this->get_clock()->now()));
+    // RCLCPP_INFO(this->get_logger(), "All components are alive, starting mission control node.");
 };
 
 void MissionController::StatusPub()
@@ -93,44 +116,49 @@ void MissionController::StatusPub()
 
 void MissionController::Run()
 {
-    //=== Check if the system is alive ===
-    if (!systemStatus_->IsAlive(this->get_clock()->now())) {
-        if (systemStatus_->kclAlive && !systemStatus_->kclActionServerAlive && !systemStatus_->conf.simKcl) {
-            if (setKCLClient_->wait_for_action_server(std::chrono::seconds(1))) {
-                // ok, back online
-                systemStatus_->kclActionServerAlive = true;
-            } else {
-                RCLCPP_WARN(this->get_logger(), "KCL action server is not alive, waiting for it to be ready.");
-                return;
-            }
+    if (!systemStatus_->missionCtrlRunning) {
+        if (systemStatus_->IsSystemAlive(this->get_clock()->now())) {
+            systemStatus_->missionCtrlRunning = true;
+            RCLCPP_INFO(this->get_logger(), "All components are alive, starting mission control node.");
         } else {
-            RCLCPP_WARN(this->get_logger(), "System not alive. Perception: %d, KCL: %d, Bridge: %d",
-                systemStatus_->perceptionAlive, systemStatus_->kclAlive, systemStatus_->bridgeAlive);
             return;
         }
     }
-    if (systemStatus_->WasDeadForTooLong(this->get_clock()->now())) {
-        RCLCPP_ERROR(this->get_logger(), "System was dead for too long, sending only surface cmd.");
-        auv_core_helper::action::SetKCL::Goal cmd;
-        cmd.desired_state = "WAYPOINT_NAVIGATION";
-        cmd.position.latitude = ctrlData_->inertialF_linearPosition.latitude;
-        cmd.position.longitude = ctrlData_->inertialF_linearPosition.longitude;
-        cmd.depth = taskData_->surfaceDepth;
+    // if (systemStatus_->conf.simBridge && !IsPointWithinBoundaries(ctrlData_->inertialF_linearPosition)) {
+    //     RCLCPP_ERROR(this->get_logger(), "Vehicle is outside of safety boundaries: [%f, %f]",
+    //         ctrlData_->inertialF_linearPosition.latitude, ctrlData_->inertialF_linearPosition.longitude);
+    //     kclCmd("IDLE");
+    // }
 
-        if (setKCLClient_->wait_for_action_server(std::chrono::seconds(1))) {
-            auto options = rclcpp_action::Client<auv_core_helper::action::SetKCL>::SendGoalOptions();
-            setKCLClient_->async_send_goal(cmd, options);
-        }
+    //=== Check if the components are alive ===
+    if (!systemStatus_->IsSystemAlive(this->get_clock()->now())) {
+        RCLCPP_ERROR(this->get_logger(), "Components status: Bridge: %s, KCL: %s, Perception: %s, time since last system status: %.2f seconds",
+            systemStatus_->bridgeAlive ? "Alive" : "Not Alive",
+            systemStatus_->kclAlive ? "Alive" : "Not Alive",
+            systemStatus_->perceptionAlive ? "Alive" : "Not Alive",
+            (this->get_clock()->now() - systemStatus_->lastSystemTime).seconds());
+        kclCmd("IDLE");
         return;
     }
+
     //=== Check if the system is stuck in a state ===
     auto now = this->get_clock()->now();
     if (rFsm_.GetCurrentStateName() != rFsm_.GetNextStateName()) {
         systemStatus_->lastStateSwitchTime = now;
-        RCLCPP_INFO(this->get_logger(), "FSM switched to state %s", rFsm_.GetCurrentStateName().c_str());
+        RCLCPP_INFO(this->get_logger(), "FSM switched to state %s", rFsm_.GetNextStateName().c_str());
+
+        if (rFsm_.GetNextStateName() == states::ID::init) {
+            if (systemStatus_->conf.simCtrlStation) {
+                SimulateMissionCmdFromFile();
+                SetTaskDataFSM();
+            }
+        }
+
     } else {
         double timeSinceLastSwitch = now.seconds() - systemStatus_->lastStateSwitchTime.seconds();
-        if (timeSinceLastSwitch > 20.0 && std::fmod(timeSinceLastSwitch, 10.0) < 1.0) {
+        // Get current state timeout value
+        double currentStateTimeout = statesMap_[rFsm_.GetCurrentStateName()]->stateTimeout;
+        if (timeSinceLastSwitch > currentStateTimeout && std::fmod(timeSinceLastSwitch, 10.0) < 1.0) {
             RCLCPP_WARN(this->get_logger(), "FSM in state %s for %i seconds", rFsm_.GetCurrentStateName().c_str(), (int)timeSinceLastSwitch);
         }
     }
@@ -152,59 +180,12 @@ void MissionController::Run()
     }
 
     //=== Send command to KCL ===
-    if (ctrlData_->kclData.cancelCommand) {
-        RCLCPP_WARN(this->get_logger(), "Received cancel cmd but not implemented yet.");
-        ctrlData_->kclData.cancelCommand = false;
+    if (ctrlData_->kclData.cancelCommand && !kclCmd("CANCEL")) {
+        RCLCPP_WARN(this->get_logger(), " Tried to send cancel cmd but server is not available.");
+        return;
     }
-    if (ctrlData_->kclData.newCommand) {
-        auv_core_helper::action::SetKCL::Goal cmd;
-        cmd = ctrlData_->kclData.new_kcl_command;
-
-        ctrlData_->kclData.newCommand = false;
-        ctrlData_->kclData.new_kcl_command = auv_core_helper::action::SetKCL::Goal();
-        ctrlData_->kclData.executingCommand = true;
-        ctrlData_->kclData.last_kcl_command = cmd;
-
-        auto options = rclcpp_action::Client<auv_core_helper::action::SetKCL>::SendGoalOptions();
-        options.result_callback = [this](const rclcpp_action::ClientGoalHandle<auv_core_helper::action::SetKCL>::WrappedResult& result) {
-            RCLCPP_INFO(this->get_logger(), "Command execution result: %d", static_cast<int>(result.code));
-            if (result.code == rclcpp_action::ResultCode::SUCCEEDED && ctrlData_->kclData.last_kcl_command.desired_state == "WAYPOINT_NAVIGATION") {
-                double distance, azimuthRad;
-                ctb::DistanceAndAzimuthRad(ctrlData_->inertialF_linearPosition,
-                    { ctrlData_->kclData.last_kcl_command.position.latitude, ctrlData_->kclData.last_kcl_command.position.longitude },
-                    distance, azimuthRad);
-                if (distance > systemStatus_->conf.latlongTolerance) {
-                    RCLCPP_WARN(this->get_logger(),
-                        "YOUSSEF WTF, kcl says it completed the command but the distance is [%f], which is greater than the tolerance in the conf file[%f]",
-                        distance, systemStatus_->conf.latlongTolerance);
-                }
-
-            } else {
-                RCLCPP_ERROR(this->get_logger(), "NOT HANDLED YEY: Command execution failed with code: %d", static_cast<int>(result.code));
-            }
-        };
-
-        if (systemStatus_->conf.debugPrints) {
-            RCLCPP_INFO(this->get_logger(), "Sending command to KCL [%s], %f, %f, %f", cmd.desired_state.c_str(),
-                cmd.position.latitude, cmd.position.longitude, cmd.depth);
-        }
-
-        if (systemStatus_->conf.simKcl) {
-            RCLCPP_WARN(this->get_logger(), "Received cmd for KCL but simulating it, so setting it as completed.");
-            ctrlData_->inertialF_linearPosition.latitude = cmd.position.latitude;
-            ctrlData_->inertialF_linearPosition.longitude = cmd.position.longitude;
-            ctrlData_->depth = cmd.depth;
-            return;
-        }
-
-        auto timeout = std::chrono::duration_cast<std::chrono::nanoseconds>(
-            std::chrono::duration<double>(systemStatus_->conf.kclLivenessTimeout));
-        if (setKCLClient_->wait_for_action_server(timeout)) {
-            setKCLClient_->async_send_goal(cmd, options);
-        } else {
-            RCLCPP_WARN(this->get_logger(), "KCL is not ready to rcv a cmd.");
-            // FAIL?
-        }
+    if (!ctrlData_->kclData.currentCmd.sentToKcl && ctrlData_->kclData.currentCmd.goal.desired_state != "") {
+        kclCmd();
     }
 
     if (taskData_->taskPhases.empty()) {
@@ -213,43 +194,17 @@ void MissionController::Run()
     }
 };
 
-void MissionController::SetUpFSM()
+void MissionController::SystemStatusCB(const auv_core_helper::msg::SystemStatus::SharedPtr msg)
 {
-    // ***** STATES ***** //
-    // Set the fsm and the structure that the states need.
-    for (auto& state : statesMap_) {
-        state.second->ctrlData = ctrlData_;
-        state.second->systemStatus_ = systemStatus_;
-        // state.second->taskData_ = taskData_;
-        state.second->SetFSM(&rFsm_);
-    }
-
-    // ADD STATES
-    for (auto& state : statesMap_) {
-        rFsm_.AddState(state.first, state.second.get());
-    }
-
-    // ENABLE TRANSITIONS
-    for (auto& currentState : statesMap_) {
-        for (auto& nextState : statesMap_) {
-            if (nextState.first != currentState.first)
-                rFsm_.EnableTransition(currentState.first, nextState.first, true);
-        }
-    }
-
-    rFsm_.SetInitState(mission::states::ID::init);
-}
-
-void MissionController::SetTaskDataFSM()
-{
-    for (auto& state : statesMap_) {
-        state.second->taskData_ = taskData_;
-    }
+    systemStatus_->bridgeAlive = systemStatus_->conf.simBridge || msg->bridge;
+    systemStatus_->kclAlive = systemStatus_->conf.simKcl || msg->kcl;
+    systemStatus_->perceptionAlive = systemStatus_->conf.simPerception || msg->perception;
+    systemStatus_->lastSystemTime = this->get_clock()->now();
 }
 
 void MissionController::PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg)
 {
-    systemStatus_->lastPerceptionTime = this->get_clock()->now();
+
     // Update perception data
     // for(auto& obstacle : msg->obstacles) {
 
@@ -264,13 +219,15 @@ void MissionController::PerceptionCB(const auv_core_helper::msg::DtcList::Shared
         b.colorConfidence = buoy.color_confidence;
 
         ctrlData_->perceptionData.detectedBuoys[buoy.id] = b;
+        std::cerr << "Detected buoy: " << buoy.id << " at position: ["
+                  << buoy.position.latitude << ", " << buoy.position.longitude << "]\n";
     }
 }
 
 void MissionController::KclCB(const auv_core_helper::msg::KclStatus::SharedPtr msg)
 {
     (void)msg;
-    systemStatus_->lastKCLTime = this->get_clock()->now();
+    // systemStatus_->lastKCLTime = this->get_clock()->now();
 }
 
 void MissionController::MissionCommandCB(
@@ -295,13 +252,26 @@ void MissionController::MissionCommandCB(
         return;
     }
 
-    taskData_->surfaceDepth = ctrlData_->depth;
-    RCLCPP_INFO(this->get_logger(), "Setting surface depth to current depth: [%f]", taskData_->surfaceDepth);
-    
+    for (const auto& point : taskData_->buoysArea.points) {
+        if (!IsPointWithinBoundaries(point)) {
+            response->res = false;
+            response->text = "Buoys area point is outside of safety boundaries: [" + std::to_string(point.latitude) + ", " + std::to_string(point.longitude) + "]";
+            RCLCPP_ERROR(this->get_logger(), "%s", response->text.c_str());
+            return;
+        }
+    }
+
+    if (ctrlData_->depth < 1.0) {
+        taskData_->surfaceDepth = ctrlData_->depth;
+        RCLCPP_INFO(this->get_logger(), "Setting surface depth: current depth: [%f]", taskData_->surfaceDepth);
+    } else {
+        taskData_->surfaceDepth = 0.5; // Default surface depth if not set
+        RCLCPP_WARN(this->get_logger(), "Setting surface depth: current depth is too deep [%f], setting to: [%f]", ctrlData_->depth, taskData_->surfaceDepth);
+    }
+
     SetTaskDataFSM();
     response->res = true;
     rFsm_.SetInitState(mission::states::ID::init);
-    systemStatus_->systemAlive = true;
     stateHoming_->homePosition.latitude = ctrlData_->inertialF_linearPosition.latitude;
     stateHoming_->homePosition.longitude = ctrlData_->inertialF_linearPosition.longitude;
     RCLCPP_INFO(this->get_logger(), "Mission command received, tbm_id: %d", request->tbm_id);
@@ -314,19 +284,177 @@ void MissionController::MissionCommandCB(
 
 void MissionController::PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg)
 {
-    systemStatus_->lastBridgeTime = this->get_clock()->now();
     ctrlData_->inertialF_linearPosition.latitude = msg->position.latitude;
     ctrlData_->inertialF_linearPosition.longitude = msg->position.longitude;
     ctrlData_->depth = msg->depth;
     ctrlData_->bodyF_angularPosition.RPY(msg->roll,
         msg->pitch, msg->yaw);
+
+    if (systemStatus_->conf.simCtrlStation && !stateHoming_->homePositionSet) {
+        stateHoming_->homePositionSet = true;
+        if (ctrlData_->depth < 1.0) {
+            taskData_->surfaceDepth = ctrlData_->depth;
+            RCLCPP_INFO(this->get_logger(), "Setting surface depth: current depth: [%f]", taskData_->surfaceDepth);
+        } else {
+            taskData_->surfaceDepth = 0.5; // Default surface depth if not set
+            RCLCPP_WARN(this->get_logger(), "Setting surface depth: current depth is too deep, setting to: [%f]", taskData_->surfaceDepth);
+        }
+        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> Simulating control station, setting home position as the one in front of the dock.");
+        stateHoming_->homePosition.latitude = 44.09595617190768;
+        stateHoming_->homePosition.longitude = 9.864626568817506;
+        RCLCPP_INFO(this->get_logger(), "Set home position as current one: [%f, %f]",
+            stateHoming_->homePosition.latitude, stateHoming_->homePosition.longitude);
+    }
+
+    // Check if the vehicle has finally reached the safety area
+    if (!systemStatus_->vehicleReachedSafetyArea && IsPointWithinBoundaries(ctrlData_->inertialF_linearPosition)) {
+        systemStatus_->vehicleReachedSafetyArea = true;
+        RCLCPP_INFO(this->get_logger(), "Vehicle reached safety area!");
+    }
+
+    // Check if the vehicle has been outside the safety area for too long
+    if (!systemStatus_->vehicleReachedSafetyArea && !IsPointWithinBoundaries(ctrlData_->inertialF_linearPosition)) {
+        auto now = this->get_clock()->now();
+        if ((now - systemStatus_->timeOutsideSafetyArea).seconds() > 15) {
+            RCLCPP_ERROR(this->get_logger(), "Vehicle has been outside the safety area for too long.");
+            // TODO HANDLE THIS
+        }
+    }
+
+    // Check if the vehicle exited the safety area
+    if (systemStatus_->vehicleReachedSafetyArea && !IsPointWithinBoundaries(ctrlData_->inertialF_linearPosition)) {
+        RCLCPP_ERROR(this->get_logger(), "Vehicle is outside of safety boundaries: [%f, %f]",
+            ctrlData_->inertialF_linearPosition.latitude, ctrlData_->inertialF_linearPosition.longitude);
+        ctrlData_->kclData.currentCmd = mission::kclCmd();
+        ctrlData_->kclData.currentCmd.goal.desired_state = "IDLE";
+
+        rFsm_.SetInitState(mission::states::ID::init);
+    }
+}
+
+bool MissionController::IsPointWithinBoundaries(const ctb::LatLong& point)
+{
+    if (systemStatus_->conf.safetyBoundary.size() < 3) {
+        throw std::runtime_error("Safety boundary must have at least 3 points.");
+    }
+
+    std::vector<Eigen::Vector3d> polygon;
+    for (auto& latlong : systemStatus_->conf.safetyBoundary) {
+        Eigen::Vector3d bodyF_point;
+        ctb::LatLong2LocalNED(latlong, 0, point, bodyF_point);
+        polygon.push_back(bodyF_point);
+    }
+
+    bool pos = false, neg = false;
+    int i = 0;
+    for (auto point : polygon) {
+        auto nextPoint = polygon[(i + 1) % polygon.size()];
+        double cross = (nextPoint.x() - point.x()) * (-point.y()) - (nextPoint.y() - point.y()) * (-point.x());
+        if (cross < 0)
+            neg = true;
+        if (cross > 0)
+            pos = true;
+        if (pos && neg)
+            return false; // point is outside
+        i++;
+    }
+
+    return true;
+}
+
+bool MissionController::kclCmd(std::string cmd)
+{
+    if (cmd == "IDLE") {
+        RCLCPP_WARN(this->get_logger(), "Sending IDLE cmd and moving to INIT state.");
+        systemStatus_->missionCtrlRunning = false;
+        rFsm_.SetInitState(mission::states::ID::init);
+        auv_core_helper::action::SetKCL::Goal cmd;
+        cmd.desired_state = "IDLE";
+        while (!setKCLClient_->wait_for_action_server(std::chrono::seconds(1))) {
+            RCLCPP_WARN(this->get_logger(), "Waiting for KCL action server to be ready...");
+        }
+        setKCLClient_->async_send_goal(cmd, kclSendGoalOptions_);
+    } else if (cmd == "CANCEL") {
+        auv_core_helper::action::SetKCL::Goal cmd;
+        cmd.desired_state = "CANCEL";
+        if (!setKCLClient_->wait_for_action_server(std::chrono::seconds(1))) {
+            // systemStatus_->kclActionServerAlive = false;
+            return false;
+        }
+        setKCLClient_->async_send_goal(cmd, kclSendGoalOptions_);
+        ctrlData_->kclData.cancelCommand = false;
+        return true;
+    } else {
+
+        auv_core_helper::action::SetKCL::Goal cmd;
+        cmd = ctrlData_->kclData.currentCmd.goal;
+
+        if (systemStatus_->conf.debugPrints) {
+            if (cmd.desired_state == "WAYPOINT_NAVIGATION") {
+                RCLCPP_INFO(this->get_logger(), "Sending command to KCL [%s], %f, %f, %f", cmd.desired_state.c_str(),
+                    cmd.position.latitude, cmd.position.longitude, cmd.depth);
+            } else {
+                RCLCPP_INFO(this->get_logger(), "Sending command to KCL [%s], %s", cmd.desired_state.c_str());
+            }
+        }
+
+        if (systemStatus_->conf.simKcl) {
+            RCLCPP_WARN(this->get_logger(), "Received cmd for KCL but simulating it, so setting it as completed.");
+            if (cmd.desired_state == "WAYPOINT_NAVIGATION") {
+                ctrlData_->inertialF_linearPosition.latitude = cmd.position.latitude;
+                ctrlData_->inertialF_linearPosition.longitude = cmd.position.longitude;
+                ctrlData_->depth = cmd.depth;
+            }
+            return true;
+        }
+
+        auto timeout = std::chrono::duration_cast<std::chrono::nanoseconds>(
+            std::chrono::duration<double>(systemStatus_->conf.kclLivenessTimeout));
+        if (setKCLClient_->wait_for_action_server(timeout)) {
+            setKCLClient_->async_send_goal(cmd, kclSendGoalOptions_);
+        } else {
+            // systemStatus_->kclActionServerAlive = false;
+            RCLCPP_WARN(this->get_logger(), "KCL is not ready to rcv a cmd.");
+            return false;
+        }
+
+        ctrlData_->kclData.currentCmd.sentToKcl = true;
+    }
+}
+
+void MissionController::ActionResultCallback(const rclcpp_action::ClientGoalHandle<auv_core_helper::action::SetKCL>::WrappedResult& result)
+{
+    ctrlData_->kclData.currentCmd.result.success = result.result->success;
+    ctrlData_->kclData.currentCmd.result.message = result.result->message;
+    RCLCPP_INFO(this->get_logger(), "KCL command RESULT [%s] with message [%s]",
+        ctrlData_->kclData.currentCmd.result.success ? "SUCCESS" : "FAILURE",
+        ctrlData_->kclData.currentCmd.result.message.c_str());
+    if (result.result->success) {
+        ctrlData_->kclData.currentCmd.completed = false;
+    }
+}
+
+void MissionController::ActionFeedbackCallback(
+    rclcpp_action::ClientGoalHandle<auv_core_helper::action::SetKCL>::SharedPtr,
+    const std::shared_ptr<const auv_core_helper::action::SetKCL::Feedback>& feedback)
+{
+    ctrlData_->kclData.currentCmd.feedback.actual_state = feedback->actual_state;
+    ctrlData_->kclData.currentCmd.feedback.action_progress = feedback->action_progress;
+
+    if (systemStatus_->conf.debugPrints) {
+        RCLCPP_INFO(this->get_logger(), "KCL command FEEDBACK: [%s] with progress %.2f",
+            ctrlData_->kclData.currentCmd.feedback.actual_state.c_str(),
+            ctrlData_->kclData.currentCmd.feedback.action_progress);
+    }
 }
 
 void MissionController::LoadConfiguration()
 {
     // Load configuration from file
-    std::string package_share_directory = ament_index_cpp::get_package_share_directory("mission_ctrl");
-    std::string confPath = package_share_directory + "/conf/" + "system.conf";
+    // std::string package_share_directory = ament_index_cpp::get_package_share_directory("mission_ctrl");
+    // std::string confPath = package_share_directory + "/conf/" + "system.conf";
+    std::string package_share_directory = ament_index_cpp::get_package_share_directory("auv_core_helper");
+    std::string confPath = package_share_directory + "/param/ctrl/" + "mission_ctrl.conf";
     libconfig::Config confObj;
 
     try {
@@ -344,6 +472,41 @@ void MissionController::LoadConfiguration()
         ctb::GetParam(confObj, systemStatus_->conf.perceptionLivenessTimeout, "perception_liveness_timeout");
         ctb::GetParam(confObj, systemStatus_->conf.kclLivenessTimeout, "kcl_liveness_timeout");
         ctb::GetParam(confObj, systemStatus_->conf.systemLivenessTimeout, "system_liveness_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.debugBuoys, "buoysDebug");
+
+        const libconfig::Setting& root = confObj.getRoot();
+        const libconfig::Setting& safetyBoundarySetting = root["safetyBoundary"];
+        for (int i = 0; i < safetyBoundarySetting.getLength(); ++i) {
+            const libconfig::Setting& point = safetyBoundarySetting[i];
+            Eigen::VectorXd latLongTmp;
+            ctb::GetParamVector(point, latLongTmp, "point");
+            systemStatus_->conf.safetyBoundary.push_back(ctb::LatLong(latLongTmp[0], latLongTmp[1]));
+        }
+
+        if (systemStatus_->conf.simBridge) {
+            Eigen::VectorXd latLongTmp;
+            ctb::GetParamVector(confObj, latLongTmp, "startingPositionDebug");
+            ctrlData_->inertialF_linearPosition.latitude = latLongTmp[0];
+            ctrlData_->inertialF_linearPosition.longitude = latLongTmp[1];
+        }
+
+        if (systemStatus_->conf.debugBuoys) {
+            const libconfig::Setting& buoysSetting = root["buoysStonefishPositions"];
+            for (int i = 0; i < buoysSetting.getLength(); ++i) {
+                const libconfig::Setting& point = buoysSetting[i];
+                Eigen::VectorXd localTmp;
+                ctb::GetParamVector(point, localTmp, "point");
+                ctb::LatLong stonefishCentroid = ctb::LatLong(44.095952330602564, 9.865115308770484); // from update pose stonefish in stonefish utils
+                ctb::LatLong latLongTmp;
+                double alt;
+                ctb::LocalNED2LatLong(localTmp, stonefishCentroid, latLongTmp, alt);
+                systemStatus_->conf.debugBuoysPositions.push_back(latLongTmp);
+            }
+            std::cerr << "Debug buoys true positions:" << std::endl;
+            for (const auto& point : systemStatus_->conf.debugBuoysPositions) {
+                std::cerr << "  - [" << point.latitude << ", " << point.longitude << "]" << std::endl;
+            }
+        }
 
         RCLCPP_INFO(this->get_logger(), "Configuration loaded from file: %s", confPath.c_str());
         RCLCPP_INFO(this->get_logger(), "simKcl: %d", systemStatus_->conf.simKcl);
@@ -358,6 +521,10 @@ void MissionController::LoadConfiguration()
         RCLCPP_INFO(this->get_logger(), "perceptionLivenessTimeout: %f", systemStatus_->conf.perceptionLivenessTimeout);
         RCLCPP_INFO(this->get_logger(), "kclLivenessTimeout: %f", systemStatus_->conf.kclLivenessTimeout);
         RCLCPP_INFO(this->get_logger(), "systemLivenessTimeout: %f", systemStatus_->conf.systemLivenessTimeout);
+        RCLCPP_INFO(this->get_logger(), "Safety boundary points:");
+        for (const auto& point : systemStatus_->conf.safetyBoundary) {
+            RCLCPP_INFO(this->get_logger(), "  - [%f, %f]", point.latitude, point.longitude);
+        }
 
     } catch (const libconfig::FileIOException& fioex) {
         RCLCPP_ERROR(this->get_logger(), "I/O error while reading file: %s", fioex.what());
@@ -403,6 +570,37 @@ void MissionController::SimulateMissionCmdFromFile()
     if (systemStatus_->conf.debugPrints) {
         std::cerr << "===== TaskBenchMark " << taskData_->taskType << " =====" << std::endl;
         std::cerr << *taskData_ << std::endl;
+    }
+}
+
+void MissionController::SetUpFSM()
+{
+    // ***** STATES ***** //
+    // Set the fsm and the structure that the states need.
+    for (auto& state : statesMap_) {
+        state.second->ctrlData = ctrlData_;
+        state.second->systemStatus_ = systemStatus_;
+        // state.second->taskData_ = taskData_;
+        state.second->SetFSM(&rFsm_);
+    }
+    // ADD STATES
+    for (auto& state : statesMap_) {
+        rFsm_.AddState(state.first, state.second.get());
+    }
+    // ENABLE TRANSITIONS
+    for (auto& currentState : statesMap_) {
+        for (auto& nextState : statesMap_) {
+            if (nextState.first != currentState.first)
+                rFsm_.EnableTransition(currentState.first, nextState.first, true);
+        }
+    }
+    rFsm_.SetInitState(mission::states::ID::init);
+}
+
+void MissionController::SetTaskDataFSM()
+{
+    for (auto& state : statesMap_) {
+        state.second->taskData_ = taskData_;
     }
 }
 }
