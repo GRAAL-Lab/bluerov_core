@@ -149,8 +149,37 @@ void LoadParamsFromConf(const std::string& config_name, Eigen::VectorXd* thruste
     }
 }
 
+void LoadBridgeParamsFromConf(const std::string& config_name, bool* simulation_mode, std::string* remote_addr, int* system_id, int* component_id, int* port)
+ {
+    libconfig::Config cfg;
+    try {
+        std::string package_path = ament_index_cpp::get_package_share_directory("auv_core_helper");
+        std::string conf_file_path = package_path + "/param/ctrl/" + config_name + ".conf";
 
+        if (!std::filesystem::exists(conf_file_path)) {
+            std::cerr << "Bridge config file not found: " << conf_file_path << std::endl;
+            return;
+        }
 
+        cfg.readFile(conf_file_path.c_str());
+        const libconfig::Setting& bridge = cfg.lookup(config_name);
+
+        if(simulation_mode)   *simulation_mode  = bridge["simulation_mode"];
+        if (remote_addr)      *remote_addr      = (std::string)bridge["remote_addr"];
+        if (system_id)        *system_id        = bridge["system_id"];
+        if (component_id)     *component_id     = bridge["component_id"];
+        if (port)             *port             = bridge["port"];
+
+    } catch (const libconfig::FileIOException &fioex) {
+        std::cerr << "I/O error while reading bridge config file: " << fioex.what() << std::endl;
+    } catch (const libconfig::ParseException &pex) {
+        std::cerr << "Parse error at " << pex.getFile() << ":" << pex.getLine() << " - " << pex.getError() << std::endl;
+    } catch (const libconfig::SettingNotFoundException &nfex) {
+        std::cerr << "Bridge config setting not found: " << nfex.what() << std::endl;
+    } catch (const libconfig::ConfigException &cex) {
+        std::cerr << "Bridge config error: " << cex.what() << std::endl;
+    }
+}
 
 void PublishEigenPose(const rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr& publisher, const Eigen::Matrix<double, 6, 1>& pose, const rclcpp::Time& time) {
     auto message = std::make_unique<auv_core_helper::msg::PoseStamped>();
