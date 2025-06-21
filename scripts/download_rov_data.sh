@@ -4,7 +4,7 @@
 REMOTE_USER="paolo"
 REMOTE_HOST="130.251.6.103"
 REMOTE_PATH="/home/paolo/mission_logs/"
-LOCAL_PATH="/home/paolo/Desktop/RAMI/rov_logs/"
+LOCAL_PATH="$HOME/rov_logs/"
 
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -84,18 +84,13 @@ if [ ! -f "$ROS2_LOG" ]; then
     exit 1
 fi
 
-# Create combined log file in a temp file
-TMP_COMBINED_LOG="/tmp/combined_robot_ctrlstation_communication.log"
-
 {
     cat "$ROS2_LOG"
     echo ""
     echo "===== SSH SYNC SESSION LOG - $(date '+%Y-%m-%d %H:%M:%S') ====="
     cat "$COMM_LOG_FILE"
-} > "$TMP_COMBINED_LOG"
+} > "$FINAL_LOG"
 
-# Move combined log into mission folder, overwriting if exists
-mv "$TMP_COMBINED_LOG" "$FINAL_LOG"
 log_communication "${GREEN}✓ Combined log saved to mission folder: $FINAL_LOG${NC}"
 
 rm -f "$TEMP_COMM_LOG"
