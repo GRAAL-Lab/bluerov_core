@@ -20,7 +20,7 @@ public:
   
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr dispatch_sub_;
   int tbm_id_{0};
-  int wp_LatLong[2]={0,0};
+  double wp_LatLong[2]={0.0,0.0};
   bool tbm_done = false;
   bool lat_done = false;
   bool long_done = false;
