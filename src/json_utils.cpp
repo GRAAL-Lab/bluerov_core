@@ -555,15 +555,8 @@ namespace ctljsn {
       static double lat_long[2];
 
       try {
-          // Caso 1: formato STATUS (lat/long in body -> position -> horizontal)
-          /*if (jsonData["body"].contains("position")) {
-              const auto& horizontal = jsonData["body"]["position"]["horizontal"];
-              lat_long[0] = horizontal["latitude"].as<double>();
-              lat_long[1] = horizontal["longitude"].as<double>();
-              return lat_long;
-          }*/
-
-          // Caso 2: formato DYNAMIC_UPDATE (lat/long in body -> operations[0] -> value -> position -> horizontal)
+          
+	  //formato DYNAMIC_UPDATE (lat/long in body -> operations[0] -> value -> position -> horizontal)
           if (jsonData["body"].contains("operations") &&
               !jsonData["body"]["operations"].empty() &&
               jsonData["body"]["operations"][0].contains("value")) {
@@ -581,6 +574,43 @@ namespace ctljsn {
           return nullptr;
       }
     }
+    
+    std::string handle_status(const jsoncons::json& status_msg) {
+	    auto name = status_msg["body"]["identifier"]["name"].as<std::string>();
+	    auto status = status_msg["body"]["status"].as<std::string>();
+
+	    if (status == "AVAILABLE") {
+		return name + " is IDLE";
+	    } 
+	    else if (status == "ON_TASK") {
+		const auto& tasks = status_msg["body"]["owned_tasks"];
+
+		if (tasks.empty()) {
+		    return name + " is ON_TASK but no task details found.";
+		}
+
+		std::ostringstream out;
+		out << name << " is ON_TASK:\n";
+
+		for (const auto& task : tasks.array_range()) {
+		    std::string task_name = task["identifier"]["name"].as<std::string>();
+		    std::string state = task["state"].as<std::string>();
+		    double percent = task["percent_complete"].as<double>();
+		    std::string remaining = task["time_remaining"].as<std::string>();
+
+		    out << "- Task: " << task_name << "\n"
+		        << "  State: " << state << "\n"
+		        << "  Completion: " << percent << "%\n"
+		        << "  Time remaining: " << remaining << "\n";
+		}
+
+		return out.str();
+	    } 
+	    else {
+		return name + " has unknown status: " + status;
+	   }
+  }
+
   }
 
   namespace security {
