@@ -531,6 +531,8 @@ namespace ctljsn {
         jsoncons::json GenerateDefinedRegion(std::vector<jsoncons::json> boundariesItems);
         
         double* CreateLatLongPositionFromJson(const jsoncons::json& jsonData);
+        
+        std::string handle_status(const jsoncons::json& status_msg);
 
     }
 

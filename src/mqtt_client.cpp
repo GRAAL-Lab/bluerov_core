@@ -16,6 +16,7 @@ const std::string CLIENT_ID = "ros2_client";
 const std::string USERNAME = "teamA";
 const std::string PASSWORD = "passwordA";
 const std::string TOPIC_UPDATE = "catl/rami25/sectorA/update";
+const std::string TOPIC_STATUS  = "catl/rami25/sectorA/status";
 const int QOS = 1;
 
 class MqttRosNode : public rclcpp::Node, public virtual mqtt::callback {
@@ -40,6 +41,7 @@ public:
 		client_->connect(connOpts)->wait();
 		RCLCPP_INFO(this->get_logger(), "Connected to broker.");
 		client_->subscribe(TOPIC_UPDATE, QOS)->wait();
+		client_->subscribe(TOPIC_STATUS, QOS)->wait();
 		connected = true;
 	    } catch (const mqtt::exception& e) {
 		RCLCPP_WARN(this->get_logger(), "Connection attempt %d failed: %s", attempts + 1, e.what());
@@ -76,26 +78,30 @@ private:
 
 		// Verifica il tipo di messaggio
 		std::string type = wm_json["header"]["message_type"].as<std::string>();
-		if (type != "DYNAMIC_UPDATE") return;
+		if (type == "DYNAMIC_UPDATE"){
+			double* lat_long = ctljsn::geographic::CreateLatLongPositionFromJson(wm_json);
 
-		// Parsing temporale e geografico
-		//std::shared_ptr<ctljsn::time::AbsoluteTime> extractedAbsTime = ctljsn::time::CreateAbsoluteTimeFromJson(wm_json);
-		//std::shared_ptr<ctljsn::time::DirectTime> extractedDirTime = std::dynamic_pointer_cast<ctljsn::time::DirectTime>(extractedAbsTime);
-		double* lat_long = ctljsn::geographic::CreateLatLongPositionFromJson(wm_json);
+			if (lat_long != nullptr) {
+			    auto msg_lat = std_msgs::msg::Float64();
+			    msg_lat.data = lat_long[0];
+			    pub_lat_->publish(msg_lat);
+			    RCLCPP_INFO(this->get_logger(), "Lat: %f", msg_lat.data);
 
-		if (lat_long != nullptr) {
-		    auto msg_lat = std_msgs::msg::Float64();
-		    msg_lat.data = lat_long[0];
-		    pub_lat_->publish(msg_lat);
-		    RCLCPP_INFO(this->get_logger(), "Lat: %f", msg_lat.data);
-
-		    auto msg_long = std_msgs::msg::Float64();
-		    msg_long.data = lat_long[1];
-		    pub_long_->publish(msg_long);
-		    RCLCPP_INFO(this->get_logger(), "Lon: %f", msg_long.data);
-		} else {
-		    RCLCPP_WARN(this->get_logger(), "Failed to extract lat/long.");
+			    auto msg_long = std_msgs::msg::Float64();
+			    msg_long.data = lat_long[1];
+			    pub_long_->publish(msg_long);
+			    RCLCPP_INFO(this->get_logger(), "Lon: %f", msg_long.data);
+			} else {
+			    RCLCPP_WARN(this->get_logger(), "Failed to extract lat/long.");
+			}
 		}
+		else if (type == "STATUS"){
+			std::string status_msg = ctljsn::geographic::handle_status(wm_json);
+			RCLCPP_INFO(this->get_logger(), "%s", status_msg.c_str());
+		}
+		else
+			RCLCPP_WARN(this->get_logger(), "Message type not recognized");
+		
 
 	    } catch (const std::exception& e) {
 		RCLCPP_ERROR(this->get_logger(), "Error parsing MQTT message: %s", e.what());
