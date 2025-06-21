@@ -96,6 +96,7 @@ ament_target_dependencies(mqtt_client
 ament_target_dependencies(terminal
   rclcpp
   std_msgs
+  ament_index_cpp
 )
 
 # Install targets
@@ -109,6 +110,12 @@ install(TARGETS
 install(DIRECTORY conf/
   DESTINATION share/${PROJECT_NAME}/conf
 )
+
+install(PROGRAMS
+  scripts/download_rov_data.sh
+  DESTINATION share/${PROJECT_NAME}/scripts
+)
+
 
 # Testing and linting (if enabled)
 if(BUILD_TESTING)

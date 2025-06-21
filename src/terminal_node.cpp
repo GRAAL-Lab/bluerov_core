@@ -2,6 +2,8 @@
 #include <iostream>
 #include <memory>
 #include <thread>
+#include <cstdlib>                                         // for std::system
+#include <ament_index_cpp/get_package_share_directory.hpp> // to get package path
 
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/int32.hpp"
@@ -33,7 +35,7 @@ private:
       std::cout << "\n========== TBM MENU ==========" << std::endl;
       std::cout << "1. Select TBM ID" << std::endl;
       std::cout << "2. Send mission command" << std::endl;
-      std::cout << "3. SSH into AUV (not yet merged in this node)" << std::endl;
+      std::cout << "3. SSH into AUV" << std::endl;
       std::cout << "4. Exit" << std::endl;
       std::cout << "> ";
 
@@ -60,6 +62,23 @@ private:
         std_msgs::msg::Empty msg;
         dispatch_pub_->publish(msg);
         RCLCPP_INFO(this->get_logger(), "Dispatched MissionCommand request");
+        break;
+      }
+
+      case 3:
+      {
+        RCLCPP_INFO(this->get_logger(), "Starting ROV log sync script...");
+
+        std::string pkg_path = ament_index_cpp::get_package_share_directory("ctrl_station");
+        std::string script_path = pkg_path + "/scripts/download_rov_data.sh";
+
+        int ret = std::system(script_path.c_str());
+
+        if (ret == 0)
+          RCLCPP_INFO(this->get_logger(), "ROV log sync script executed successfully.");
+        else
+          RCLCPP_ERROR(this->get_logger(), "ROV log sync script failed with code %d", ret);
+
         break;
       }
 
