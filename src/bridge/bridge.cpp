@@ -363,20 +363,19 @@ void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg)
 {
   mavlink_command_ack_t ack;
   mavlink_msg_command_ack_decode(&msg, &ack);
+  RCLCPP_INFO(this->get_logger(), "Command ACK: command=%d, result=%d", ack.command, ack.result);
 
-  auto failed = (ack.result == MAV_RESULT_DENIED ||
-                 ack.result == MAV_RESULT_FAILED ||
-                 ack.result == MAV_RESULT_TEMPORARILY_REJECTED);
+  auto ack_failed = (ack.result == MAV_RESULT_DENIED ||
+                     ack.result == MAV_RESULT_FAILED ||
+                     ack.result == MAV_RESULT_TEMPORARILY_REJECTED);
 
-  if (pending_arm_) {
-    bool armed_flag = hb.base_mode & MAV_MODE_FLAG_SAFETY_ARMED;
-    if (armed_flag == pending_arm_->want_arm) {
+  if (pending_arm_ && ack.command == MAV_CMD_COMPONENT_ARM_DISARM && ack.result == MAV_RESULT_ACCEPTED) {
+      bool armed_flag = pending_arm_->want_arm;
       pending_arm_->resp->success = true;
       pending_arm_->resp->message = armed_flag ? "Vehicle armed." : "Vehicle disarmed.";
       armingService_->send_response(*pending_arm_->header, *pending_arm_->resp);
       pending_arm_.reset();
-    }
-  } else if (pending_arm_ && ack.command == MAV_CMD_COMPONENT_ARM_DISARM && failed) {
+  } else if (pending_arm_ && ack.command == MAV_CMD_COMPONENT_ARM_DISARM && ack_failed) {
     pending_arm_->resp->success = false;
     pending_arm_->resp->message = "Autopilot rejected arming/disarming.";
     armingService_->send_response(*pending_arm_->header, *pending_arm_->resp);
@@ -388,7 +387,7 @@ void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg)
       pending_mode_->resp->message = "Flight mode engaged.";
       flightModeService_->send_response(*pending_mode_->header, *pending_mode_->resp);
       pending_mode_.reset();
-  } else  if (pending_mode_ && ack.command == MAV_CMD_DO_SET_MODE && failed) {
+  } else  if (pending_mode_ && ack.command == MAV_CMD_DO_SET_MODE && ack_failed) {
     pending_mode_->resp->success = false;
     pending_mode_->resp->message = "Autopilot rejected flight-mode change.";
     flightModeService_->send_response(*pending_mode_->header, *pending_mode_->resp);
