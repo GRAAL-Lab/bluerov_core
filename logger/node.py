@@ -1,11 +1,15 @@
 from rclpy.node import Node
 from auv_core_helper.msg import PoseStamped, MissionStatus, DtcList
+from image_pipeline_msgs.msg import Obstacles
+from sensor_msgs.msg import Image
 from datetime import datetime, timezone
 from logger.utilities import STATE_NAME_MAP
 import os
 import math
 import simplekml
 import time
+import cv2
+from cv_bridge import CvBridge
 
 class LoggerNode(Node):
     def __init__(self):
@@ -28,11 +32,14 @@ class LoggerNode(Node):
         # subscribers
         self.pose_sub = self.create_subscription(PoseStamped, "/auv/global/pose_actual", self.pose_callback, 10)
         self.mission_sub = self.create_subscription(MissionStatus, "/auv/mission/status", self.mission_callback, 10)
-        self.perception_sub = self.create_subscription(DtcList,"/auv/perception/objects",self.perception_callback,10)
+        self.perception_sub = self.create_subscription(Obstacles,"/dtc/obstacles",self.perception_callback,10)
+        self.image_sub = self.create_subscription(Image, "/testing/sf/AUV/rgb_camera", self.image_callback, 10) #only for testing, to change later
 
         self.kml_path_nav = os.path.join(self.mission_dir, f"vehicle_navigation_data_{file_timestamp}.kml")
         self.kml_path_mission = os.path.join(self.mission_dir, f"mission_status_data_{file_timestamp}.kml")
         self.kml_path_objects = os.path.join(self.mission_dir, f"object_recognition_data_{file_timestamp}.kml")
+        self.image_save_path = os.path.join(self.mission_dir, "object_images")
+        os.makedirs(self.image_save_path, exist_ok=True)
         
         self.kml_nav = simplekml.Kml()
         self.kml_mission = simplekml.Kml()
@@ -43,11 +50,17 @@ class LoggerNode(Node):
         
         self.latest_pose = None
         self.latest_mission_status = None
+        self.bridge = CvBridge()
+        self.latest_image = None
         
         # Initialize mission status tracking variables
         self.last_state = None
         self.last_state_object = None
-        
+        self.seen_buoy_ids = set()
+        self.seen_pipe_ids = set()
+        self.seen_marker_ids = set()
+        self.seen_number_ids = set()
+
         # Log pose at 1 Hz
         self.timer = self.create_timer(1.0, self.log_pose)
 
@@ -58,6 +71,13 @@ class LoggerNode(Node):
 
     def pose_callback(self, msg: PoseStamped):
         self.latest_pose = msg
+    
+    def image_callback(self, msg: Image):
+        try:
+            self.latest_image = msg  # Save latest image for perception callback  
+        except Exception as e:
+            self.get_logger().error(f"[IMAGE] Image callback failed: {e}")
+
         
     def mission_callback(self, msg: MissionStatus):
         try:
@@ -126,73 +146,139 @@ class LoggerNode(Node):
         except Exception as e:
             self.get_logger().error(f"[POSE] Logging error: {e}")
     
-    def format_field(self, field):
-        if field is None:
-            return "None"
-        # For lists or arrays
-        if isinstance(field, (list, tuple)):
-            if len(field) == 0:
-                return "[]"
-            else:
-                return str(field)
-        # For complex objects you might want custom string formatting (add as needed)
-        return str(field)
+    def save_image(self, timestamp):
+        if self.latest_image is None:
+            self.get_logger().warn("[IMAGE] No latest image available to save")
+            return ""
+        try:
+            cv_image = self.bridge.imgmsg_to_cv2(self.latest_image, desired_encoding='bgr8')
+            filename = f"object_{int(timestamp * 1000)}.jpg"
+            filepath = os.path.join(self.image_save_path, filename)
+            cv2.imwrite(filepath, cv_image)
+            self.get_logger().info(f"[IMAGE] Saved image: {filename}")
+            return filename
+        except Exception as e:
+            self.get_logger().error(f"[IMAGE] Error saving image: {e}")
+            return ""
 
-    def perception_callback(self, msg: DtcList):
+
+    def perception_callback(self, msg):
         try:
             timestamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
             dt = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
-
-            # === PIPE ===
-            pipe = msg.pipeline_pipe
-            if pipe.pipe_in_fov:
-                p = self.kml_objects.newpoint(name="Pipeline")
-                p.timestamp.when = dt
-                lat = pipe.point_on_pipe.latitude
-                lon = pipe.point_on_pipe.longitude
-                depth = pipe.vertical_distance
-                p.coords = [(lon, lat, -depth)]
-                p.extendeddata.newdata(name="Pipeline Code", value=pipe.pipeline_pipe_code)
-                p.extendeddata.newdata(name="Vertical Distance", value=str(pipe.vertical_distance))
-                p.extendeddata.newdata(name="Direction", value=str(pipe.pipe_direction))
-                p.extendeddata.newdata(name="Toward Structure", value=str(pipe.move_toward_structure))
-
-            # === RED MARKER ===
-            if pipe.found_red_marker:
-                red = self.kml_objects.newpoint(name="Red Marker")
-                red.timestamp.when = dt
-                lat = pipe.red_marker_position.latitude
-                lon = pipe.red_marker_position.longitude
-                red.coords = [(lon, lat)]
-                red.extendeddata.newdata(name="Found", value="True")
-
-            # === NUMBER MARKER ===
-            if pipe.found_number:
-                num = self.kml_objects.newpoint(name="Number Marker")
-                num.timestamp.when = dt
-                lat = pipe.number_position.latitude
-                lon = pipe.number_position.longitude
-                num.coords = [(lon, lat)]
-                num.extendeddata.newdata(name="Number", value=str(pipe.number))
+            
+            # Skip if no image available yet
+            if self.latest_image is None:
+                self.get_logger().warn("[IMAGE] No latest image available to save yet, skipping saving image.")
+                return
+            
+            object_found = False
 
             # === BUOYS ===
             for buoy in msg.buoys:
-                b = self.kml_objects.newpoint(name=f"Buoy {buoy.id}")
-                b.timestamp.when = dt
-                lat = buoy.position.latitude
-                lon = buoy.position.longitude
-                b.coords = [(lon, lat)]
-                b.extendeddata.newdata(name="Color", value=buoy.color)
-                b.extendeddata.newdata(name="Color Confidence", value=str(buoy.color_confidence))
-                b.extendeddata.newdata(name="Radius", value=str(buoy.radius))
+                if buoy.id not in self.seen_buoy_ids:
+                    self.seen_buoy_ids.add(buoy.id)
+                    object_found = True
+                    pos = buoy.pose.pose.position
+                    lat = pos.latitude
+                    lon = pos.longitude
+                    depth = -pos.altitude
 
-            # === Save periodically ===
+                    object_id = f"buoy_{buoy.id}"
+                    filename = self.save_image(timestamp)
+
+                    placemark = self.kml_objects.newpoint(name=f"Buoy {buoy.id}")
+                    placemark.timestamp.when = dt
+                    placemark.coords = [(lon, lat, depth)]
+                    placemark.extendeddata.newdata(name="Target ID", value=object_id)
+                    placemark.extendeddata.newdata(name="Latitude", value=str(lat))
+                    placemark.extendeddata.newdata(name="Longitude", value=str(lon))
+                    placemark.extendeddata.newdata(name="Depth", value=str(depth))
+                    placemark.extendeddata.newdata(
+                        name="Features", value=f"radius={buoy.radius}, color={buoy.color}"
+                    )
+                    placemark.extendeddata.newdata(name="Image", value=filename)
+
+            # === MARKERS ===
+            for marker in msg.markers:
+                if marker.id not in self.seen_marker_ids:
+                    self.seen_marker_ids.add(marker.id)
+                    object_found = True
+                    pos = marker.pose.pose.position
+                    lat = pos.latitude
+                    lon = pos.longitude
+                    depth = -pos.altitude
+
+                    object_id = f"marker_{marker.id}"
+                    filename = self.save_image(timestamp)
+
+                    placemark = self.kml_objects.newpoint(name=f"Marker {marker.id}")
+                    placemark.timestamp.when = dt
+                    placemark.coords = [(lon, lat, depth)]
+                    placemark.extendeddata.newdata(name="Target ID", value=object_id)
+                    placemark.extendeddata.newdata(name="Latitude", value=str(lat))
+                    placemark.extendeddata.newdata(name="Longitude", value=str(lon))
+                    placemark.extendeddata.newdata(name="Depth", value=str(depth))
+                    placemark.extendeddata.newdata(name="Features", value=f"color={marker.color}")
+                    placemark.extendeddata.newdata(name="Image", value=filename)
+
+            # === NUMBERS ===
+            for number in msg.numbers:
+                if number.id not in self.seen_number_ids:
+                    self.seen_number_ids.add(number.id)
+                    object_found = True
+                    pos = number.pose.pose.position
+                    lat = pos.latitude
+                    lon = pos.longitude
+                    depth = -pos.altitude
+
+                    object_id = f"number_{number.id}"
+                    filename = self.save_image(timestamp)
+
+                    placemark = self.kml_objects.newpoint(name=f"Number {number.id}")
+                    placemark.timestamp.when = dt
+                    placemark.coords = [(lon, lat, depth)]
+                    placemark.extendeddata.newdata(name="Target ID", value=object_id)
+                    placemark.extendeddata.newdata(name="Latitude", value=str(lat))
+                    placemark.extendeddata.newdata(name="Longitude", value=str(lon))
+                    placemark.extendeddata.newdata(name="Depth", value=str(depth))
+                    placemark.extendeddata.newdata(
+                        name="Features", value=f"number={number.number}, bg_color={number.bg_color}"
+                    )
+                    placemark.extendeddata.newdata(name="Image", value=filename)
+
+            # === PIPES ===
+            for pipe in msg.pipes:
+                if pipe.id not in self.seen_pipe_ids:
+                    self.seen_pipe_ids.add(pipe.id)
+                    object_found = True
+                    start = pipe.start_pose.pose.position
+                    end = pipe.end_pose.pose.position
+
+                    object_id = f"pipe_{pipe.id}"
+                    filename = self.save_image(timestamp)
+
+                    coords = [
+                        (start.longitude, start.latitude, -start.altitude),
+                        (end.longitude, end.latitude, -end.altitude)
+                    ]
+                    line = self.kml_objects.newlinestring(name=f"Pipe {pipe.id}")
+                    line.timestamp.when = dt
+                    line.coords = coords
+                    line.extendeddata.newdata(name="Target ID", value=object_id)
+                    line.extendeddata.newdata(name="Latitude", value=str(start.latitude))
+                    line.extendeddata.newdata(name="Longitude", value=str(start.longitude))
+                    line.extendeddata.newdata(name="Depth", value=str(-start.altitude))
+                    line.extendeddata.newdata(name="Features", value=f"sizes={pipe.sizes}")
+                    line.extendeddata.newdata(name="Image", value=filename)        
+            
+            if object_found:
+                self.get_logger().info(f"[PERCEPTION] Logged new objects at {dt}")
+            
             current_time = time.time()
             if current_time - self.last_save_time > self.save_interval:
                 self.save_logs()
                 self.last_save_time = current_time
-
-            self.get_logger().info(f"[PERCEPTION] Logged perception data at {dt}")
 
         except Exception as e:
             self.get_logger().error(f"[PERCEPTION] Logging error: {e}")

@@ -14,6 +14,8 @@
 
   <exec_depend>python3-simplekml</exec_depend>
   <exec_depend>auv_core_helper</exec_depend>
+  <exec_depend>cv_bridge</exec_depend>
+  <exec_depend>image_pipeline_msgs</exec_depend>
 
   <export>
     <build_type>ament_python</build_type>
