@@ -7,7 +7,7 @@ namespace auv_core_helper {
 
 namespace topicnames {
 
-const std::string system_status = "/auv/mission/status";
+const std::string system_status = "/auv/status";
 
 // MISSION
 const std::string mission_status = "/auv/mission/status";
