@@ -11,37 +11,39 @@ using namespace std::chrono_literals;
 
 using namespace ctljsn;
 
-const std::string ADDRESS = "tcp://localhost:1883";
-const std::string CLIENT_ID = "ros2_client";
-const std::string USERNAME = "teamA";
-const std::string PASSWORD = "passwordA";
-const std::string TOPIC_UPDATE = "catl/rami25/sectorA/update";
-const std::string TOPIC_STATUS  = "catl/rami25/sectorA/status";
-const int QOS = 1;
+const std::string mqttAdress = "tcp://localhost:1883";
+const std::string clientId = "ros2_client";
+const std::string username = "teamA";
+const std::string password = "passwordA";
+const std::string topicUpdate = "catl/rami25/sectorA/update";
+const std::string topicStatus  = "catl/rami25/sectorA/status";
+const int qos = 1;
 
-class MqttRosNode : public rclcpp::Node, public virtual mqtt::callback {
+class MqttClient : public rclcpp::Node, public virtual mqtt::callback {
 public:
-    MqttRosNode()
-    : Node("mqtt_ros_node") {
+    MqttClient()
+    : Node("mqtt_client") {
         pub_lat_ = this->create_publisher<std_msgs::msg::Float64>("latitude", 10);
         pub_long_ = this->create_publisher<std_msgs::msg::Float64>("longitude", 10);
 
-        client_ = std::make_unique<mqtt::async_client>(ADDRESS, CLIENT_ID);
+        client_ = std::make_unique<mqtt::async_client>(mqttAdress, clientId);
         mqtt::connect_options connOpts;
-        connOpts.set_user_name(USERNAME);
-        connOpts.set_password(PASSWORD);
+        connOpts.set_user_name(username);
+        connOpts.set_password(password);
         connOpts.set_clean_session(true);
 
         client_->set_callback(*this);
 
         bool connected = false;
-	for (int attempts = 0; attempts < 5 && !connected; ++attempts) {
+        
+        int attempts = 0;
+	while(!connected) {
 	    try {
 		RCLCPP_INFO(this->get_logger(), "Attempt %d: Connecting to MQTT broker...", attempts + 1);
 		client_->connect(connOpts)->wait();
 		RCLCPP_INFO(this->get_logger(), "Connected to broker.");
-		client_->subscribe(TOPIC_UPDATE, QOS)->wait();
-		client_->subscribe(TOPIC_STATUS, QOS)->wait();
+		client_->subscribe(topicUpdate, qos)->wait();
+		client_->subscribe(topicStatus, qos)->wait();
 		connected = true;
 	    } catch (const mqtt::exception& e) {
 		RCLCPP_WARN(this->get_logger(), "Connection attempt %d failed: %s", attempts + 1, e.what());
@@ -51,9 +53,10 @@ public:
 	if (!connected) {
 	    RCLCPP_ERROR(this->get_logger(), "Failed to connect to MQTT broker after multiple attempts.");
 	}
+	attempts++;
     }
     
-    ~MqttRosNode() {
+    ~MqttClient() {
 	    try {
 		if (client_ && client_->is_connected()) {
 		    RCLCPP_INFO(this->get_logger(), "Disconnecting MQTT client...");
@@ -76,8 +79,12 @@ private:
 		std::string raw = msg->get_payload();
 		jsoncons::json wm_json = jsoncons::json::parse(raw);
 
+		std::string type = "";
 		// Verifica il tipo di messaggio
-		std::string type = wm_json["header"]["message_type"].as<std::string>();
+		if (wm_json.contains("header") && wm_json["header"].contains("message_type")){
+			type = wm_json["header"]["message_type"].as<std::string>();
+		}
+		
 		if (type == "DYNAMIC_UPDATE"){
 			double* lat_long = ctljsn::geographic::CreateLatLongPositionFromJson(wm_json);
 
@@ -111,7 +118,7 @@ private:
 
 int main(int argc, char* argv[]) {
     rclcpp::init(argc, argv);
-    auto node = std::make_shared<MqttRosNode>();
+    auto node = std::make_shared<MqttClient>();
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;

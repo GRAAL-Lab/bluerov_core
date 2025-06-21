@@ -25,7 +25,7 @@ public:
   
   rclcpp::Subscription<std_msgs::msg::Empty>::SharedPtr dispatch_sub_;
   int tbm_id_{0};
-  double wp_LatLong[2]={0.0,0.0};
+  double wpLatLong[2]={0.0,0.0};
   bool tbm_done = false;
   bool lat_done = false;
   bool long_done = false;
@@ -38,22 +38,22 @@ public:
   {
     tbm_id_sub_ = this->create_subscription<std_msgs::msg::Int32>(
       "/tbm_id", 10,
-      std::bind(&CommandDispatcherNode::tbmIdCallback, this, std::placeholders::_1)
+      std::bind(&CommandDispatcherNode::TbmIdCallback, this, std::placeholders::_1)
     );
 
     latitude_sub_ = this->create_subscription<std_msgs::msg::Float64>(
       "/latitude", 10,
-      std::bind(&CommandDispatcherNode::latitudeCallback, this, std::placeholders::_1)
+      std::bind(&CommandDispatcherNode::LatitudeCallback, this, std::placeholders::_1)
     );
 
     longitude_sub_ = this->create_subscription<std_msgs::msg::Float64>(
       "/longitude", 10,
-      std::bind(&CommandDispatcherNode::longitudeCallback, this, std::placeholders::_1)
+      std::bind(&CommandDispatcherNode::LongitudeCallback, this, std::placeholders::_1)
     );
     
     dispatch_sub_ = this->create_subscription<std_msgs::msg::Empty>(
     "/dispatch_request", 10,
-    std::bind(&CommandDispatcherNode::dispatchCallback, this, std::placeholders::_1)
+    std::bind(&CommandDispatcherNode::DispatchCallback, this, std::placeholders::_1)
    );
 
     client_ = this->create_client<MissionCommand>("/auv/service/mission_cmd");
@@ -79,7 +79,7 @@ private:
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr latitude_sub_;
   rclcpp::Subscription<std_msgs::msg::Float64>::SharedPtr longitude_sub_;
 
-  void tbmIdCallback(const std_msgs::msg::Int32::SharedPtr msg)
+  void TbmIdCallback(const std_msgs::msg::Int32::SharedPtr msg)
   {
     tbm_id_ = msg->data;
     
@@ -93,16 +93,16 @@ private:
  	
   }
 
-  void latitudeCallback(const std_msgs::msg::Float64::SharedPtr msg)
+  void LatitudeCallback(const std_msgs::msg::Float64::SharedPtr msg)
   {
     /*if (auto insp = std::dynamic_pointer_cast<Inspection>(conf_)) {
       insp->uavWaypoint.latitude = msg->data;
       RCLCPP_INFO(this->get_logger(), "[/latitude] %f", insp->uavWaypoint.latitude);
     }*/
-    wp_LatLong[0] = msg->data;
+    wpLatLong[0] = msg->data;
     
-    if(wp_LatLong[0]){
-    	RCLCPP_INFO(this->get_logger(), "[/latitude] %f", wp_LatLong[0]);
+    if(wpLatLong[0]){
+    	RCLCPP_INFO(this->get_logger(), "[/latitude] %f", wpLatLong[0]);
     	lat_done = true;
     }
     	
@@ -110,17 +110,17 @@ private:
     	RCLCPP_INFO(this->get_logger(), "Not valid latitude received");
   }
 
-  void longitudeCallback(const std_msgs::msg::Float64::SharedPtr msg)
+  void LongitudeCallback(const std_msgs::msg::Float64::SharedPtr msg)
   {
     /*if (auto insp = std::dynamic_pointer_cast<Inspection>(conf_)) {
       insp->uavWaypoint.longitude = msg->data;
       RCLCPP_INFO(this->get_logger(), "[/longitude] %f", insp->uavWaypoint.longitude);
     }*/
     
-    wp_LatLong[1] = msg->data;
+    wpLatLong[1] = msg->data;
     
-    if(wp_LatLong[1]){
-    	RCLCPP_INFO(this->get_logger(), "[/longitude] %f", wp_LatLong[1]);
+    if(wpLatLong[1]){
+    	RCLCPP_INFO(this->get_logger(), "[/longitude] %f", wpLatLong[1]);
     	long_done = true;
     }
     	
@@ -128,12 +128,13 @@ private:
     	RCLCPP_INFO(this->get_logger(), "Not valid longitude received");
   }
   
-  void dispatchCallback(const std_msgs::msg::Empty::SharedPtr)
+  void DispatchCallback(const std_msgs::msg::Empty::SharedPtr)
 {
   RCLCPP_INFO(this->get_logger(), "Trigger ricevuto: invio MissionCommand");
   
   if (!LoadConfiguration(conf_)) {
       RCLCPP_ERROR(this->get_logger(), "Failed to load initial configuration");
+      return;
   }
   
   if(tbm_done){
@@ -171,8 +172,8 @@ private:
 		    }
 		  );
 		tbm_done = false;
-		//lat_done = false;
-		//long_done = false; 	
+		lat_done = false;
+		long_done = false; 	
 	}
   }
   else
@@ -210,66 +211,70 @@ private:
 
   void BuildMissionRequest(std::shared_ptr<MissionCommand::Request> request)
   {
-    // Common fields
-    request->tbm_id = tbm_id_;
-    request->selected_pipeline_structure_id = conf_->selectedPipelineStructureId;
-    // Pipeline structures (fixed array size 2)
-    if (conf_->pipelineStructures.size() > 0) {
-      request->pipeline_structures[0].latitude  = conf_->pipelineStructures[0].centroid.latitude;
-      request->pipeline_structures[0].longitude = conf_->pipelineStructures[0].centroid.longitude;
-    }
-    if (conf_->pipelineStructures.size() > 1) {
-      request->pipeline_structures[1].latitude  = conf_->pipelineStructures[1].centroid.latitude;
-      request->pipeline_structures[1].longitude = conf_->pipelineStructures[1].centroid.longitude;
-    }
-    // Buoys area
-    if (conf_->buoysArea.points.size() >= 4) {
-      for( size_t i = 0; i < 4; ++i) {
-        request->buoys_area_points[i].latitude  = conf_->buoysArea.points[i].latitude;
-        request->buoys_area_points[i].longitude = conf_->buoysArea.points[i].longitude;
-      }
-    }
-    // Defaults
-    //request->uav_wp.latitude    = 0.0;
-    //request->uav_wp.longitude   = 0.0;
-    request->n_buoys            = 0;
-    request->n_damage_markers   = 0;
-    request->pipes.clear();
-    // TBM-specific
-    if (auto insp = std::dynamic_pointer_cast<Inspection>(conf_)) {
-      request->uav_wp.latitude  = wp_LatLong[0];
-      request->uav_wp.longitude = wp_LatLong[1];
-      request->n_buoys          = insp->numberOfBuoys;
-      for (const auto &p : insp->pipelinePipes) {
-        auv_core_helper::msg::PipelinePipe pipe_msg;
-        pipe_msg.number                = p.number;
-        pipe_msg.pipeline_structure_id = p.number;
-        pipe_msg.orientation           = p.orientation;
-        pipe_msg.centroid.latitude     = p.position.latlong.latitude;
-        pipe_msg.centroid.longitude    = p.position.latlong.longitude;
-        request->pipes.push_back(pipe_msg);
-      }
-    } else if (auto inter = std::dynamic_pointer_cast<Intervention>(conf_)) {
-      request->n_damage_markers = inter->numberOfMainPipeDamageMarkers;
-      const auto &d = inter->damagedPipeOnPipeline;
-      request->damaged_pipe.number                = d.number;
-      request->damaged_pipe.pipeline_structure_id = d.number;
-      request->damaged_pipe.orientation           = d.orientation;
-      request->damaged_pipe.centroid.latitude     = d.position.latlong.latitude;
-      request->damaged_pipe.centroid.longitude    = d.position.latlong.longitude;
-    } else if (auto combo = std::dynamic_pointer_cast<InspectionAndIntervention>(conf_)) {
-      request->n_buoys            = combo->numberOfBuoys;
-      request->n_damage_markers   = combo->numberOfMainPipeDamageMarkers;
-      for (const auto &p : combo->pipelinePipes) {
-        auv_core_helper::msg::PipelinePipe pipe_msg;
-        pipe_msg.number                = p.number;
-        pipe_msg.pipeline_structure_id = p.number;
-        pipe_msg.orientation           = p.orientation;
-        pipe_msg.centroid.latitude     = p.position.latlong.latitude;
-        pipe_msg.centroid.longitude    = p.position.latlong.longitude;
-        request->pipes.push_back(pipe_msg);
-      }
-    }
+  	    if (!conf_){
+  	    	RCLCPP_ERROR(this->get_logger(), "Configuration pointer is null.");
+  		return;
+  	    }
+	    // Common fields
+	    request->tbm_id = tbm_id_;
+	    request->selected_pipeline_structure_id = conf_->selectedPipelineStructureId;
+	    // Pipeline structures (fixed array size 2)
+	    if (conf_->pipelineStructures.size() > 0) {
+	      request->pipeline_structures[0].latitude  = conf_->pipelineStructures[0].centroid.latitude;
+	      request->pipeline_structures[0].longitude = conf_->pipelineStructures[0].centroid.longitude;
+	    }
+	    if (conf_->pipelineStructures.size() > 1) {
+	      request->pipeline_structures[1].latitude  = conf_->pipelineStructures[1].centroid.latitude;
+	      request->pipeline_structures[1].longitude = conf_->pipelineStructures[1].centroid.longitude;
+	    }
+	    // Buoys area
+	    if (conf_->buoysArea.points.size() >= 4) {
+	      for( size_t i = 0; i < 4; ++i) {
+		request->buoys_area_points[i].latitude  = conf_->buoysArea.points[i].latitude;
+		request->buoys_area_points[i].longitude = conf_->buoysArea.points[i].longitude;
+	      }
+	    }
+	    // Defaults
+	    //request->uav_wp.latitude    = 0.0;
+	    //request->uav_wp.longitude   = 0.0;
+	    request->n_buoys            = 0;
+	    request->n_damage_markers   = 0;
+	    request->pipes.clear();
+	    // TBM-specific
+	    if (auto insp = std::dynamic_pointer_cast<Inspection>(conf_)) {
+	      request->uav_wp.latitude  = wpLatLong[0];
+	      request->uav_wp.longitude = wpLatLong[1];
+	      request->n_buoys          = insp->numberOfBuoys;
+	      for (const auto &p : insp->pipelinePipes) {
+		auv_core_helper::msg::PipelinePipe pipe_msg;
+		pipe_msg.number                = p.number;
+		pipe_msg.pipeline_structure_id = p.number;
+		pipe_msg.orientation           = p.orientation;
+		pipe_msg.centroid.latitude     = p.position.latlong.latitude;
+		pipe_msg.centroid.longitude    = p.position.latlong.longitude;
+		request->pipes.push_back(pipe_msg);
+	      }
+	    } else if (auto inter = std::dynamic_pointer_cast<Intervention>(conf_)) {
+	      request->n_damage_markers = inter->numberOfMainPipeDamageMarkers;
+	      const auto &d = inter->damagedPipeOnPipeline;
+	      request->damaged_pipe.number                = d.number;
+	      request->damaged_pipe.pipeline_structure_id = d.number;
+	      request->damaged_pipe.orientation           = d.orientation;
+	      request->damaged_pipe.centroid.latitude     = d.position.latlong.latitude;
+	      request->damaged_pipe.centroid.longitude    = d.position.latlong.longitude;
+	    } else if (auto combo = std::dynamic_pointer_cast<InspectionAndIntervention>(conf_)) {
+	      request->n_buoys            = combo->numberOfBuoys;
+	      request->n_damage_markers   = combo->numberOfMainPipeDamageMarkers;
+	      for (const auto &p : combo->pipelinePipes) {
+		auv_core_helper::msg::PipelinePipe pipe_msg;
+		pipe_msg.number                = p.number;
+		pipe_msg.pipeline_structure_id = p.number;
+		pipe_msg.orientation           = p.orientation;
+		pipe_msg.centroid.latitude     = p.position.latlong.latitude;
+		pipe_msg.centroid.longitude    = p.position.latlong.longitude;
+		request->pipes.push_back(pipe_msg);
+	      }
+	    }
   }
 
   void logToFile(const std::string &message)

@@ -10,7 +10,6 @@
 class TerminalNode : public rclcpp::Node
 {
 public:
-  rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr dispatch_pub_;
   
   TerminalNode()
   : Node("terminal_node")
@@ -18,14 +17,15 @@ public:
     dispatch_pub_ = this->create_publisher<std_msgs::msg::Empty>("/dispatch_request", 10);
     tbm_id_pub_ = this->create_publisher<std_msgs::msg::Int32>("/tbm_id", 10);
     rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr dispatch_pub_;
-    std::thread([this]() { menuLoop(); }).detach();
+    std::thread([this]() { MenuLoop(); }).detach();
     RCLCPP_INFO(this->get_logger(), "Terminal node started, publishing TBM IDs on /tbm_id");
   }
 
 private:
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr tbm_id_pub_;
+  rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr dispatch_pub_;
 
-  void menuLoop()
+  void MenuLoop()
   {
     while (rclcpp::ok()) {
       std::cout << "\n========== TBM MENU ==========" << std::endl;
