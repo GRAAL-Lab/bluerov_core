@@ -52,8 +52,9 @@ public:
         std::bind(&CommandDispatcherNode::DispatchCallback, this, std::placeholders::_1));
 
     client_ = this->create_client<MissionCommand>("/auv/service/mission_cmd");
-
-    log_file_.open("robot_ctrlstation_communication.log", std::ios_base::app);
+    
+    std::string log_path = std::string(std::getenv("HOME")) + "/robot_ctrlstation_communication.log";
+    log_file_.open(log_path, std::ios_base::app);
     if (!log_file_.is_open())
     {
       RCLCPP_ERROR(this->get_logger(), "Failed to open log file.");
