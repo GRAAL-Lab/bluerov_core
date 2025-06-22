@@ -7,6 +7,8 @@ namespace auv_core_helper {
 
 namespace topicnames {
 
+const std::string safety_switch = "/auv/safety_switch";    
+
 // MISSION
 const std::string mission_status = "/auv/mission/status";
 
@@ -42,8 +44,6 @@ const std::string kcl_setter_action = "/set_kcl_state";
 
 // Perceptions
 const std::string obstacles = "/objects";
-
-
 }
 }
 
