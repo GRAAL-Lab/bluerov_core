@@ -2,5 +2,5 @@ std_msgs/Header header
 GenericObject[] obstacles
 Buoy[]  buoys
 GenericObject main_pipe
-GenericObject manipulation_console
+bool manipulation_console
 DtcPipelinePipe pipeline_pipe

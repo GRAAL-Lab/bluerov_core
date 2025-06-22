@@ -7,6 +7,8 @@ namespace auv_core_helper {
 
 namespace topicnames {
 
+const std::string system_status = "/auv/status";
+
 const std::string safety_switch = "/auv/safety_switch";    
 
 // MISSION
