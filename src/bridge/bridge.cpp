@@ -47,6 +47,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   dvlDistancePublisher_ = this->create_publisher<std_msgs::msg::Float64>(auv_core_helper::topicnames::dvl_distance_actual,1);
   ekfStatusPublisher_ = this->create_publisher<std_msgs::msg::Int32>(auv_core_helper::topicnames::ekf_status,1);
 
+  safetySwitchSubscription_ = this->create_subscription<std_msgs::msg::Bool>(auv_core_helper::topicnames::safety_switch,10,std::bind(&BlueROVBridge::safetySwitchCallback, this, std::placeholders::_1));
   globalPoseDesiredSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_desired_global,10,std::bind(&BlueROVBridge::globalPoseDesiredCallback, this, std::placeholders::_1));
   globalVelocityDesiredSubscription_ = this->create_subscription<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired_global,10,std::bind(&BlueROVBridge::globalVelocityDesiredCallback, this, std::placeholders::_1));
   desiredCtrlModeSubscription_ = this->create_subscription<std_msgs::msg::String>(auv_core_helper::topicnames::desired_ctrl_mode, 10, std::bind(&BlueROVBridge::desiredCtrlModeCallback, this, std::placeholders::_1));
@@ -56,7 +57,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   flightModeService_ = this->create_service<SetModeSrv>(auv_core_helper::topicnames::flight_mode_service,std::bind(&BlueROVBridge::flightModeServiceCallback,this, std::placeholders::_1, std::placeholders::_2));
 
   // Timers
-  system_heartbeat_timer_ = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&BlueROVBridge::systemHeartbeat, this)); // ~1Hz
+  bridge_heartbeat_timer_ = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&BlueROVBridge::bridgeHeartbeat, this)); // ~1Hz
   autopilot_heartbeat_watchdog_timer_ = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&BlueROVBridge::autopilotHeartbeatWatchdog, this)); // ~1Hz
   data_timer_ = this->create_wall_timer(std::chrono::milliseconds(10), std::bind(&BlueROVBridge::receiveData, this)); // ~100Hz
   exec_timer_ = this->create_wall_timer(std::chrono::milliseconds(33),std::bind(&BlueROVBridge::Execute, this)); // ~30Hz
@@ -219,7 +220,7 @@ void BlueROVBridge::sendMavlinkMessage(const mavlink_message_t& msg){
   }
 }
 
-void BlueROVBridge::systemHeartbeat() {
+void BlueROVBridge::bridgeHeartbeat() {
 
   mavlink_message_t msg;
   mavlink_msg_heartbeat_pack(
@@ -363,7 +364,6 @@ void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg)
 {
   mavlink_command_ack_t ack;
   mavlink_msg_command_ack_decode(&msg, &ack);
-  RCLCPP_INFO(this->get_logger(), "Command ACK: command=%d, result=%d", ack.command, ack.result);
 
   auto ack_failed = (ack.result == MAV_RESULT_DENIED ||
                      ack.result == MAV_RESULT_FAILED ||
@@ -474,18 +474,37 @@ void BlueROVBridge::handleAttitude(const mavlink_message_t& msg){
   
 }
 
+void BlueROVBridge::safetySwitchCallback(const std_msgs::msg::Bool::SharedPtr msg){
+  failsafe_active_ = msg->data;
+
+  if (failsafe_active_){
+    RCLCPP_WARN(this->get_logger(), "Failsafe active! Putting vehicle to POSHOLD mode, disarming vehicle and rejecting control commands.");
+    setFlightMode("POSHOLD");
+    setArmState(false);
+  } else if (!failsafe_active_){
+    RCLCPP_INFO(this->get_logger(), "Failsafe inactive. Vehicle control commands are now accepted.");
+  }}
+
 void BlueROVBridge::armingServiceCallback(
     const std::shared_ptr<rmw_request_id_t> header,
     const std::shared_ptr<SetBoolSrv::Request> request)
 {
+  auto resp = std::make_shared<SetBoolSrv::Response>();
+
+   if (failsafe_active_) {
+    resp->success = false;
+    resp->message = "Failsafe active — arming rejected!";
+    armingService_->send_response(*header, *resp);
+    RCLCPP_WARN(this->get_logger(), "Arming command rejected due to failsafe.");
+    return;
+  }
+
   setArmState(request->data);
 
-  auto resp = std::make_shared<SetBoolSrv::Response>();
   resp->success = false;
   resp->message = "Timed out.";
 
-  pending_arm_ = PendingArm{header, resp, request->data,
-                            this->now() + kSrvTimeout};
+  pending_arm_ = PendingArm{header, resp, request->data, this->now() + kSrvTimeout};
 }
 
 void BlueROVBridge::setArmState(bool arm_vehicle)
@@ -518,15 +537,23 @@ void BlueROVBridge::setArmState(bool arm_vehicle)
 void BlueROVBridge::flightModeServiceCallback(const std::shared_ptr<rmw_request_id_t> header,
                                               const std::shared_ptr<SetModeSrv::Request> request)
 {
+  auto resp = std::make_shared<SetModeSrv::Response>();
+
+  if (failsafe_active_) {
+    resp->success = false;
+    resp->message = "Failsafe active — flight mode change rejected!";
+    flightModeService_->send_response(*header, *resp);
+    RCLCPP_WARN(this->get_logger(), "Flight mode change rejected due to failsafe.");
+    return;
+  }
+
   int32_t custom = mapModeStringToNumber(request->mode);
   setFlightMode(request->mode);
 
-  auto resp = std::make_shared<SetModeSrv::Response>();
   resp->success = false;
   resp->message = "Timed out.";
 
-  pending_mode_ = PendingMode{header, resp, custom,
-                              this->now() + kSrvTimeout};
+  pending_mode_ = PendingMode{header, resp, custom,this->now() + kSrvTimeout};
 }
 
 int32_t BlueROVBridge::mapModeStringToNumber(const std::string & mode) const
@@ -545,6 +572,7 @@ void BlueROVBridge::setFlightMode(const std::string& mode)
 {
   // Map mode string to ArduSub custom mode number
   int32_t custom_mode = mapModeStringToNumber(mode);
+
   mavlink_message_t msg;
   mavlink_msg_command_long_pack(
       system_id_,
@@ -561,7 +589,7 @@ void BlueROVBridge::setFlightMode(const std::string& mode)
   );
 
   sendMavlinkMessage(msg);
-  // RCLCPP_INFO(this->get_logger(), "Flight mode set to %s", mode.c_str());
+  RCLCPP_INFO(this->get_logger(), "Setting flight-mode to %s", mode.c_str());
 }
 
 void BlueROVBridge::setGlobalOriginServiceCallback(const std::shared_ptr<auv_core_helper::srv::SetGlobalOrigin::Request> request,
@@ -664,6 +692,12 @@ void BlueROVBridge::Execute(){
       globalVelocityActualPublisher_->publish(*global_velocity_msg);
 
       if (poseGoalGlobalChanged || velGoalGlobalChanged){        // If the pose or velocity goal has changed, send the new goal to the autopilot
+
+        if (failsafe_active_){
+          RCLCPP_WARN(get_logger(), "Failsafe active, not sending goals.");
+          return; 
+         }
+
         if(ctrlMode == auv_core_helper::BrigdeMode::PoseCtrl){
           position_target_global_.type_mask =
                 POSITION_TARGET_TYPEMASK_VX_IGNORE  |

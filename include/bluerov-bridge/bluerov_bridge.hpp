@@ -68,6 +68,7 @@ private:
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr dvlDistancePublisher_;
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr ekfStatusPublisher_;
     
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr safetySwitchSubscription_;
     rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseDesiredSubscription_;
     rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr globalVelocityDesiredSubscription_;
     rclcpp::Subscription<std_msgs::msg::String>::SharedPtr desiredCtrlModeSubscription_;
@@ -82,7 +83,7 @@ private:
     //--------------------------------------------------------------------------
     // Timers
     //--------------------------------------------------------------------------
-    rclcpp::TimerBase::SharedPtr system_heartbeat_timer_; 
+    rclcpp::TimerBase::SharedPtr bridge_heartbeat_timer_; 
     rclcpp::TimerBase::SharedPtr autopilot_heartbeat_watchdog_timer_;
     rclcpp::TimerBase::SharedPtr data_timer_;         // Timer for MAVLink data reception
     rclcpp::TimerBase::SharedPtr exec_timer_;         // Timer for execution loop
@@ -110,6 +111,8 @@ private:
     //Declarations
     //--------------------------------------------------------------------------
     bool simulation_mode_;
+
+    bool failsafe_active_{false};
     
     mavlink_heartbeat_t hb;
     mavlink_command_ack_t ack;
@@ -161,7 +164,7 @@ private:
     /**
      * @brief Send a MAVLink heartbeat message to ArduSub
      */
-    void systemHeartbeat();  
+    void bridgeHeartbeat();  
     
     /**
      * @brief Watchdog for autopilot heartbeat
@@ -250,6 +253,8 @@ private:
      * @param set_gps_global_origin The MAVLink message containing global origin data
      */
     void setGlobalOrigin(mavlink_set_gps_global_origin_t& set_gps_global_origin);
+    
+    void safetySwitchCallback(const std_msgs::msg::Bool::SharedPtr msg);
 
     /**
      * @brief Service callback for arming/disarming the vehicle.
