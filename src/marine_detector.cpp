@@ -120,8 +120,8 @@ odtc::DetectionSensorConfiguration MarineDetector::LoadTestConfig(libconfig::Set
         std::string sensorName = sensor.getName();
         auto cam = CreateCamera(sensor, 0, odtc::FrameType::NED);
         dsc.cams[sensorName] = cam;
-        dsc.topicsImg[sensorName] = "/sf/AUV/rgb_camera";
-        dsc.topicsDetection[sensorName] = "/dtc/annotations/sf/AUV/rgb_camera";
+        dsc.topicsImg[sensorName] = "/testing/sf/AUV/rgb_camera";
+        dsc.topicsDetection[sensorName] = "/testing/dtc/annotations/sf/AUV/rgb_camera";
         std::cerr << "[LoadTestConfig] Sensor " + sensorName + " loaded!" << std::endl;
         //sensorName2AnnotationPath_[sensorName] = annotPath;
     }

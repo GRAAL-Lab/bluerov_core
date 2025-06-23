@@ -39,6 +39,7 @@ MarineTrackingROS2::MarineTrackingROS2(const std::string& bagPath, const bool is
     goodLabelMappings.insert( {objectNames::PIPESTRUCT_NAME, objectNames::PIPESTRUCT_NAME} );
     goodLabelMappings.insert( {objectNames::MARKER_NAME, objectNames::MARKER_NAME} );
     goodLabelMappings.insert( {objectNames::NUMBER_NAME, objectNames::NUMBER_NAME} );
+    goodLabelMappings.insert( {objectNames::MANIPULATION_NAME, objectNames::MANIPULATION_NAME} );
     
     detectionsSub_ = std::make_shared<message_filters::Subscriber<image_pipeline_msgs::msg::Obstacles>>(this, "/dtc/obstacles");
     cacheDetections_.setCacheSize(100);

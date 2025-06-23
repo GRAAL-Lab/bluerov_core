@@ -1,3 +1,4 @@
+#include <image_pipeline_msgs/msg/detail/manipulation_console__struct.hpp>
 #include <utilities_ros2.h>
 
 double UtilitiesROS2::BuoyColorToDiameter(std::string clr) {
@@ -45,7 +46,7 @@ odtc::BoundingBox<2> UtilitiesROS2::GetBox2DFromMsg(const image_pipeline_msgs::m
     // Extract information from the BoundingBox2D message
     Eigen::Vector2d center(boxMsg.center_x, boxMsg.center_y);
     Eigen::Vector2d size(boxMsg.size_x, boxMsg.size_y);
-    
+
     // Assuming the Yaw and ID are directly usable
     double yaw = boxMsg.yaw;
     rml::EulerRPY RPYbox(0,0,yaw);
@@ -356,6 +357,14 @@ Number UtilitiesROS2::NumberMsgToNumber(const image_pipeline_msgs::msg::Number &
     return number;
 }
 
+ManipulationConsole UtilitiesROS2::ManipulationMsgToManipulation(const image_pipeline_msgs::msg::ManipulationConsole &msg, const ctb::LatLong &centroid) {
+    ManipulationConsole mc;
+    mc.id = static_cast<uint64_t>(msg.id);
+    mc.wF_pose = GeoPoseWithCovarianceToEigen(msg.pose, centroid);
+    mc.notes = msg.notes;
+    return mc;
+}
+
 Pipe UtilitiesROS2::PipeMsgToPipe(const image_pipeline_msgs::msg::Pipe &msg, const ctb::LatLong &centroid) {
     Pipe pipe;
     pipe.id = static_cast<uint64_t>(msg.id);
@@ -400,6 +409,10 @@ ObstaclesData UtilitiesROS2::ObstaclesMsgToObstacles(const image_pipeline_msgs::
         result.numbers.emplace_back(NumberMsgToNumber(n_msg, result.centroid));
     }
 
+    for (const auto &mc_msg : msg.manipulation_consoles) {
+        result.manipulation_consoles.emplace_back(ManipulationMsgToManipulation(mc_msg, result.centroid));
+    }
+
     return result;
 }
 
@@ -422,13 +435,21 @@ std::vector<odtc::Obstacle<2>> UtilitiesROS2::ObstacleDataToObstacleVector(const
         res.emplace_back(bx);
     }
 
+    for (const auto &p : obstacleData.manipulation_consoles) {
+        Eigen::Vector2d worldF_pipeCentroidHopefully(p.wF_pose(0,3), p.wF_pose(1,3));
+        odtc::BoundingBox<2> bx(worldF_pipeCentroidHopefully, p.wF_pose.RotationMatrix().block(0,0,2,2), {2, 2});
+        bx.Id(p.id);
+        bx.Description("console_red_background");
+        res.emplace_back(bx);
+    }
+
     return res;
 }
 
 
 image_pipeline_msgs::msg::Obstacles UtilitiesROS2::FillObstaclesMsg(rclcpp::Time t, const std::vector<Buoy> &buoys,
                                                                   const std::vector<Marker> &markers, const std::vector<Number> &numbers,
-                                                                  const std::vector<Pipe> &pipes, const ctb::LatLong &centroid,
+                                                                  const std::vector<Pipe> &pipes, const std::vector<ManipulationConsole> &manipulationConsoles,  const ctb::LatLong &centroid,
                                                                   const Eigen::TransformationMatrix &worldF_T_vehicleF) {
     image_pipeline_msgs::msg::Obstacles res;
     res.header.stamp = t;
@@ -447,6 +468,10 @@ image_pipeline_msgs::msg::Obstacles UtilitiesROS2::FillObstaclesMsg(rclcpp::Time
 
     for (const auto &n : numbers) {
         res.numbers.emplace_back(NumberToNumberMsg(n, centroid));
+    }
+
+    for (const auto &mc : manipulationConsoles) {
+        res.manipulation_consoles.emplace_back(ManipulationToManipulationMsg(mc, centroid));
     }
 
     res.centroid.position.latitude = centroid.latitude;
@@ -524,6 +549,13 @@ geographic_msgs::msg::GeoPoseWithCovariance UtilitiesROS2::EigenToGeoPoseWithCov
     return geo_pose_msg;
 }
 
+image_pipeline_msgs::msg::ManipulationConsole UtilitiesROS2::ManipulationToManipulationMsg(const ManipulationConsole& mc, const ctb::LatLong &centroid){
+    image_pipeline_msgs::msg::ManipulationConsole msg;
+    msg.id = static_cast<int64_t>(mc.id);
+    msg.pose = EigenToGeoPoseWithCovariance(mc.wF_pose, centroid);
+    msg.notes = mc.notes;
+    return msg;
+}
 
 image_pipeline_msgs::msg::Buoy UtilitiesROS2::BuoyToBuoyMsg(const Buoy& buoy, const ctb::LatLong &centroid) {
     image_pipeline_msgs::msg::Buoy msg;
