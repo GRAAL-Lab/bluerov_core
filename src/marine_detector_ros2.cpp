@@ -1,4 +1,6 @@
 #include "marine_detector_ros2.h"
+#include "utilities_ros2.h"
+#include <rml/TransfMatrix.h>
 
 #define PCD_BANK_PATH "/home/graal/data/clusters/"
 
@@ -143,6 +145,7 @@ bool MarineDetectorROS2::PerceptionCallback(const auv_core_helper::msg::PoseStam
         auto lookForBuoys = (state == PerceptionState::ALL) || (state == PerceptionState::BUOYS) || (currentRequest_.buoys) || (currentRequest_.obstacles);
         auto lookForMainPipe = (state == PerceptionState::ALL) || (state == PerceptionState::PIPES) || (currentRequest_.obstacles);
         auto lookForPipes = false;//(state == PerceptionState::ALL) || (state == PerceptionState::MAIN_PIPE) || (currentRequest_.obstacles);
+        auto lookForManipulation = (state == PerceptionState::ALL) || (state == PerceptionState::MANIPULATION_CONSOLE) || (currentRequest_.obstacles);
         auto lookForOthers = (state == PerceptionState::ALL) || (currentRequest_.obstacles);
 
         if ((lookForBuoys && !yoloDetectionsReceived) && (lookForPipes && !pipesInfoReceived) && (lookForMainPipe && !mainPipeInfoReceived)) {
@@ -189,26 +192,28 @@ bool MarineDetectorROS2::PerceptionCallback(const auv_core_helper::msg::PoseStam
         std::vector<Marker> markers;
         std::vector<Number> numbers;
         std::vector<Pipe> pipes;
+        std::vector<ManipulationConsole> manipulationConsoles;
         if (lookForBuoys && yoloDetectionsReceived) {
             if (enableDbgPrint_)std::cerr << tc::none << "[ObstacleDetectionCallbackRAMI] New vehicle Geopose with fix = " << llh_vehiclePos_.transpose() << tc::none << std::endl;
             std::vector<odtc::BoundingBox<2>> imgBoxes_;
             size_t buoyId = 0;
             for (const auto &bMsg : ann_msg->boxes) {
-                auto b = UtilitiesROS2::GetBox2DFromMsg(bMsg);
-                imgBoxes_.emplace_back(b);
-                if (b.Description().find("buoy") != std::string::npos) {
+                auto box2D = UtilitiesROS2::GetBox2DFromMsg(bMsg);
+                imgBoxes_.emplace_back(box2D);
+                if (box2D.Description().find("buoy") != std::string::npos) {
                     for (const auto &cam : dsc_.cams) {
                         std::string color = "red"; // TODO put color detection logic here
                         double buoyDiameter = UtilitiesROS2::BuoyColorToDiameter(color);
-                        odtc::Pyramid pyr(b, worldF_T_vehicleF * cam.second.ExtF_TP_imgPlaneF(), Eigen::Vector2d(0,0));
+                        odtc::Pyramid pyr(box2D, worldF_T_vehicleF * cam.second.ExtF_TP_imgPlaneF(), Eigen::Vector2d(0,0));
                         auto wF_sphereCenter = pyr.Get3DSphereCentroid(buoyDiameter, false);
-                        if (enableDbgPrint_)std::cerr << tc::cyanL << "[ObstacleDetectionCallbackRAMI] Box label is " << b.Description() << " with confidence " << b.Confidence() << ", 3D pos is " <<
+                        if (enableDbgPrint_)std::cerr << tc::cyanL << "[ObstacleDetectionCallbackRAMI] Box label is " << box2D.Description() << " with confidence " << box2D.Confidence() << ", 3D pos is " <<
                             wF_sphereCenter.transpose() << tc::none << std::endl;
                         Eigen::TransformationMatrix wF_buoyPose;
                         wF_buoyPose.TranslationVector(wF_sphereCenter);
                         Buoy b;
                         b.color = color;
                         b.id = buoyId++;
+                        b.confidence = box2D.Confidence();
                         b.radius = buoyDiameter * 0.5;
                         b.wF_pose = wF_buoyPose;
                         b.notes = "";
@@ -227,8 +232,27 @@ bool MarineDetectorROS2::PerceptionCallback(const auv_core_helper::msg::PoseStam
             pipes.emplace_back(p);
         }
 
+        if (lookForManipulation && yoloDetectionsReceived) {
+            std::vector<odtc::BoundingBox<2>> imgBoxes_;
+            size_t mcId = 0;
+            for (const auto &bMsg : ann_msg->boxes) {
+                auto box2D = UtilitiesROS2::GetBox2DFromMsg(bMsg);
+                imgBoxes_.emplace_back(box2D);
+                if (box2D.Description().find("console") != std::string::npos) {
+                    for (const auto &cam : dsc_.cams) {
+                        ManipulationConsole mc;
+                        mc.id = mcId;
+                        mc.notes = "";
+                        mc.wF_pose = Eigen::TransformationMatrix::Zero();
+                        mc.confidence = box2D.Confidence();
+                        manipulationConsoles.emplace_back(mc);
+                        break;
+                    }
+                }
+            }
+        }
         firstGNSSReceived_ = true;
-        auto obstaclesMsg = UtilitiesROS2::FillObstaclesMsg(tsRos_, buoys, markers, numbers, pipes, ctb::LatLong(llh_vehiclePos_t0_[0], llh_vehiclePos_t0_[1]), worldF_T_vehicleF);
+        auto obstaclesMsg = UtilitiesROS2::FillObstaclesMsg(tsRos_, buoys, markers, numbers, pipes, manipulationConsoles, ctb::LatLong(llh_vehiclePos_t0_[0], llh_vehiclePos_t0_[1]), worldF_T_vehicleF);
         obstaclesPub_->publish(obstaclesMsg);
     
         if (enableDbgPrint_)std::cerr << tc::greenL << "[ObstacleDetectionCallbackStonefish] Finished!" << tc::none << std::endl;

@@ -13,7 +13,7 @@
 #include <marine_detector.h>
 
 enum PerceptionState {
-    IDLE, STANDARD, BUOYS, PIPES, MAIN_PIPE, ALL
+    IDLE, STANDARD, BUOYS, PIPES, MAIN_PIPE, MANIPULATION_CONSOLE, ALL
 };
 
 struct sensorTopics {
