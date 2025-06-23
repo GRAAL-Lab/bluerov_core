@@ -1,9 +1,9 @@
 from rclpy.node import Node
-from auv_core_helper.msg import PoseStamped, MissionStatus, DtcList
+from auv_core_helper.msg import PoseStamped, MissionStatus
 from image_pipeline_msgs.msg import Obstacles
 from sensor_msgs.msg import Image
 from datetime import datetime, timezone
-from logger.utilities import STATE_NAME_MAP
+from utils.utilities import STATE_NAME_MAP
 import os
 import math
 import simplekml
