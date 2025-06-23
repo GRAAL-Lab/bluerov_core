@@ -12,7 +12,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
     ],
     install_requires=[
-        'setuptools'
+        'setuptools',
         'simplekml',
     ],
     zip_safe=True,
