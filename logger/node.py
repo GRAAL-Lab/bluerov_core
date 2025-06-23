@@ -3,7 +3,7 @@ from auv_core_helper.msg import PoseStamped, MissionStatus
 from image_pipeline_msgs.msg import Obstacles
 from sensor_msgs.msg import Image
 from datetime import datetime, timezone
-from utils.utilities import STATE_NAME_MAP
+from utils.utilities import STATE_NAME_MAP, TOPICS_NAMES
 import os
 import math
 import simplekml
@@ -30,10 +30,10 @@ class LoggerNode(Node):
         file_timestamp = self.mission_start_time.strftime("%Y%m%d_%H%M%S")
        
         # subscribers
-        self.pose_sub = self.create_subscription(PoseStamped, "/auv/global/pose_actual", self.pose_callback, 10)
-        self.mission_sub = self.create_subscription(MissionStatus, "/auv/mission/status", self.mission_callback, 10)
-        self.perception_sub = self.create_subscription(Obstacles,"/dtc/obstacles",self.perception_callback,10)
-        self.image_sub = self.create_subscription(Image, "/testing/sf/AUV/rgb_camera", self.image_callback, 10) #only for testing, to change later
+        self.pose_sub = self.create_subscription(PoseStamped, TOPICS_NAMES["Pose"], self.pose_callback, 10)
+        self.mission_sub = self.create_subscription(MissionStatus, TOPICS_NAMES["MissionStatus"], self.mission_callback, 10)
+        self.perception_sub = self.create_subscription(Obstacles, TOPICS_NAMES["Obstacles"],self.perception_callback,10)
+        self.image_sub = self.create_subscription(Image, TOPICS_NAMES["Images"], self.image_callback, 10)
 
         self.kml_path_nav = os.path.join(self.mission_dir, f"vehicle_navigation_data_{file_timestamp}.kml")
         self.kml_path_mission = os.path.join(self.mission_dir, f"mission_status_data_{file_timestamp}.kml")
