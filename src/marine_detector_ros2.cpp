@@ -26,8 +26,8 @@ MarineDetectorROS2::MarineDetectorROS2 (
         std::cerr << "[MarineDetectorROS2] setting RAMI callbacks..." << std::endl;
 
         // Create the pose subscription
-        geoPoseStampedSub_ = this->create_subscription<nav_msgs::msg::Odometry>(
-            dsc_.topicImu,  // Replace with actual pose topic
+        geoPoseStampedSub_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(
+            auv_core_helper::topicnames::pose_actual_global_,  // Replace with actual pose topic
             rclcpp::SensorDataQoS(),  // You can customize QoS here
             std::bind(&MarineDetectorROS2::PerceptionCallback, this, std::placeholders::_1)
         );
@@ -118,7 +118,7 @@ void MarineDetectorROS2::InitPublishers() {
     worldF_vehiclePosePub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/dtc/worldF_vehiclePose", 10);
 }
 
-bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::ConstSharedPtr& odometry_msg) {
+bool MarineDetectorROS2::PerceptionCallback(const auv_core_helper::msg::PoseStamped::ConstSharedPtr& odometry_msg) {
     if (odometry_msg != nullptr) {
         tsRos_ = odometry_msg->header.stamp;
         ts_ = UtilitiesROS2::ROSTimeToTimestamp(tsRos_);
@@ -153,14 +153,10 @@ bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::Const
         };
 
         // Extract pose from Odometry message
-        auto pose = odometry_msg->pose.pose;
-
-        // Extract position and orientation
-        auto position = pose.position;
-        auto orientation = pose.orientation;
+        auto position = odometry_msg->position;
 
         // Convert position to Eigen::Vector3d
-        llh_vehiclePos_ = Eigen::Vector3d(position.x, position.y, position.z);
+        llh_vehiclePos_ = Eigen::Vector3d(position.latitude, position.longitude, odometry_msg->depth);
 
         // Handle initial GNSS reception
         if (!firstGNSSReceived_) {
@@ -183,8 +179,8 @@ bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::Const
         worldF_T_vehicleF.TranslationVector(worldF_O_vehicleF);
 
         // Convert orientation to rotation matrix
-        Eigen::Quaterniond q(orientation.w, orientation.x, orientation.y, orientation.z);
-        worldF_T_vehicleF.RotationMatrix(q.toRotationMatrix());
+        rml::EulerRPY rpy(odometry_msg->roll, odometry_msg->pitch, odometry_msg->yaw);
+        worldF_T_vehicleF.RotationMatrix(rpy.ToRotationMatrix());
 
         // Store the pose in the queue
         worldF_poses_queue_.push(std::make_pair(odometry_msg->header.stamp, worldF_T_vehicleF));

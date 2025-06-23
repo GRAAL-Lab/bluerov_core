@@ -49,8 +49,8 @@ class YOLOImageNode(Node):
 
     def setup_camera(self, cam_id):
         """Set up subscriber, publisher, and bridge for a given camera."""
-        #image_topic = f'/{cam_id}/image_color'
-        image_topic = f'/{cam_id}'
+        image_topic = f'/{cam_id}/image_color'
+        #image_topic = f'/{cam_id}'
         annotations_topic = '/dtc/annotations/sf/AUV/rgb_camera'
 
         print("cam_id = " + str(cam_id))

@@ -40,6 +40,8 @@
 #include <auv_core_helper/msg/generic_object.hpp>
 #include <auv_core_helper/msg/dtc_request.hpp>
 #include <auv_core_helper/msg/dtc_list.hpp>
+#include <auv_core_helper/msg/pose_stamped.hpp>
+#include <auv_core_helper/topicnames.hpp>
 
 #include <pcl_conversions/pcl_conversions.h>
 

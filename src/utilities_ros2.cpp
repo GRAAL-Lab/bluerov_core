@@ -605,7 +605,7 @@ auv_core_helper::msg::DtcList UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t
         if (f.second.label.find("buoy") != std::string::npos) {
             if (enableDbgPrint) std::cerr << "[FillObstacleArrayMsg] buoy!" << std::endl;
             auv_core_helper::msg::Buoy b;
-            b.id = f.first;
+            b.id = std::to_string(f.first);
             Eigen::Matrix3d extF_T_boxF_3D = box.ExtF_T_BoxF();
             Eigen::TransformationMatrix extF_T_boxF;
             extF_T_boxF.block(0,0,2,2) = extF_T_boxF_3D.block(0,0,2,2);

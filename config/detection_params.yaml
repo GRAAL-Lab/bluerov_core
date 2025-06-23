@@ -69,7 +69,7 @@ enableYDist: 1
 R0Diag_frag: [1.0 ,1.0 ,10.0 ,10.0 ,1.0]
 enableYFrag: 0
 enableYRot: 0
-maxNumOcclusions: 100
+maxNumOcclusions: 300
 enableRAEKF: 0
 
 ### IMAGE PLANE TRACKING
