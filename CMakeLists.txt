@@ -71,7 +71,6 @@ target_link_libraries(mqtt_client
   json_utils
   ${PAHO_MQTTPP3_LIB}
   ${PAHO_MQTT3AS_LIB}
-  # Add other libraries here if necessary, e.g. rml
 )
 
 target_link_libraries(cmd_dispatcher
@@ -91,6 +90,7 @@ ament_target_dependencies(cmd_dispatcher
 ament_target_dependencies(mqtt_client
   rclcpp
   std_msgs
+  ament_index_cpp
 )
 
 ament_target_dependencies(terminal
@@ -113,7 +113,6 @@ install(DIRECTORY conf/
 
 install(PROGRAMS
   scripts/download_rov_data.sh
-  scripts/post_processing.py
   DESTINATION share/${PROJECT_NAME}/scripts
 )
 

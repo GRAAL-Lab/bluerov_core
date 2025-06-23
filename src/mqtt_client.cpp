@@ -7,17 +7,20 @@
 #include <string>
 #include <mqtt/async_client.h>
 
+#include "ament_index_cpp/get_package_share_directory.hpp"
+
+
 using namespace std::chrono_literals;
 
 using namespace ctljsn;
 
-const std::string mqttAdress = "tcp://localhost:1883";
-const std::string clientId = "ros2_client";
-const std::string username = "teamA";
-const std::string password = "passwordA";
-const std::string topicUpdate = "catl/rami25/sectorA/update";
-const std::string topicStatus = "catl/rami25/sectorA/status";
-const int qos = 1;
+std::string mqttAddress_ = "";
+std::string clientId_ = "";
+std::string username_ = "";
+std::string password_ = "";
+std::string topicUpdate_ = "";
+std::string topicStatus_ = "";
+int qos_ = 0;
 
 class MqttClient : public rclcpp::Node, public virtual mqtt::callback
 {
@@ -25,13 +28,29 @@ public:
 	MqttClient()
 		: Node("mqtt_client")
 	{
+		std::string config_path = ament_index_cpp::get_package_share_directory("ctrl_station") + "/conf/mqtt_config.conf";
+
+		std::map<std::string, std::string> config;
+		
+		bool mqttConfigLoaded = false;
+		
+		try
+		{
+			mqttConfigLoaded = LoadMqttConf();
+			RCLCPP_INFO(this->get_logger(), "MQTT configuration data successfully loaded");
+		}
+		catch (const std::exception &e)
+		{
+			RCLCPP_ERROR(this->get_logger(), "Error loading MQTT configuration data: %s", e.what());
+		}
+		
 		pub_lat_ = this->create_publisher<std_msgs::msg::Float64>("latitude", 10);
 		pub_long_ = this->create_publisher<std_msgs::msg::Float64>("longitude", 10);
 
-		client_ = std::make_unique<mqtt::async_client>(mqttAdress, clientId);
+		client_ = std::make_unique<mqtt::async_client>(mqttAddress_, clientId_);
 		mqtt::connect_options connOpts;
-		connOpts.set_user_name(username);
-		connOpts.set_password(password);
+		connOpts.set_user_name(username_);
+		connOpts.set_password(password_);
 		connOpts.set_clean_session(true);
 
 		client_->set_callback(*this);
@@ -46,13 +65,13 @@ public:
 				RCLCPP_INFO(this->get_logger(), "Attempt %d: Connecting to MQTT broker...", attempts + 1);
 				client_->connect(connOpts)->wait();
 				RCLCPP_INFO(this->get_logger(), "Connected to broker.");
-				client_->subscribe(topicUpdate, qos)->wait();
-				client_->subscribe(topicStatus, qos)->wait();
+				client_->subscribe(topicUpdate_, qos_)->wait();
+				client_->subscribe(topicStatus_, qos_)->wait();
 				connected = true;
 			}
 			catch (const mqtt::exception &e)
 			{
-				RCLCPP_WARN(this->get_logger(), "Connection attempt %d failed: %s", attempts + 1, e.what());
+				RCLCPP_WARN(this->get_logger(), "Connection attempt %d failed: %s", attempts++, e.what());
 				std::this_thread::sleep_for(std::chrono::seconds(2));
 			}
 		}
@@ -133,6 +152,52 @@ private:
 		{
 			RCLCPP_ERROR(this->get_logger(), "Error parsing MQTT message: %s", e.what());
 		}
+	}
+	
+	bool LoadMqttConf(){
+                  
+	  std::string pkg = ament_index_cpp::get_package_share_directory("ctrl_station");
+	  std::string path = pkg + "/conf/mqtt_config.conf";
+
+	  std::ifstream file(path);
+	  if (!file.is_open())
+	  {
+	    RCLCPP_ERROR(rclcpp::get_logger("~"), "Impossibile aprire il file di configurazione: %s", path.c_str());
+	    return false;
+	  }
+
+	  std::map<std::string, std::string> config;
+	  std::string line;
+	  while (std::getline(file, line))
+	  {
+	    if (line.empty() || line[0] == '#') continue;
+	    std::istringstream iss(line);
+	    std::string key, value;
+	    if (std::getline(iss, key, '=') && std::getline(iss, value))
+	    {
+	      config[key] = value;
+	    }
+	  }
+
+	  try {
+	    mqttAddress_ = config.at("mqtt_address");
+	    clientId_ = config.at("client_id");
+	    username_   = config.at("username");
+	    password_   = config.at("password");
+	    topicUpdate_ = config.at("topic_update");
+	    topicStatus_ = config.at("topic_status");
+	    qos_ = std::stoi(config.at("qos"));
+	  }
+	  catch (const std::out_of_range &e) {
+	    RCLCPP_ERROR(rclcpp::get_logger("~"), "Parametro mancante nel file conf: %s", e.what());
+	    return false;
+	  }
+	  catch (const std::exception &e) {
+	    RCLCPP_ERROR(rclcpp::get_logger("~"), "Errore elaborando conf MQTT: %s", e.what());
+	    return false;
+	  }
+
+	  return true;
 	}
 };
 
