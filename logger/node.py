@@ -34,6 +34,8 @@ class LoggerNode(Node):
         self.mission_sub = self.create_subscription(MissionStatus, TOPICS_NAMES["MissionStatus"], self.mission_callback, 10)
         self.perception_sub = self.create_subscription(Obstacles, TOPICS_NAMES["Obstacles"],self.perception_callback,10)
         self.image_sub = self.create_subscription(Image, TOPICS_NAMES["Images"], self.image_callback, 10)
+        
+        #do rosbag of the video stream for post processing and create 2d/3d map
 
         self.kml_path_nav = os.path.join(self.mission_dir, "vehicle_navigation_data.kml")
         self.kml_path_mission = os.path.join(self.mission_dir, "mission_status_data.kml")
