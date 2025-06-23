@@ -49,8 +49,8 @@ MarineTrackingROS2::MarineTrackingROS2(const std::string& bagPath, const bool is
 
 void MarineTrackingROS2::FiltersCallback(const image_pipeline_msgs::msg::Obstacles::ConstPtr& obstaclesMsg) {
     trackId2WorldFRegData_.clear();
-    tracker_.enableDbgPrint = enableDbgPrint_;
     auto msgOk = SetTime(obstaclesMsg);
+    tracker_.enableDbgPrint = enableDbgPrint_;
     if (enableDbgPrint_) std::cerr << std::endl << tc::bluL << "[FiltersCallback] Starting, t = " << ts_ - t0_ << tc::none << std::endl;
 
     auto t1_trk = std::chrono::steady_clock::now();
@@ -204,7 +204,7 @@ void MarineTrackingROS2::Run() {
     if (isFirstMsg_) dtLagMax = std::numeric_limits<double>::max();
     auto oldTracksOk = UtilitiesROS2::ReadROSObstacleArray(cacheDetections_, cacheDetections_.getLatestTime() + rclcpp::Duration::from_seconds(2), obstaclesMsg, dtLagMax);
     FiltersCallback(obstaclesMsg);
-    if (enableDbgPrint_) std::cerr << tc::bluL << "[MarineTrackingROS1::Run] Finished!" << tc::none << std::endl << std::endl;
+    if (enableDbgPrint_) std::cerr << tc::bluL << "[MarineTrackingROS2::Run] Finished!" << tc::none << std::endl << std::endl;
     return;
 }
 

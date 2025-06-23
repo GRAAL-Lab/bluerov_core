@@ -625,6 +625,8 @@ auv_core_helper::msg::DtcList UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t
         }
     }
 
+    if (enableDbgPrint) std::cerr << tc::yellow << "N buoys published: " << msg.buoys.size() << tc::none<< std::endl;
+
     return msg;
 }
 
