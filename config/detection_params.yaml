@@ -1,6 +1,6 @@
 ### ROS NODE
 spinRate: 10.0
-maxMsgLag: 0.15
+maxMsgLag: 5
 
 ### OUTPUT FRAME
 outputFrame: "World"
@@ -46,9 +46,9 @@ cloudReductionLeaf_z: 0.1       # [m]
 minImgDetectionConfidence: 0.4   # confidence
 
 ### DATA ASSOCIATION
-weightIoU: 0.4
-weightCentroidDist: 0.4
-weightSize: 0.4
+weightIoU: 0.0
+weightCentroidDist: 1.0
+weightSize: 0.0
 weightSimilarity: 0.0
 
 ### TRACKING
@@ -69,7 +69,7 @@ enableYDist: 1
 R0Diag_frag: [1.0 ,1.0 ,10.0 ,10.0 ,1.0]
 enableYFrag: 0
 enableYRot: 0
-maxNumOcclusions: 20
+maxNumOcclusions: 100
 enableRAEKF: 0
 
 ### IMAGE PLANE TRACKING

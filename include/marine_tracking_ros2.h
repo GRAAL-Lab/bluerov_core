@@ -43,7 +43,7 @@ class MarineTrackingROS2 : public rclcpp::Node {
     
     private:
     double ts_;
-    double t0_ = 0.0;
+    double t0_ = -1;
 
     double trackingDt_ = 0.1;
     bool enableDbgPrint_ = false;

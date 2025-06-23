@@ -122,7 +122,8 @@ bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::Const
     if (odometry_msg != nullptr) {
         tsRos_ = odometry_msg->header.stamp;
         ts_ = UtilitiesROS2::ROSTimeToTimestamp(tsRos_);
-        UtilitiesROS2::PublishPose(worldF_vehiclePosePub_, tsRos_, worldF_T_vehicleF_, "worldF_T_vehicleF");
+    //    UtilitiesROS2::PublishPose(worldF_vehiclePosePub_, tsRos_, worldF_T_vehicleF_, "worldF_T_vehicleF");
+        if (t0_ < 0) detection_.T0(ts_);
         detection_.Ts(ts_);
         t0_ = detection_.T0();
         enableDbgPrint_ = abs(tLastDbgPrint_ - ts_) > 1;
@@ -131,22 +132,23 @@ bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::Const
 
         if (enableDbgPrint_)std::cerr << tc::cyanL << "[Prcp] odometry_msg not nullptr" << tc::none << std::endl;
         image_pipeline_msgs::msg::BoundingBox2DArray::ConstPtr ann_msg;
-        auto yoloDetectionsReceived = UtilitiesROS2::ReadBoxArray2DFromCache(imgAnnCache_, odometry_msg->header.stamp, ann_msg, 0.1); // TODO parameterize
+        auto yoloDetectionsReceived = UtilitiesROS2::ReadBoxArray2DFromCache(imgAnnCache_, odometry_msg->header.stamp, ann_msg, 5); // TODO parameterize
         if (enableDbgPrint_)std::cerr << tc::cyanL << "[ObstacleDetectionCallbackRAMI] yoloDetectionsReceived = " << yoloDetectionsReceived << tc::none << std::endl;
         image_pipeline_msgs::msg::PipeDirection::ConstPtr mainPipe_msg;
-        auto mainPipeInfoReceived = UtilitiesROS2::ReadPipeDirectionFromCache(pipeCache_, odometry_msg->header.stamp, mainPipe_msg, 0.1); // TODO parameterize
+        auto mainPipeInfoReceived = UtilitiesROS2::ReadPipeDirectionFromCache(pipeCache_, odometry_msg->header.stamp, mainPipe_msg, 5); // TODO parameterize
         if (enableDbgPrint_)std::cerr << tc::cyanL << "[ObstacleDetectionCallbackRAMI] mainPipeInfoReceived = " << mainPipeInfoReceived << tc::none << std::endl;
 
         bool pipesInfoReceived = false;
 
         auto lookForBuoys = (state == PerceptionState::ALL) || (state == PerceptionState::BUOYS) || (currentRequest_.buoys) || (currentRequest_.obstacles);
         auto lookForMainPipe = (state == PerceptionState::ALL) || (state == PerceptionState::PIPES) || (currentRequest_.obstacles);
-        auto lookForPipes = (state == PerceptionState::ALL) || (state == PerceptionState::MAIN_PIPE) || (currentRequest_.obstacles);
+        auto lookForPipes = false;//(state == PerceptionState::ALL) || (state == PerceptionState::MAIN_PIPE) || (currentRequest_.obstacles);
         auto lookForOthers = (state == PerceptionState::ALL) || (currentRequest_.obstacles);
 
         if ((lookForBuoys && !yoloDetectionsReceived) && (lookForPipes && !pipesInfoReceived) && (lookForMainPipe && !mainPipeInfoReceived)) {
             image_pipeline_msgs::msg::Obstacles obstaclesMsg; // empty
             obstaclesPub_->publish(obstaclesMsg);
+            if (enableDbgPrint_)std::cerr << tc::bluL << "[ObstacleDetectionCallbackRAMI] nothing received!" << tc::none << std::endl;
             return false;
         };
 
@@ -192,7 +194,6 @@ bool MarineDetectorROS2::PerceptionCallback(const nav_msgs::msg::Odometry::Const
         std::vector<Number> numbers;
         std::vector<Pipe> pipes;
         if (lookForBuoys && yoloDetectionsReceived) {
-            if (enableDbgPrint_)std::cerr <<tc::cyanL<< "3.5" <<tc::none<< std::endl;
             if (enableDbgPrint_)std::cerr << tc::none << "[ObstacleDetectionCallbackRAMI] New vehicle Geopose with fix = " << llh_vehiclePos_.transpose() << tc::none << std::endl;
             std::vector<odtc::BoundingBox<2>> imgBoxes_;
             size_t buoyId = 0;

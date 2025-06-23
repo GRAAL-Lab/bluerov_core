@@ -120,7 +120,7 @@ class MarineDetector {
     std::vector<std::string> opencvWindows_;
 
     // Initial conditions.
-    double t0_ = 0.0;
+    double t0_ = -1;
 
     // Flow.
     double ts_ = -1;

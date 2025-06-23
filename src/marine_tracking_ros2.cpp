@@ -30,7 +30,7 @@ MarineTrackingROS2::MarineTrackingROS2(const std::string& bagPath, const bool is
     tracker_.enablePointCoverage = false;
     tracker_.enableAdvTrackingPrint = false;
     runTimer_ = this->create_wall_timer(
-        std::chrono::duration<double>(trackingDt_),
+        std::chrono::duration<double>(0.1),
         std::bind(&MarineTrackingROS2::Run, this)
     );
 
@@ -49,6 +49,7 @@ MarineTrackingROS2::MarineTrackingROS2(const std::string& bagPath, const bool is
 
 void MarineTrackingROS2::FiltersCallback(const image_pipeline_msgs::msg::Obstacles::ConstPtr& obstaclesMsg) {
     trackId2WorldFRegData_.clear();
+    tracker_.enableDbgPrint = enableDbgPrint_;
     auto msgOk = SetTime(obstaclesMsg);
     if (enableDbgPrint_) std::cerr << std::endl << tc::bluL << "[FiltersCallback] Starting, t = " << ts_ - t0_ << tc::none << std::endl;
 
@@ -66,6 +67,8 @@ void MarineTrackingROS2::FiltersCallback(const image_pipeline_msgs::msg::Obstacl
 
     auto t1_da = std::chrono::steady_clock::now();
     if (msgOk) tracker_.egoPose = UtilitiesROS2::ROSPoseToTransformMatrix(obstaclesMsg->worldf_pose_vehiclef);
+    tracker_.t0_ = t0_;
+    tracker_.t_ = ts_;
     tracker_.UpdateMeasurements(obstacles, goodLabelMappings);
     auto t2_da = std::chrono::steady_clock::now();
     auto dt_da_ms = std::chrono::duration_cast<std::chrono::microseconds>(t2_da-t1_da).count()/1000.0;
@@ -82,7 +85,7 @@ void MarineTrackingROS2::FiltersCallback(const image_pipeline_msgs::msg::Obstacl
     if (enableDbgPrint_) std::cerr << "[MarineTrackingROS2::Callback] Callback dt = " << dt_trk_ms << "ms" << std::endl;
     if (enableDbgPrint_) std::cerr << tc::bluL << "[MarineTrackingROS2::Callback] Finished!" << tc::none << std::endl;
 
-    auto tracksMsg = UtilitiesROS2::FillObstacleArrayMsg(tsROS_, tracker_, TrackType::ENU, llh_vehiclePos_t0_);
+    auto tracksMsg = UtilitiesROS2::FillObstacleArrayMsg(tsROS_, tracker_, TrackType::ENU, llh_vehiclePos_t0_, enableDbgPrint_);
     filtersPub_->publish(tracksMsg);
 }
 
@@ -226,16 +229,19 @@ bool MarineTrackingROS2::SetTime(const image_pipeline_msgs::msg::Obstacles::Cons
         if (messageIsValid) {
             //if (enableDbgPrint_)std::cerr << tc::bluL << "[MarineTrackingROS1::SetTime] Obstacle msg ok!" << tc::none << std::endl;
             ts_ = currentTimestamp;
+            if (isFirstMsg_) t0_ = ts_;
             tsROS_ = UtilitiesROS2::TimestampToROSTime(ts_);
             isFirstMsg_ = false;
-            return true;
         }
     }
     else {
         //if (enableDbgPrint_)std::cerr << tc::none << "[MarineTrackingROS1::SetTime] Obstacles is null!" << tc::none << std::endl;
     }
-    enableDbgPrint_ = abs(tLastDbgPrint_ - ts_) > 1;
-    if (enableDbgPrint_) tLastDbgPrint_ = ts_;
+    if (!isFirstMsg_) {
+        enableDbgPrint_ = abs(tLastDbgPrint_ - ts_) > 1;
+        if (enableDbgPrint_) tLastDbgPrint_ = ts_;
+    }
+    if (messageIsValid) return true;
 
     if (!firstRun_ && !isFirstMsg_) tsROS_ = tsROS_ + rclcpp::Duration::from_seconds(trackingDt_);
     else tsROS_ = UtilitiesROS2::TimestampToROSTime(t0_);

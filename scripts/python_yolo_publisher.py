@@ -33,7 +33,7 @@ class YOLOImageNode(Node):
 
         # Load YOLO model (can be a custom model path or "yolov8n.pt" for a small default model)
         self.get_logger().info('Loading YOLO model...')
-        self.model = YOLO('/home/graal/models/rami3.pt') # You can specify a custom model path here
+        self.model = YOLO('/home/graal/modelstt/rami3.pt') # You can specify a custom model path here
         self.get_logger().info('YOLO model loaded successfully!')
         self.br = CvBridge()
 
@@ -49,8 +49,9 @@ class YOLOImageNode(Node):
 
     def setup_camera(self, cam_id):
         """Set up subscriber, publisher, and bridge for a given camera."""
-        image_topic = f'/{cam_id}/image_color'
-        annotations_topic = f'/dtc/annotations/{cam_id}'
+        #image_topic = f'/{cam_id}/image_color'
+        image_topic = f'/{cam_id}'
+        annotations_topic = '/dtc/annotations/sf/AUV/rgb_camera'
 
         print("cam_id = " + str(cam_id))
         print("image_topic = " + str(image_topic))
@@ -152,10 +153,14 @@ class YOLOImageNode(Node):
         # Save the image with bounding boxes to the given path
         tempYoloSaveDir = "/home/graal/exp_results/rami/"
         tempYoloSaveDirIMG = "/home/graal/exp_results/ramiIMG/"
+        import os
+        os.makedirs(tempYoloSaveDir, exist_ok=True)
+        os.makedirs(tempYoloSaveDirIMG, exist_ok=True)
         tempYoloSavePath = tempYoloSaveDir + "sim_dtc_" +  timeStr + ".png"
         tempYoloSavePathIMG = tempYoloSaveDirIMG + "sim_" +  timeStr + ".png"
+        enableSave = True
         try:
-            if not cv2.imwrite(tempYoloSavePath, cv_image):
+            if enableSave and not cv2.imwrite(tempYoloSavePath, cv_image):
                 pass
                 #raise ValueError(f"Failed to save image to {tempYoloSavePath}")
             # self.get_logger().info(f"Image saved successfully at {tempYoloSavePath}")
@@ -163,7 +168,7 @@ class YOLOImageNode(Node):
             #self.get_logger().error(f"Error saving image for Camera {cam_id}: {e}")
             pass
         try:
-            if not cv2.imwrite(tempYoloSavePathIMG, cv_imageCopy):
+            if False and enableSave and not cv2.imwrite(tempYoloSavePathIMG, cv_imageCopy):
                 pass
                 #raise ValueError(f"Failed to save image to {tempYoloSavePath}")
             #self.get_logger().info(f"Image saved successfully at {tempYoloSavePath}")

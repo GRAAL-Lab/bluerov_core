@@ -50,11 +50,11 @@
 #include <ctrl_toolbox_internal/Futils.h>
 
 namespace objectNames {
-  const std::string BUOY_NAME = "Buoy";
-  const std::string MAINPIPE_NAME = "MainPipe";
-  const std::string PIPESTRUCT_NAME = "PipeStruct";
-  const std::string MARKER_NAME = "Marker";
-  const std::string NUMBER_NAME = "Number";
+  const std::string BUOY_NAME = "buoy";
+  const std::string MAINPIPE_NAME = "mainpipe";
+  const std::string PIPESTRUCT_NAME = "pipestruct";
+  const std::string MARKER_NAME = "marker";
+  const std::string NUMBER_NAME = "number";
 }
 
 // Define the DtcRequest message
@@ -154,7 +154,7 @@ class UtilitiesROS2 {
     static image_pipeline_msgs::msg::Obstacle FillObstacleMsg(rclcpp::Time t, std::shared_ptr<odtc::BoundingBox<2>> box,
               std::shared_ptr<odtc::TrackData> filterInfo, const std::map<std::string, odtc::IDAssocParams> &assocParams);
     static auv_core_helper::msg::DtcList FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &trck, const TrackType trackType,
-              const Eigen::Vector3d &llhCentroid, std::vector<odtc::BoundingBox<2>> boxes = {});
+              const Eigen::Vector3d &llhCentroid, const bool enableDbgPrint = false, std::vector<odtc::BoundingBox<2>> boxes = {});
     static image_pipeline_msgs::msg::ObstacleArray FillObstacleArrayMsg(rclcpp::Time t, std::vector<odtc::Obstacle<2>> &obstacles,
       std::vector<odtc::PolarRegion> &excludedRegions, const Eigen::Vector3d &llhCentroid, const Eigen::TransformationMatrix &worldF_T_vehicleF,
       std::map<size_t,std::vector<odtc::DetectionInfo>> di = {});

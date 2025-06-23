@@ -153,7 +153,10 @@ bool UtilitiesROS2::ReadBoxArray2DFromCache(const message_filters::Cache<image_p
     const rclcpp::Time stamp, image_pipeline_msgs::msg::BoundingBox2DArray::ConstPtr &msgPtr, const double maxTimeLag_s) {
     
     msgPtr = cache.getElemBeforeTime(stamp);
-    return (msgPtr != nullptr) && (TimestampsAreClose(stamp, msgPtr->header.stamp, maxTimeLag_s));
+    if (msgPtr != nullptr ) {
+        //std::cerr << "[ReadBoxArray2DFromCache] diff t = " << UtilitiesROS2::ROSTimeToTimestamp(stamp) - UtilitiesROS2::ROSTimeToTimestamp(msgPtr->header.stamp) << std::endl;
+    }
+    return (msgPtr != nullptr) ;//&& (TimestampsAreClose(stamp, msgPtr->header.stamp, maxTimeLag_s));
 }
 
 bool UtilitiesROS2::ReadPipeDirectionFromCache(const message_filters::Cache<image_pipeline_msgs::msg::PipeDirection> &cache,
@@ -407,6 +410,7 @@ std::vector<odtc::Obstacle<2>> UtilitiesROS2::ObstacleDataToObstacleVector(const
         odtc::BoundingBox<2> bx(b.wF_pose.TranslationVector().head(2), Eigen::Vector2d(b.radius * 2, b.radius * 2));
         bx.Id(b.id);
         bx.Description("Buoy_" + b.color);
+        bx.Confidence(0.6);
         res.emplace_back(bx);
     }
 
@@ -577,7 +581,8 @@ image_pipeline_msgs::msg::Pipe UtilitiesROS2::PipeToPipeMsg(const Pipe& pipe, co
     return msg;
 }
 
-auv_core_helper::msg::DtcList UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &trck, const TrackType trackType, const Eigen::Vector3d &llhCentroid, std::vector<odtc::BoundingBox<2>> boxes) {
+auv_core_helper::msg::DtcList UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &trck, const TrackType trackType, const Eigen::Vector3d &llhCentroid,
+    const bool enableDbgPrint, std::vector<odtc::BoundingBox<2>> boxes) {
 
     auv_core_helper::msg::DtcList msg;
     msg.header.stamp = t;
@@ -589,18 +594,19 @@ auv_core_helper::msg::DtcList UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t
         auto noOccl = futils::FindMapKeyByValue(trck.Meas2Track().A2B(), f.first, key);
         std::shared_ptr<odtc::BoundingBox<2U>> boxPtr = nullptr;
         if (noOccl) {
-            if (measObstacles[key].BoxOk()) measObstacles[key].SetBoundingBox(odtc::Cloud2BoxAlgorithm::HULL);
+            //if (measObstacles[key].BoxOk()) measObstacles[key].SetBoundingBox(odtc::Cloud2BoxAlgorithm::HULL);
             boxPtr = measObstacles[key].Box();
         }
+        auto box = f.second.ToBox();
         auto obstacleMsg = FillObstacleMsg(t, boxPtr, std::make_shared<odtc::TrackData>(f.second), trck.Meas2Track().Params());
         obstacleMsg.class_label = f.second.label;
         obstacleMsg.class_conf = f.second.labelConfidence;
         obstacleMsg.class_area = 0;// infoBox.Volume();
         if (f.second.label.find("buoy") != std::string::npos) {
-            // It's a buoy!
+            if (enableDbgPrint) std::cerr << "[FillObstacleArrayMsg] buoy!" << std::endl;
             auv_core_helper::msg::Buoy b;
             b.id = f.first;
-            Eigen::Matrix3d extF_T_boxF_3D = boxPtr->ExtF_T_BoxF();
+            Eigen::Matrix3d extF_T_boxF_3D = box.ExtF_T_BoxF();
             Eigen::TransformationMatrix extF_T_boxF;
             extF_T_boxF.block(0,0,2,2) = extF_T_boxF_3D.block(0,0,2,2);
             extF_T_boxF.block(0,3,2,1) = extF_T_boxF_3D.block(0,2,2,1);
@@ -611,8 +617,11 @@ auv_core_helper::msg::DtcList UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t
             b.position.latitude = buoy_geopose.pose.position.latitude;
             b.position.longitude = buoy_geopose.pose.position.longitude;
             b.color = f.second.label;
-            b.radius = boxPtr->Sizes()[0];
+            b.radius = box.Sizes()[0];
             msg.buoys.emplace_back(b);
+        }
+        else {
+            if (enableDbgPrint) std::cerr << "[FillObstacleArrayMsg]!" << f.second.label << std::endl;
         }
     }
 
