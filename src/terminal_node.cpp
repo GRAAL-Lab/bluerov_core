@@ -2,6 +2,8 @@
 #include <iostream>
 #include <memory>
 #include <thread>
+#include <cstdio>
+#include <array>
 #include <cstdlib>                                         // for std::system
 #include <ament_index_cpp/get_package_share_directory.hpp> // to get package path
 
@@ -36,7 +38,7 @@ private:
       std::cout << "1. Select TBM ID" << std::endl;
       std::cout << "2. Send mission command" << std::endl;
       std::cout << "3. SSH into AUV" << std::endl;
-      std::cout << "4. Post processing data" << std::endl;
+      std::cout << "4. Start post-processing operation" << std::endl;
       std::cout << "5. Exit" << std::endl;
       std::cout << "> ";
 
@@ -82,10 +84,52 @@ private:
 
         break;
       }
-      
+
       case 4:
-      	
-      break;
+      {
+        RCLCPP_INFO(this->get_logger(), "Starting post-processing Python script...");
+
+        std::string pkg_path = ament_index_cpp::get_package_share_directory("ctrl_station");
+        std::string script_path = pkg_path + "/scripts/post_processing.py";
+
+        // Find most recent folder inside ~/rov_logs
+        std::string rov_logs_path = std::string(std::getenv("HOME")) + "/rov_logs";
+        std::string find_latest_cmd = "ls -1t " + rov_logs_path + " | head -n 1";
+        FILE *pipe = popen(find_latest_cmd.c_str(), "r");
+
+        if (!pipe)
+        {
+          RCLCPP_ERROR(this->get_logger(), "Failed to retrieve latest mission folder.");
+          break;
+        }
+
+        char buffer[128];
+        std::string latest_folder;
+        if (fgets(buffer, sizeof(buffer), pipe) != nullptr)
+        {
+          latest_folder = std::string(buffer);
+          latest_folder.erase(std::remove(latest_folder.begin(), latest_folder.end(), '\n'), latest_folder.end());
+        }
+        pclose(pipe);
+
+        if (latest_folder.empty())
+        {
+          RCLCPP_ERROR(this->get_logger(), "No mission folder found in %s", rov_logs_path.c_str());
+          break;
+        }
+
+        std::string mission_path = rov_logs_path + "/" + latest_folder;
+        std::string cmd = "python3 " + script_path + " \"" + mission_path + "\"";
+
+        int ret = std::system(cmd.c_str());
+
+        if (ret == 0)
+          RCLCPP_INFO(this->get_logger(), "Post-processing script executed successfully.");
+        else
+          RCLCPP_ERROR(this->get_logger(), "Post-processing script failed with code %d", ret);
+
+        break;
+      }
 
       case 5:
         RCLCPP_INFO(this->get_logger(), "Exit requested");

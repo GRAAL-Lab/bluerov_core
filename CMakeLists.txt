@@ -113,6 +113,7 @@ install(DIRECTORY conf/
 
 install(PROGRAMS
   scripts/download_rov_data.sh
+  scripts/post_processing.py
   DESTINATION share/${PROJECT_NAME}/scripts
 )
 

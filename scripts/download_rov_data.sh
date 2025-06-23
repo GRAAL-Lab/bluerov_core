@@ -95,5 +95,7 @@ log_communication "${GREEN}✓ Combined log saved to mission folder: $FINAL_LOG$
 
 rm -f "$TEMP_COMM_LOG"
 
+echo "$RECENT_FOLDER" > "$LOCAL_PATH/.recent_folder"
+
 exit 0
 
