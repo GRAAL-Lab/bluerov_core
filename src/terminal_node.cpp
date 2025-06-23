@@ -36,7 +36,8 @@ private:
       std::cout << "1. Select TBM ID" << std::endl;
       std::cout << "2. Send mission command" << std::endl;
       std::cout << "3. SSH into AUV" << std::endl;
-      std::cout << "4. Exit" << std::endl;
+      std::cout << "4. Post processing data" << std::endl;
+      std::cout << "5. Exit" << std::endl;
       std::cout << "> ";
 
       int choice;
@@ -81,8 +82,12 @@ private:
 
         break;
       }
-
+      
       case 4:
+      	
+      break;
+
+      case 5:
         RCLCPP_INFO(this->get_logger(), "Exit requested");
         rclcpp::shutdown();
         return;
