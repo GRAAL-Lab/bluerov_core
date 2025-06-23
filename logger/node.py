@@ -35,9 +35,9 @@ class LoggerNode(Node):
         self.perception_sub = self.create_subscription(Obstacles, TOPICS_NAMES["Obstacles"],self.perception_callback,10)
         self.image_sub = self.create_subscription(Image, TOPICS_NAMES["Images"], self.image_callback, 10)
 
-        self.kml_path_nav = os.path.join(self.mission_dir, f"vehicle_navigation_data_{file_timestamp}.kml")
-        self.kml_path_mission = os.path.join(self.mission_dir, f"mission_status_data_{file_timestamp}.kml")
-        self.kml_path_objects = os.path.join(self.mission_dir, f"object_recognition_data_{file_timestamp}.kml")
+        self.kml_path_nav = os.path.join(self.mission_dir, "vehicle_navigation_data.kml")
+        self.kml_path_mission = os.path.join(self.mission_dir, "mission_status_data.kml")
+        self.kml_path_objects = os.path.join(self.mission_dir, "object_recognition_data.kml")
         self.image_save_path = os.path.join(self.mission_dir, "object_images")
         os.makedirs(self.image_save_path, exist_ok=True)
         
