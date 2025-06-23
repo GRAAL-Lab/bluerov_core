@@ -80,6 +80,7 @@ struct Buoy {
   Eigen::TransformationMatrix wF_pose;
   std::string color;
   double radius;
+  float confidence;
   std::string notes;
 };
 
@@ -89,6 +90,7 @@ struct Number {
   std::string bgColor;
   int number;
   std::string notes;
+  float confidence;
 };
 
 struct Marker {
@@ -96,11 +98,13 @@ struct Marker {
   Eigen::TransformationMatrix wF_pose;
   std::string color;
   std::string notes;
+  float confidence;
 };
 
 struct ManipulationConsole {
   size_t id;
   Eigen::TransformationMatrix wF_pose;
+  float confidence;
   std::string notes;
 };
 

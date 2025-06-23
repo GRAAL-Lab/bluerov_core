@@ -335,6 +335,7 @@ Buoy UtilitiesROS2::BuoyMsgToBuoy(const image_pipeline_msgs::msg::Buoy &msg, con
     buoy.color = msg.color;
     buoy.radius = msg.radius;
     buoy.notes = msg.notes;
+    buoy.confidence = msg.confidence;
     return buoy;
 }
 
@@ -362,6 +363,7 @@ ManipulationConsole UtilitiesROS2::ManipulationMsgToManipulation(const image_pip
     mc.id = static_cast<uint64_t>(msg.id);
     mc.wF_pose = GeoPoseWithCovarianceToEigen(msg.pose, centroid);
     mc.notes = msg.notes;
+    mc.confidence = msg.confidence;
     return mc;
 }
 
@@ -423,7 +425,7 @@ std::vector<odtc::Obstacle<2>> UtilitiesROS2::ObstacleDataToObstacleVector(const
         odtc::BoundingBox<2> bx(b.wF_pose.TranslationVector().head(2), Eigen::Vector2d(b.radius * 2, b.radius * 2));
         bx.Id(b.id);
         bx.Description("Buoy_" + b.color);
-        bx.Confidence(0.6);
+        bx.Confidence(b.confidence);
         res.emplace_back(bx);
     }
 
@@ -435,12 +437,12 @@ std::vector<odtc::Obstacle<2>> UtilitiesROS2::ObstacleDataToObstacleVector(const
         res.emplace_back(bx);
     }
 
-    for (const auto &p : obstacleData.manipulation_consoles) {
-        Eigen::Vector2d worldF_pipeCentroidHopefully(p.wF_pose(0,3), p.wF_pose(1,3));
-        odtc::BoundingBox<2> bx(worldF_pipeCentroidHopefully, p.wF_pose.RotationMatrix().block(0,0,2,2), {2, 2});
-        bx.Id(p.id);
+    for (const auto &mc : obstacleData.manipulation_consoles) {
+        Eigen::Vector2d worldF_pipeCentroidHopefully(mc.wF_pose(0,3), mc.wF_pose(1,3));
+        odtc::BoundingBox<2> bx(worldF_pipeCentroidHopefully, mc.wF_pose.RotationMatrix().block(0,0,2,2), {2, 2});
+        bx.Id(mc.id);
         bx.Description("console_red_background");
-        bx.Confidence(0.6);
+        bx.Confidence(mc.confidence);
         res.emplace_back(bx);
     }
 
@@ -555,6 +557,7 @@ image_pipeline_msgs::msg::ManipulationConsole UtilitiesROS2::ManipulationToManip
     msg.id = static_cast<int64_t>(mc.id);
     msg.pose = EigenToGeoPoseWithCovariance(mc.wF_pose, centroid);
     msg.notes = mc.notes;
+    msg.confidence = mc.confidence;
     return msg;
 }
 
@@ -565,6 +568,7 @@ image_pipeline_msgs::msg::Buoy UtilitiesROS2::BuoyToBuoyMsg(const Buoy& buoy, co
     msg.color = buoy.color;
     msg.radius = buoy.radius;
     msg.notes = buoy.notes;
+    msg.confidence = buoy.confidence;
     return msg;
 }
 
