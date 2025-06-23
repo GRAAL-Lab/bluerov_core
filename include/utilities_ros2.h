@@ -57,6 +57,7 @@ namespace objectNames {
   const std::string PIPESTRUCT_NAME = "pipestruct";
   const std::string MARKER_NAME = "marker";
   const std::string NUMBER_NAME = "number";
+  const std::string MANIPULATION_NAME = "console_red_background";
 }
 
 // Define the DtcRequest message
@@ -97,6 +98,12 @@ struct Marker {
   std::string notes;
 };
 
+struct ManipulationConsole {
+  size_t id;
+  Eigen::TransformationMatrix wF_pose;
+  std::string notes;
+};
+
 struct Pipe {
   double ts_;
   size_t id;
@@ -114,6 +121,7 @@ struct ObstaclesData {
   std::vector<Marker> markers;
   std::vector<Number> numbers;
   std::vector<Pipe> pipes;
+  std::vector<ManipulationConsole> manipulation_consoles;
   ctb::LatLong centroid;
 };
 
@@ -168,12 +176,13 @@ class UtilitiesROS2 {
       image_pipeline_msgs::msg::Obstacles::ConstPtr &obstacles, const double maxTimeLag_s);
     static image_pipeline_msgs::msg::Obstacles FillObstaclesMsg(rclcpp::Time t, const std::vector<Buoy> &b,
                                                                   const std::vector<Marker> &m, const std::vector<Number> &n,
-                                                                  const std::vector<Pipe> &p, const ctb::LatLong &centroid,
+                                                                  const std::vector<Pipe> &p, const std::vector<ManipulationConsole> &mc, const ctb::LatLong &centroid,
                                                                   const Eigen::TransformationMatrix &worldF_T_vehicleF);
 
   static geographic_msgs::msg::GeoPoseWithCovariance EigenToGeoPoseWithCovariance(const Eigen::TransformationMatrix& eigen_pose, const ctb::LatLong &centroid);
   static image_pipeline_msgs::msg::Buoy BuoyToBuoyMsg(const Buoy& buoy, const ctb::LatLong &centroid);
   static image_pipeline_msgs::msg::Number NumberToNumberMsg(const Number& number, const ctb::LatLong &centroid);
+  static image_pipeline_msgs::msg::ManipulationConsole ManipulationToManipulationMsg(const ManipulationConsole& mc, const ctb::LatLong &centroid);
   static image_pipeline_msgs::msg::Marker MarkerToMarkerMsg(const Marker& marker, const ctb::LatLong &centroid);
   static image_pipeline_msgs::msg::Pipe PipeToPipeMsg(const Pipe& pipe, const ctb::LatLong &centroid);
 
@@ -183,6 +192,7 @@ class UtilitiesROS2 {
   static Buoy BuoyMsgToBuoy(const image_pipeline_msgs::msg::Buoy &msg, const ctb::LatLong &centroid);
   static Marker MarkerMsgToMarker(const image_pipeline_msgs::msg::Marker &msg, const ctb::LatLong &centroid);
   static Number NumberMsgToNumber(const image_pipeline_msgs::msg::Number &msg, const ctb::LatLong &centroid);
+  static ManipulationConsole ManipulationMsgToManipulation(const image_pipeline_msgs::msg::ManipulationConsole &msg, const ctb::LatLong &centroid);
   static Pipe PipeMsgToPipe(const image_pipeline_msgs::msg::Pipe &msg, const ctb::LatLong &centroid);
 
   static std::vector<odtc::Obstacle<2>> ObstacleDataToObstacleVector(const ObstaclesData &obstacleData);
