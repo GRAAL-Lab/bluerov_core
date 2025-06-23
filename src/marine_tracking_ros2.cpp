@@ -63,6 +63,7 @@ void MarineTrackingROS2::FiltersCallback(const image_pipeline_msgs::msg::Obstacl
     auto t2_rcv = std::chrono::steady_clock::now();;
     auto dt_rcv_ms = std::chrono::duration_cast<std::chrono::microseconds>(t2_rcv-t1_rcv).count()/1000.0;
     if (enableDbgPrint_) std::cerr << "[FiltersCallback] Msg rcv dt = " << dt_rcv_ms << "ms @" << obstacleData.buoys.size() << " buoys detectied." << std::endl;
+    if (enableDbgPrint_) std::cerr << "[FiltersCallback] Msg rcv dt = " << dt_rcv_ms << "ms @" << obstacleData.manipulation_consoles.size() << " manipulation detectied." << std::endl;
 
     auto obstacles = UtilitiesROS2::ObstacleDataToObstacleVector(obstacleData);
 

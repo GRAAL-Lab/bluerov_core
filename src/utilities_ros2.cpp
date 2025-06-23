@@ -440,6 +440,7 @@ std::vector<odtc::Obstacle<2>> UtilitiesROS2::ObstacleDataToObstacleVector(const
         odtc::BoundingBox<2> bx(worldF_pipeCentroidHopefully, p.wF_pose.RotationMatrix().block(0,0,2,2), {2, 2});
         bx.Id(p.id);
         bx.Description("console_red_background");
+        bx.Confidence(0.6);
         res.emplace_back(bx);
     }
 
@@ -652,8 +653,10 @@ auv_core_helper::msg::DtcList UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t
             b.radius = box.Sizes()[0];
             msg.buoys.emplace_back(b);
         }
-        else {
-            if (enableDbgPrint) std::cerr << "[FillObstacleArrayMsg]!" << f.second.label << std::endl;
+        if (f.second.label.find("console") != std::string::npos) {
+          msg.manipulation_console = true;
+        }else{
+          msg.manipulation_console = false;
         }
     }
 
