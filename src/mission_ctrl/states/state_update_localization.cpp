@@ -18,11 +18,11 @@ namespace states {
         diving = false;
         localizationStartTime = systemStatus_->lastSystemTime;
 
-        ctrlData->kclData.currentCmd = mission::kclCmd();
-        ctrlData->kclData.currentCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
-        ctrlData->kclData.currentCmd.goal.position.latitude = startingPosition.latitude;
-        ctrlData->kclData.currentCmd.goal.position.longitude = startingPosition.longitude;
-        ctrlData->kclData.currentCmd.goal.depth = taskData_->surfaceDepth;
+        ctrlData->kclData.kclActionCmd = mission::kclCmd();
+        ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+        ctrlData->kclData.kclActionCmd.goal.position.latitude = startingPosition.latitude;
+        ctrlData->kclData.kclActionCmd.goal.position.longitude = startingPosition.longitude;
+        ctrlData->kclData.kclActionCmd.goal.depth = taskData_->surfaceDepth;
 
         if (systemStatus_->conf.debugPrints) {
             std::cerr << "Surfacing for localization" << std::endl;
@@ -45,11 +45,11 @@ namespace states {
         auto elapsedTime = (systemStatus_->lastSystemTime - localizationStartTime).seconds();
         if (onSurface && !diving && elapsedTime > maxTimeForLocalization) {
             diving = true;
-            ctrlData->kclData.currentCmd = mission::kclCmd();
-            ctrlData->kclData.currentCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
-            ctrlData->kclData.currentCmd.goal.position.latitude = startingPosition.latitude;
-            ctrlData->kclData.currentCmd.goal.position.longitude = startingPosition.longitude;
-            ctrlData->kclData.currentCmd.goal.depth = taskData_->diveDepth;
+            ctrlData->kclData.kclActionCmd = mission::kclCmd();
+            ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+            ctrlData->kclData.kclActionCmd.goal.position.latitude = startingPosition.latitude;
+            ctrlData->kclData.kclActionCmd.goal.position.longitude = startingPosition.longitude;
+            ctrlData->kclData.kclActionCmd.goal.depth = taskData_->diveDepth;
             if (systemStatus_->conf.debugPrints) {
                 std::cerr << "Done, diving again." << std::endl;
             }

@@ -14,12 +14,8 @@ namespace states {
         fsm::retval Execute() override;
         fsm::retval OnExit() override;
 
-        std::shared_ptr<Gate> gate;
-
-        std::shared_ptr<sisl::Path> path;
-
-        fsm::retval genPath();
-
+        bool reachedFrontOfGate = false; // If the vehicle reached the front of the gate
+        ctb::LatLong firstWp, secondWp;
 
     };
 

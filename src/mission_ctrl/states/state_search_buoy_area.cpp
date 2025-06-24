@@ -64,7 +64,7 @@ namespace states {
                 }
                 return leftmostPoint;
             };
-            for (int i = 0; i < taskData_->buoysArea.points.size(); ++i) {
+            for (size_t i = 0; i < taskData_->buoysArea.points.size(); ++i) {
                 auto maybePoint = findLeftmostPoint(ctrlData->inertialF_linearPosition);
                 if (!maybePoint)
                     break; // no more points
@@ -74,11 +74,11 @@ namespace states {
         }
 
         // Move to leftmost point
-        ctrlData->kclData.currentCmd = mission::kclCmd();
-        ctrlData->kclData.currentCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
-        ctrlData->kclData.currentCmd.goal.position.latitude = areaPoints.front().latitude;
-        ctrlData->kclData.currentCmd.goal.position.longitude = areaPoints.front().longitude;
-        ctrlData->kclData.currentCmd.goal.depth = taskData_->diveDepth;
+        ctrlData->kclData.kclActionCmd = mission::kclCmd();
+        ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+        ctrlData->kclData.kclActionCmd.goal.position.latitude = areaPoints.front().latitude;
+        ctrlData->kclData.kclActionCmd.goal.position.longitude = areaPoints.front().longitude;
+        ctrlData->kclData.kclActionCmd.goal.depth = taskData_->diveDepth;
         return fsm::ok;
     }
 
@@ -122,29 +122,29 @@ namespace states {
         if (reachedLeftmostPoint && !sentPathFollowingCommand) {
             sentPathFollowingCommand = true;
             if (resumeSearch) {
-                ctrlData->kclData.currentCmd.goal.resume_path = true;
+                ctrlData->kclData.kclActionCmd.goal.resume_path = true;
             } else {
-                ctrlData->kclData.currentCmd.goal.resume_path = false;
+                ctrlData->kclData.kclActionCmd.goal.resume_path = false;
             }
             // tell kcl to follow area coverage path
-            ctrlData->kclData.currentCmd = mission::kclCmd();
+            ctrlData->kclData.kclActionCmd = mission::kclCmd();
 
-            ctrlData->kclData.currentCmd.goal.desired_state = "PATH_FOLLOWING";
-            ctrlData->kclData.currentCmd.goal.path_mode = "Serpentine2D";
+            ctrlData->kclData.kclActionCmd.goal.desired_state = "PATH_FOLLOWING";
+            ctrlData->kclData.kclActionCmd.goal.path_mode = "Serpentine2D";
 
             auto points = areaPoints;
 
-            ctrlData->kclData.currentCmd.goal.serpentine_data.origin.latitude = points.front().latitude;
-            ctrlData->kclData.currentCmd.goal.serpentine_data.origin.longitude = points.front().longitude;
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.origin.latitude = points.front().latitude;
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.origin.longitude = points.front().longitude;
             points.pop();
-            ctrlData->kclData.currentCmd.goal.serpentine_data.front_left.longitude = points.front().longitude;
-            ctrlData->kclData.currentCmd.goal.serpentine_data.front_left.latitude = points.front().latitude;
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.front_left.longitude = points.front().longitude;
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.front_left.latitude = points.front().latitude;
             points.pop();
-            ctrlData->kclData.currentCmd.goal.serpentine_data.front_right.longitude = points.front().longitude;
-            ctrlData->kclData.currentCmd.goal.serpentine_data.front_right.latitude = points.front().latitude;
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.front_right.longitude = points.front().longitude;
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.front_right.latitude = points.front().latitude;
             points.pop();
-            ctrlData->kclData.currentCmd.goal.serpentine_data.right.longitude = points.front().longitude;
-            ctrlData->kclData.currentCmd.goal.serpentine_data.right.latitude = points.front().latitude;
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.right.longitude = points.front().longitude;
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.right.latitude = points.front().latitude;
             return fsm::ok;
         }
 

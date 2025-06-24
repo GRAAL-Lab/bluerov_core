@@ -93,20 +93,20 @@ namespace states {
             }
 
             ctb::LatLong currentGoal;
-            currentGoal.latitude = ctrlData->kclData.currentCmd.goal.position.latitude;
-            currentGoal.longitude = ctrlData->kclData.currentCmd.goal.position.longitude;
+            currentGoal.latitude = ctrlData->kclData.kclActionCmd.goal.position.latitude;
+            currentGoal.longitude = ctrlData->kclData.kclActionCmd.goal.position.longitude;
             ctb::DistanceAndAzimuthRad(currentGoal, pointOnPipe, distance, azimuthRad);
-            if (!ctrlData->kclData.currentCmd.completed && distance < 0.5) {
+            if (ctrlData->kclData.kclActionCmd.underExecution && distance < 0.5) {
                 return fsm::ok;
             }
 
             // tell kcl to move to point on pipe and align to direction
             ctrlData->perceptionData.currentPipeDtc.pipe_direction;
-            ctrlData->kclData.currentCmd = mission::kclCmd();
-            ctrlData->kclData.currentCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
-            ctrlData->kclData.currentCmd.goal.position.latitude = pointOnPipe.latitude;
-            ctrlData->kclData.currentCmd.goal.position.longitude = pointOnPipe.longitude;
-            ctrlData->kclData.currentCmd.goal.depth = taskData_->diveDepth;
+            ctrlData->kclData.kclActionCmd = mission::kclCmd();
+            ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+            ctrlData->kclData.kclActionCmd.goal.position.latitude = pointOnPipe.latitude;
+            ctrlData->kclData.kclActionCmd.goal.position.longitude = pointOnPipe.longitude;
+            ctrlData->kclData.kclActionCmd.goal.depth = taskData_->diveDepth;
 
         } else if (currentPhase == PipelinePipeInspectionPhase::MOVING_AWAY_FROM_PIPELINE_STRUCTURE) {
             // We are close to the structure, so we have to move away from it

@@ -18,11 +18,11 @@ namespace states {
                       << homePosition.longitude << std::endl;
 
         // Surface cmd
-        ctrlData->kclData.currentCmd = mission::kclCmd();
-        ctrlData->kclData.currentCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
-        ctrlData->kclData.currentCmd.goal.position.latitude = ctrlData->inertialF_linearPosition.latitude;
-        ctrlData->kclData.currentCmd.goal.position.longitude = ctrlData->inertialF_linearPosition.longitude;
-        ctrlData->kclData.currentCmd.goal.depth = taskData_->surfaceDepth;
+        ctrlData->kclData.kclActionCmd = mission::kclCmd();
+        ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+        ctrlData->kclData.kclActionCmd.goal.position.latitude = ctrlData->inertialF_linearPosition.latitude;
+        ctrlData->kclData.kclActionCmd.goal.position.longitude = ctrlData->inertialF_linearPosition.longitude;
+        ctrlData->kclData.kclActionCmd.goal.depth = taskData_->surfaceDepth;
 
         return fsm::ok;
     }
@@ -40,11 +40,11 @@ namespace states {
             return fsm::ok;
         } else if (!reachedSurface) {
             reachedSurface = true;
-            ctrlData->kclData.currentCmd = mission::kclCmd();
-            ctrlData->kclData.currentCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
-            ctrlData->kclData.currentCmd.goal.position.latitude = homePosition.latitude;
-            ctrlData->kclData.currentCmd.goal.position.longitude = homePosition.longitude;
-            ctrlData->kclData.currentCmd.goal.depth = taskData_->surfaceDepth;
+            ctrlData->kclData.kclActionCmd = mission::kclCmd();
+            ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+            ctrlData->kclData.kclActionCmd.goal.position.latitude = homePosition.latitude;
+            ctrlData->kclData.kclActionCmd.goal.position.longitude = homePosition.longitude;
+            ctrlData->kclData.kclActionCmd.goal.depth = taskData_->surfaceDepth;
             if (systemStatus_->conf.debugPrints)
                 std::cerr << "Reached surface, moving home: " << homePosition.latitude << ", "
                           << homePosition.longitude << "\n";

@@ -6,7 +6,6 @@ namespace states {
 
     StateCrossGate::StateCrossGate()
     {
-        gate = nullptr;
     }
 
     StateCrossGate::~StateCrossGate() { }
@@ -14,87 +13,74 @@ namespace states {
     fsm::retval StateCrossGate::OnEntry()
     {
 
-        fsm::retval ret;
+        if (systemStatus_->conf.simPerception) {
+            ctb::LatLong posA, posB;
+            Eigen::Vector3d localPosA(5, -1, 0);
+            Eigen::Vector3d localPosB(5, 1, 0);
+            double alt;
+            ctb::LocalNED2LatLong(localPosA, ctrlData->inertialF_linearPosition, posA, alt);
+            ctb::LocalNED2LatLong(localPosB, ctrlData->inertialF_linearPosition, posB, alt);
+            Buoy gb1, gb2;
+            Gate gt;
+            gb1.position = posA;
+            gb2.position = posB;
 
-        // temp
+            gt.SetGateBuoys(gb1, gb2, true);
+
+            ctrlData->missionData.gate = gt;
+
+            std::cerr << "Buoys simulated to be at: " << gb1.position.latitude << ", "
+                      << gb1.position.longitude << " and " << gb2.position.latitude << ", "
+                      << gb2.position.longitude << "\n";
+        }
+
+        systemStatus_->conf.gateWpsDistance;
+
+        Eigen::Vector3d buoy1_buoy2Pos;
+        ctb::LatLong2LocalNED(ctrlData->missionData.gate.buoy2.position, 0, ctrlData->missionData.gate.buoy1.position, buoy1_buoy2Pos);
+        Eigen::Vector3d perpendicularVector = systemStatus_->conf.gateWpsDistance * Eigen::Vector3d(-buoy1_buoy2Pos.y(), buoy1_buoy2Pos.x(), 0).normalized();
+        Eigen::Vector3d firstWpLocal = buoy1_buoy2Pos.normalized() * (buoy1_buoy2Pos.norm() / 2) + perpendicularVector;
+        Eigen::Vector3d secondWpLocal = buoy1_buoy2Pos.normalized() * (buoy1_buoy2Pos.norm() / 2) - perpendicularVector;
         double alt;
-        Eigen::Vector3d distanceVector(0, 2, 0);
-        ctb::LatLong pos;
-        ctb::LocalNED2LatLong(distanceVector, ctb::LatLong(0, 0), pos, alt);
-        Buoy gb1, gb2;
-        Gate gt;
-        gb1.position = ctb::LatLong(0, 0);
-        gb2.position = pos;
-        if (gt.SetGateBuoys(gb1, gb2)) {
-            gate = std::make_shared<Gate>(gt);
-        } else {
-            return fsm::fail;
-        }
-
-        if (gate == nullptr)
-            ret = fsm::fail;
-        else {
-            std::cerr << "Crossing gate...\n";
-            ret = genPath();
-        }
-
-        return ret;
+        ctb::LocalNED2LatLong(firstWpLocal, ctrlData->missionData.gate.buoy1.position, firstWp, alt);
+        ctb::LocalNED2LatLong(secondWpLocal, ctrlData->missionData.gate.buoy1.position, secondWp, alt);
+        return fsm::ok;
     }
 
     fsm::retval StateCrossGate::Execute()
     {
-        // if (found) {
-        //     taskData_->taskPhases.pop();
-        //     std::cerr << "Found!\n";
-        //     return fsm_->SetNextState(taskData_->taskPhases.front().first);
-        // }
-        // double delta = std::fmod((ctrlData->bodyF_angularPosition.Yaw() - previous_bodyF_angularPosition.Yaw()) + 180, 360) - 180;
-        // cumulativeAngle += delta;
-        // previous_bodyF_angularPosition = ctrlData->bodyF_angularPosition;
-
-        // if (cumulativeAngle > 360 || cumulativeAngle < -360) {
-        //     std::cerr << "Not Found!\n";
-        //     // return fsm_->SetNextState(taskData_->taskPhases.front().first);
-        //     return fsm::fail;
-        // }
-
-        // std::cerr << "Searching...\n";
-        // std::cerr << "Cumulative angle: " << cumulativeAngle << "\n";
+        if (ctrlData->kclData.kclActionCmd.underExecution) {
+            double distance, azimuthRad;
+            if (!reachedFrontOfGate) {
+                ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, firstWp, distance, azimuthRad);
+                if (distance < systemStatus_->conf.latlongTolerance) {
+                    reachedFrontOfGate = true;
+                }
+            } else {
+                ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, secondWp, distance, azimuthRad);
+                if (distance < systemStatus_->conf.latlongTolerance) {
+                    return this->SetNextMissionState();
+                }
+            }
+        } else {
+            ctrlData->kclData.kclActionCmd = mission::kclCmd();
+            ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+            if (reachedFrontOfGate) {
+                ctrlData->kclData.kclActionCmd.goal.position.latitude = secondWp.latitude;
+                ctrlData->kclData.kclActionCmd.goal.position.longitude = secondWp.longitude;
+                ctrlData->kclData.kclActionCmd.goal.depth = taskData_->diveDepth;
+            } else {
+                ctrlData->kclData.kclActionCmd.goal.position.latitude = firstWp.latitude;
+                ctrlData->kclData.kclActionCmd.goal.position.longitude = firstWp.longitude;
+                ctrlData->kclData.kclActionCmd.goal.depth = taskData_->diveDepth;
+            }
+        }
 
         return fsm::ok;
     }
 
     fsm::retval StateCrossGate::OnExit()
     {
-        path = nullptr;
-        return fsm::ok;
-    }
-
-    fsm::retval StateCrossGate::genPath()
-    {
-        path = std::make_shared<sisl::Path>();
-        std::vector<Eigen::Vector3d> points = {
-            { 0.0, 0.0, 0.0 },
-            { 1.0, 2.0, 0.0 },
-            { 3.0, 0.0, 0.0 }
-        };
-
-        int degree = 2;
-        std::vector<double> weights = { 1.0, 1.0, 1.0 };
-        std::vector<double> knots = { 0.0, 0.0, 0.0, 1.0, 1.0, 1.0 };
-        std::vector<double> coefficients; // Let it be auto-computed
-
-        std::shared_ptr<sisl::GenericCurve> curve = std::make_shared<sisl::GenericCurve>(
-            degree, knots, points, weights, coefficients);
-
-        path->AddCurveBack(curve);
-
-        auto sampledPoints = path->Sampling(10);
-        std::cout << "Sampled path points:\n";
-        for (const auto& pt : *sampledPoints) {
-            std::cout << pt.transpose() << "\n";
-        }
-
         return fsm::ok;
     }
 

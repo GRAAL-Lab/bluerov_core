@@ -29,7 +29,16 @@ namespace states {
             if (taskData_->taskType == taskBenchmarks::INSPECTION) {
                 taskData_->taskPhases.push(std::make_pair(states::ID::init, ""));
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DIVE"));
+
+                
+
+                taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DEBUG"));
+
+                taskData_->taskPhases.push(std::make_pair(states::ID::crossGate, ""));
+
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, opis::uavWaypoint));
+
+                taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DEBUG"));
 
                 //taskData_->taskPhases.push(std::make_pair(states::ID::updateLocalization, ""));
 

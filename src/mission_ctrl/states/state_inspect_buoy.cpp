@@ -57,11 +57,11 @@ namespace states {
             std::cerr << "          from position: " << buoyPosition.latitude << ", " << buoyPosition.longitude << std::endl;
         }
         // Set the goal position for the KCL command
-        ctrlData->kclData.currentCmd = mission::kclCmd();
-        ctrlData->kclData.currentCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
-        ctrlData->kclData.currentCmd.goal.position.latitude = buoyPosition.latitude;
-        ctrlData->kclData.currentCmd.goal.position.longitude = buoyPosition.longitude;
-        ctrlData->kclData.currentCmd.goal.depth = taskData_->diveDepth;
+        ctrlData->kclData.kclActionCmd = mission::kclCmd();
+        ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+        ctrlData->kclData.kclActionCmd.goal.position.latitude = buoyPosition.latitude;
+        ctrlData->kclData.kclActionCmd.goal.position.longitude = buoyPosition.longitude;
+        ctrlData->kclData.kclActionCmd.goal.depth = taskData_->diveDepth;
 
         return fsm::ok;
     }

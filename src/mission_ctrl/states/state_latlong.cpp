@@ -32,6 +32,10 @@ namespace states {
                 goalPose.at(0) = ctrlData->inertialF_linearPosition.latitude;
                 goalPose.at(1) = ctrlData->inertialF_linearPosition.longitude;
                 goalPose.at(2) = taskData_->surfaceDepth;
+            } else if (taskData_->taskPhases.front().second == "DEBUG") {
+                goalPose.at(0) = systemStatus_->conf.debugPosition.latitude;
+                goalPose.at(1) = systemStatus_->conf.debugPosition.longitude;
+                goalPose.at(2) = taskData_->diveDepth;
             }
 
             if (systemStatus_->conf.debugPrints) {
@@ -46,11 +50,11 @@ namespace states {
             }
 
   
-            ctrlData->kclData.currentCmd = mission::kclCmd();
-            ctrlData->kclData.currentCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
-            ctrlData->kclData.currentCmd.goal.position.latitude = goalPose.at(0);
-            ctrlData->kclData.currentCmd.goal.position.longitude = goalPose.at(1);
-            ctrlData->kclData.currentCmd.goal.depth = goalPose.at(2);
+            ctrlData->kclData.kclActionCmd = mission::kclCmd();
+            ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+            ctrlData->kclData.kclActionCmd.goal.position.latitude = goalPose.at(0);
+            ctrlData->kclData.kclActionCmd.goal.position.longitude = goalPose.at(1);
+            ctrlData->kclData.kclActionCmd.goal.depth = goalPose.at(2);
 
             doneInit = true;
             return fsm::ok;
@@ -61,8 +65,8 @@ namespace states {
                 doneInit = false;
                 return this->SetNextMissionState();
             }
-            if (systemStatus_->conf.debugPrints)
-                std::cerr << "Depth to goal: " << abs(ctrlData->depth - goalPose.at(2)) << "\n";
+            // if (systemStatus_->conf.debugPrints)
+            //     std::cerr << "Depth to goal: " << abs(ctrlData->depth - goalPose.at(2)) << "\n";
 
         } else {
             double distance, azimuthRad;
@@ -71,11 +75,11 @@ namespace states {
                 doneInit = false;
                 return this->SetNextMissionState();
             }
-            if (distance > 1000 && systemStatus_->conf.debugPrints) {
-                std::cerr << "Distance to goal: " << distance << " (undetermined)" << "\n";
-            } else {
-                std::cerr << "Distance to goal: " << distance << "\n";
-            }
+            // if (distance > 1000 && systemStatus_->conf.debugPrints) {
+            //     std::cerr << "Distance to goal: " << distance << " (undetermined)" << "\n";
+            // } else {
+            //     std::cerr << "Distance to goal: " << distance << "\n";
+            // }
         }
 
         return fsm::ok;

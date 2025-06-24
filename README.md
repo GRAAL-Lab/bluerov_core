@@ -1,6 +1,73 @@
 # Mission Controller
 
-## Overview
+## 🧭 System Overview
+
+This system is composed of two primary ROS nodes:
+
+- **`monitor_node`**: Responsible for checking the liveness of the following components:
+  - `mission_ctrl`
+  - `bridge`
+  - `kcl`
+  - `perception`
+
+- **`mission_ctrl`**: This node sends high-level commands to `kcl` using a finite state machine (FSM) to execute mission tasks.
+
+---
+
+## 🚦 Benchmark Development Status
+
+Development is tracked across **three Test Benchmarks (TBM)**. The status of each FSM state is listed below:
+
+---
+
+### 🧪 TBM 1
+
+| FSM State             | Status                                                                 |
+|----------------------|------------------------------------------------------------------------|
+| `state_latlong`         | ✅ **Working** — _Obstacle avoidance not implemented_              |
+| `state_search_gate`     | ⚠️ **Working** — _Untested; logic may be too simple_              |
+| `state_cross_gate`      | ⚠️ **Working** — _Untested_                                       |
+| `state_search_area`     | ⚠️ _Almost ready_ — _Still untested_                              |
+| `state_inspect_buoy`    | ❌ _Incomplete_ — _Requires special action from `kcl`_             |
+| `state_inspect_pipes`   | 🛠️ _Almost ready_ — _Awaiting perception & camera actuation_     |
+
+---
+
+### 🔧 TBM 2
+
+| FSM State                             | Status                                                                 |
+|--------------------------------------|------------------------------------------------------------------------|
+| `state_main_pipe_following`            | ❌ _Not started_ — _Requires border perception & `kcl` pipe following_ |
+| `state_search_for_manipulation_console`| 🛠️ _Almost ready_ — _Lacks distance keeping, perception, camera actuation, and likely a special `kcl` action_ |
+
+---
+
+### 🚧 TBM 3
+
+_Note: All states listed, but no progress details provided yet._
+
+- `state_main_pipe_following`
+- `state_search_area`
+- `state_inspect_buoy`
+- `state_search_gate`
+- `state_cross_gate`
+- `state_inspect_pipes`
+- `state_search_for_manipulation_console`
+
+---
+
+## 🗂️ Legend
+
+- ✅ **Working** — Complete and tested
+- ⚠️ **Working** — Untested or needs review
+- 🛠️ **Almost Ready** — Pending minor components
+- ❌ **Not Started / Incomplete** — Needs significant work
+
+---
+
+> ℹ️ *Technical terms (like node names and FSM states) have been preserved. Status indicators aim to help prioritize remaining work.*
+
+   
 
 ## Simulation Environment
 
@@ -30,10 +97,6 @@ Move the robot with:
 ros2 launch stonefish_utils bluerovTeleop.py <-record>
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
 ```
-
-## Dependencies
-
-## Installation
 
 ## Author
 [Samuele Depalo](samuele.depalo@edu.unige.it)

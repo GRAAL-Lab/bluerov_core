@@ -15,13 +15,13 @@
 #include "mission_ctrl/states/state_search_object.hpp"
 #include "mission_ctrl/states/state_update_localization.hpp"
 
-#include "auv_core_helper/msg/system_status.hpp"
 #include "auv_core_helper/action/set_kcl.hpp"
 #include "auv_core_helper/msg/dtc_list.hpp"
 #include "auv_core_helper/msg/heart_beat.hpp"
 #include "auv_core_helper/msg/kcl_status.hpp"
 #include "auv_core_helper/msg/mission_status.hpp"
 #include "auv_core_helper/msg/pose_stamped.hpp"
+#include "auv_core_helper/msg/system_status.hpp"
 #include "auv_core_helper/srv/mission_command.hpp"
 #include "auv_core_helper/topicnames.hpp"
 
@@ -66,6 +66,10 @@ class MissionController : public rclcpp::Node {
 
     bool IsPointWithinBoundaries(const ctb::LatLong& point);
     bool kclCmd(std::string cmd = "");
+
+    // rclcpp::TimerBase::SharedPtr kclCmdTimer_;
+    // std::queue<kclCmd> kclCmdQueue_;
+    // void sendKclCmd();
 
     // FSM
     void SetUpFSM();

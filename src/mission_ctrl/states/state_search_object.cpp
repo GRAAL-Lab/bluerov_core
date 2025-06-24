@@ -12,74 +12,37 @@ namespace states {
 
     fsm::retval StateSearchObject::OnEntry()
     {
-        found = false;
-        fsm::retval ret;
-        if (taskData_->taskPhases.front().second == opis::gate) {
-            ret = SearchGate();
-        } else if (taskData_->taskPhases.front().second == opis::mainPipe) {
-            ret = SearchMainPipe();
-        } else if (taskData_->taskPhases.front().second == opis::manipulationConsole) {
-            ret = SearchManipulationConsole();
-        } else {
-            ret = fsm::fail;
-        }
-
-        return ret;
+        return StartSearch();
     }
 
     fsm::retval StateSearchObject::Execute()
     {
-        if (ctrlData->kclData.currentCmd.completed) {
-            return SetNextMissionState();
-        }
-        // if(ctrlData->perceptionData.newDtcFromPerception){
-        //     ctrlData->perceptionData.newDtcFromPerception = false;
-        //     if (taskData_->taskPhases.front().second == opis::gate) {
-        //         for (auto& db_first : ctrlData->perceptionData.detectedBuoys) {
-        //             for (auto& db_second : ctrlData->perceptionData.detectedBuoys){
-        //                 if (db_first.second.detectionId == db_second.second.detectionId) {
-        //                     continue; // same buoy
-        //                 }
-        //                 if(gate.SetGateBuoys(db_first.second, db_second.second)) {
-        //                     // Found the gate
-        //                     if (systemStatus_->conf.debugPrints) {
-        //                         std::cerr << "Gate found: " << db_first.second.detectionId << " and " << db_second.second.detectionId << "\n";
-        //                     }
-        //                     found = true;
-        //                     break; // exit inner loop
-        //                 }
-        //             }
 
-        //         }
-
-        //     } else if (taskData_->taskPhases.front().second == opis::mainPipe) {
-
-        //     } else if (taskData_->taskPhases.front().second == opis::manipulationConsole) {
-
-        //     }
-        // }
-
-        // if (found) {
-        //     std::cerr << "Found!\n";
-        //     return this->SetNextMissionState();
-        // }
-        double delta = std::fmod((ctrlData->bodyF_angularPosition.Yaw() - previous_bodyF_angularPosition.Yaw()) + 180, 360) - 180;
-        cumulativeAngle += delta;
-        previous_bodyF_angularPosition = ctrlData->bodyF_angularPosition;
-
-        // if (cumulativeAngle > 360 || cumulativeAngle < -360) {
-        //     std::cerr << "Not Found!\n";
-        //     // return fsm_->SetNextState(taskData_->taskPhases.front().first);
-        //     return fsm::fail;
-        // }
-
-        if (systemStatus_->conf.debugPrints) {
-            // std::cerr << ".";
-            // std::cerr << "      Cumulative angle: " << cumulativeAngle << "\n";
+        if (!systemStatus_->conf.simPerception && ctrlData->perceptionData.newDtcFromPerception) {
+            ctrlData->perceptionData.newDtcFromPerception = false;
+            if (taskData_->taskPhases.front().second == opis::gate) {
+                for (auto& db_first : ctrlData->perceptionData.detectedBuoys) {
+                    for (auto& db_second : ctrlData->perceptionData.detectedBuoys) {
+                        if (db_first.second.detectionId == db_second.second.detectionId) {
+                            continue; // same buoy
+                        }
+                        if (ctrlData->missionData.gate.SetGateBuoys(db_first.second, db_second.second, systemStatus_->conf.ignoreBuoyColor)) {
+                            // Found the gate
+                            if (systemStatus_->conf.debugPrints) {
+                                std::cerr << "Gate found: " << db_first.second.detectionId << " and " << db_second.second.detectionId << "\n";
+                            }
+                            return SetNextMissionState();
+                        }
+                    }
+                }
+            } else if (taskData_->taskPhases.front().second == opis::mainPipe) {
+            } else if (taskData_->taskPhases.front().second == opis::manipulationConsole) {
+            }
         }
 
-        // if (systemStatus_->conf.simPerception)
-        //     found = true;
+        if (!ctrlData->kclData.kclActionCmd.underExecution) {
+            return StartSearch();
+        }
 
         return fsm::ok;
     }
@@ -89,36 +52,29 @@ namespace states {
         return fsm::ok;
     }
 
-    fsm::retval StateSearchObject::SearchGate()
+    fsm::retval StateSearchObject::StartSearch()
     {
-        std::cerr << "Searching for gate...\n";
-        previous_bodyF_angularPosition = ctrlData->bodyF_angularPosition;
-        cumulativeAngle = 0;
+        if (taskData_->taskPhases.front().second == opis::gate) {
+            std::cerr << "Searching for gate...\n";
 
-        ctrlData->kclData.currentCmd = mission::kclCmd();
-        ctrlData->kclData.currentCmd.goal.desired_state = "PATH_FOLLOWING";
-        ctrlData->kclData.currentCmd.goal.path_mode = "Spiral2D";
-        ctrlData->kclData.currentCmd.goal.spiral_data.spiral_diameter = 5.0;
-        ctrlData->kclData.currentCmd.goal.spiral_data.spiral_increment = 0.5;
+            ctrlData->kclData.kclActionCmd = mission::kclCmd();
+            ctrlData->kclData.kclActionCmd.goal.desired_state = "PATH_FOLLOWING";
+            ctrlData->kclData.kclActionCmd.goal.path_mode = "Spiral2D";
+            ctrlData->kclData.kclActionCmd.goal.spiral_data.spiral_diameter = 5.0;
+            ctrlData->kclData.kclActionCmd.goal.spiral_data.spiral_increment = 0.5;
 
-        return fsm::ok;
-    }
+        } else if (taskData_->taskPhases.front().second == opis::mainPipe) {
+            std::cerr << "Searching for main pipe...\n";
 
-    fsm::retval StateSearchObject::SearchMainPipe()
-    {
-        std::cerr << "Searching for main pipe...\n";
-        previous_bodyF_angularPosition = ctrlData->bodyF_angularPosition;
-        cumulativeAngle = 0;
-        // tell the KCL to turn around
-        return fsm::ok;
-    }
+            // tell the KCL to turn around
+        } else if (taskData_->taskPhases.front().second == opis::manipulationConsole) {
+            std::cerr << "Searching for manipulation console...\n";
 
-    fsm::retval StateSearchObject::SearchManipulationConsole()
-    {
-        std::cerr << "Searching for manipulation console...\n";
-        previous_bodyF_angularPosition = ctrlData->bodyF_angularPosition;
-        cumulativeAngle = 0;
-        // tell the KCL to turn around
+            // tell the KCL to turn around
+        } else {
+            return fsm::fail;
+        }
+
         return fsm::ok;
     }
 }

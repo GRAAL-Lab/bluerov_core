@@ -43,7 +43,6 @@ struct InspectionAndIntervention;
 //     std::string desired_action;
 //     double feedback_progress;
 
-    
 // }
 
 struct MissionCtrlConf {
@@ -59,12 +58,15 @@ struct MissionCtrlConf {
     double bridgeLivenessTimeout = 2.0;
     double kclLivenessTimeout = 2.0;
     double perceptionLivenessTimeout = 2.0;
-    double systemLivenessTimeout = 2.0; 
+
+    bool ignoreBuoyColor = false; // if true, the color of the buoy is not considered for the gate detection
+    double gateWpsDistance = 1.0; // distance between the two gate waypoints and the center of the gate
 
     std::vector<ctb::LatLong> safetyBoundary;
 
     bool debugBuoys = false;
     std::vector<ctb::LatLong> debugBuoysPositions;
+    ctb::LatLong debugPosition;
 };
 
 struct BuoyActionColorMap {
@@ -98,18 +100,23 @@ struct Gate {
     double distanceTolerance = 0.5;
     double expectedDistance = 2.0;
 
-    bool SetGateBuoys(const Buoy& b1, const Buoy& b2)
+    bool SetGateBuoys(const Buoy& b1, const Buoy& b2, bool ignoreBuoyColor)
     {
-        if (b1.color != "orange" && b1.color != "yellow") {
-            return false; // Invalid color for gate buoy
-        }
-        if (b2.color != "orange" && b2.color != "yellow") {
-            return false; // Invalid color for gate buoy
+        if (!ignoreBuoyColor) {
+            std::cerr << "[gate detection] Checking buoy colors: " << b1.color << ", " << b2.color << "\n";
+            if (b1.color != "orange" && b1.color != "yellow") {
+                return false; // Invalid color for gate buoy
+            }
+            if (b2.color != "orange" && b2.color != "yellow") {
+                return false; // Invalid color for gate buoy
+            }
         }
 
         Eigen::Vector3d distanceVector;
         ctb::LatLong2LocalNED(b1.position, 0, b2.position, distanceVector);
         if (distanceVector.norm() > expectedDistance + distanceTolerance || distanceVector.norm() < expectedDistance - distanceTolerance) {
+            std::cerr << "[gate detection] Distance between buoys is not valid: "
+                      << distanceVector.norm() << "m, expected: " << expectedDistance << "m\n";
             return false;
         }
         buoy1 = b1;
@@ -142,8 +149,9 @@ struct PerceptionData {
 };
 
 struct kclCmd {
-    bool sentToKcl = false;
-    bool completed = false;
+    bool newCmd = true; // true first time the command is sent to KCL
+    bool underExecution = false; // true if the command is currently being executed by KCL
+
     auv_core_helper::action::SetKCL::Goal goal;
     auv_core_helper::action::SetKCL::Result result;
     auv_core_helper::action::SetKCL::Feedback feedback;
@@ -153,9 +161,7 @@ struct KinematicData {
     bool isAlive;
     std::string state;
 
-    bool cancelCommand;
-
-    kclCmd currentCmd;
+    kclCmd kclActionCmd;
 };
 
 struct ControlData {
@@ -248,7 +254,7 @@ struct TaskBenchmarkSettings {
             }
             this->selectedPipelineStructureId = request->selected_pipeline_structure_id;
             auto buoysArea = request->buoys_area_points;
-            for(size_t i = 0; i < buoysArea.size(); ++i) {
+            for (size_t i = 0; i < buoysArea.size(); ++i) {
                 const auto& point = buoysArea[i];
                 ctb::LatLong latLong;
                 latLong.latitude = point.latitude;
@@ -288,7 +294,7 @@ struct TaskBenchmarkSettings {
             };
             buoysArea.points.push_back(latLong);
         }
-        if(buoysArea.points.size() < 4) {
+        if (buoysArea.points.size() < 4) {
             std::cerr << "Buoys area must have 4 points" << std::endl;
             return false;
         }
@@ -575,28 +581,31 @@ struct SystemStatus {
     rclcpp::Time timeOutsideSafetyArea;
     rclcpp::Time lastStateSwitchTime;
     rclcpp::Time lastSystemTime;
+    rclcpp::Time lastKclFeedbackTime;
 
     bool missionCtrlRunning = false;
     bool bridgeAlive = false;
     bool kclAlive = false;
     bool perceptionAlive = false;
-    //bool kclActionServerAlive = false; 
-    
+    // bool kclActionServerAlive = false;
+
     SystemStatus(rcl_clock_type_t clockType)
     {
         if (clockType == 1) {
             lastSystemTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
             lastStateSwitchTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
             timeOutsideSafetyArea = rclcpp::Time(0, 0, RCL_ROS_TIME);
+            lastKclFeedbackTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
         } else {
             lastSystemTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
             lastStateSwitchTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
             timeOutsideSafetyArea = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
+            lastKclFeedbackTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
         }
     }
 
     bool IsSystemAlive(rclcpp::Time now) const
-    {   
+    {
         auto timeWithoutSystemUpdate = now - lastSystemTime;
         return perceptionAlive && kclAlive && bridgeAlive && timeWithoutSystemUpdate < rclcpp::Duration(5, 0);
     }

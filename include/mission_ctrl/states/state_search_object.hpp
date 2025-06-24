@@ -13,16 +13,7 @@ namespace states {
         fsm::retval Execute() override;
         fsm::retval OnExit() override;
 
-        fsm::retval SearchGate();
-        fsm::retval SearchMainPipe();
-        fsm::retval SearchManipulationConsole();
-
-        bool found;
-        double cumulativeAngle;
-
-        rml::EulerRPY previous_bodyF_angularPosition;
-
-        Gate gate;
+        fsm::retval StartSearch();
         
     };
 
