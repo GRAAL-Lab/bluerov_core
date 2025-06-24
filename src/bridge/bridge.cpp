@@ -9,7 +9,6 @@
 #include <unistd.h>
 #include <thread>
 
-
 const rclcpp::Duration BlueROVBridge::kSrvTimeout =rclcpp::Duration::from_seconds(3.0);
 const rclcpp::Duration BlueROVBridge::HeartbeatTimeout = rclcpp::Duration::from_seconds(4.0);
 
@@ -46,6 +45,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   globalVelocityActualPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_actual_global,1);
   dvlDistancePublisher_ = this->create_publisher<std_msgs::msg::Float64>(auv_core_helper::topicnames::dvl_distance_actual,1);
   ekfStatusPublisher_ = this->create_publisher<std_msgs::msg::Int32>(auv_core_helper::topicnames::ekf_status,1);
+  gimbalStatusPublisher_ = this->create_publisher<auv_core_helper::msg::GimbalStatus>(auv_core_helper::topicnames::gimbal_attitude_status,1);
 
   safetySwitchSubscription_ = this->create_subscription<std_msgs::msg::Bool>(auv_core_helper::topicnames::safety_switch,10,std::bind(&BlueROVBridge::safetySwitchCallback, this, std::placeholders::_1));
   globalPoseDesiredSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_desired_global,10,std::bind(&BlueROVBridge::globalPoseDesiredCallback, this, std::placeholders::_1));
@@ -55,6 +55,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   setGlobalOriginService_ = this->create_service<auv_core_helper::srv::SetGlobalOrigin>(auv_core_helper::topicnames::set_global_origin_service, std::bind(&BlueROVBridge::setGlobalOriginServiceCallback, this,std::placeholders::_1, std::placeholders::_2));
   armingService_ = this->create_service<SetBoolSrv>(auv_core_helper::topicnames::arming_service,std::bind(&BlueROVBridge::armingServiceCallback,this, std::placeholders::_1, std::placeholders::_2));
   flightModeService_ = this->create_service<SetModeSrv>(auv_core_helper::topicnames::flight_mode_service,std::bind(&BlueROVBridge::flightModeServiceCallback,this, std::placeholders::_1, std::placeholders::_2));
+  gimbalService_ = this->create_service<auv_core_helper::srv::SetGimbalAttitude>(auv_core_helper::topicnames::gimbal_service,std::bind(&BlueROVBridge::gimbalServiceCallback,this, std::placeholders::_1, std::placeholders::_2));
 
   // Timers
   bridge_heartbeat_timer_ = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&BlueROVBridge::bridgeHeartbeat, this)); // ~1Hz
@@ -190,6 +191,10 @@ void BlueROVBridge::receiveData(){
             handleEkfStatus(msg);
             break;
 
+          case MAVLINK_MSG_ID_GIMBAL_DEVICE_ATTITUDE_STATUS:
+            handleGimbalStatus(msg);
+            break;  
+
           default:
             break;
         }
@@ -285,7 +290,9 @@ const char* BlueROVBridge::get_message_name(uint16_t message_id) {
     case MAVLINK_MSG_ID_COMMAND_ACK:
       return "COMMAND_ACK";  
     case MAVLINK_MSG_ID_ESTIMATOR_STATUS:  
-      return "ESTIMATOR_STATUS";  
+      return "ESTIMATOR_STATUS";
+    case MAVLINK_MSG_ID_GIMBAL_DEVICE_ATTITUDE_STATUS:  
+      return "GIMBAL_DEVICE_ATTITUDE_STATUS";  
     default:
       return "Unknown";
   }
@@ -330,14 +337,15 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
         target_system_, target_component_, ip_str, sender_port);
 
     // Configure data streams directly 
-    setMessageInterval(MAVLINK_MSG_ID_HEARTBEAT, 1.0f);          // #0
-    setMessageInterval(MAVLINK_MSG_ID_ATTITUDE,  10.0f);            // #30
-    setMessageInterval(MAVLINK_MSG_ID_GLOBAL_POSITION_INT, 10.0f); // #33
-    setMessageInterval(MAVLINK_MSG_ID_DISTANCE_SENSOR, 5.0f);     // #34
-    setMessageInterval(MAVLINK_MSG_ID_COMMAND_ACK, 8.0f);         // #35
-    setMessageInterval(MAVLINK_MSG_ID_BATTERY_STATUS, 2.0f);      // #147
-    setMessageInterval(MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN, 1.0f);   // #32
-    setMessageInterval(MAVLINK_MSG_ID_ESTIMATOR_STATUS, 5.0f);   // #278
+    setMessageInterval(MAVLINK_MSG_ID_HEARTBEAT, 1.0f);              // #0
+    setMessageInterval(MAVLINK_MSG_ID_ATTITUDE,  10.0f);             // #30
+    setMessageInterval(MAVLINK_MSG_ID_GLOBAL_POSITION_INT, 10.0f);   // #33
+    setMessageInterval(MAVLINK_MSG_ID_DISTANCE_SENSOR, 5.0f);        // #34
+    setMessageInterval(MAVLINK_MSG_ID_COMMAND_ACK, 8.0f);            // #35
+    setMessageInterval(MAVLINK_MSG_ID_BATTERY_STATUS, 2.0f);         // #147
+    setMessageInterval(MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN, 1.0f);      // #32
+    setMessageInterval(MAVLINK_MSG_ID_ESTIMATOR_STATUS, 5.0f);       // #278
+    setMessageInterval(MAVLINK_MSG_ID_GIMBAL_DEVICE_ATTITUDE_STATUS, 5.0f); // #285
   } 
   else if (msg.sysid == target_system_ && msg.compid == target_component_) {
     last_heartbeat_time_ = this->now();
@@ -392,6 +400,18 @@ void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg)
     pending_mode_->resp->message = "Autopilot rejected flight-mode change.";
     flightModeService_->send_response(*pending_mode_->header, *pending_mode_->resp);
     pending_mode_.reset();
+  } 
+
+  if (pending_gimbal_attitude_ && ack.command == MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW && ack.result == MAV_RESULT_ACCEPTED) {
+      pending_gimbal_attitude_->resp->success = true;
+      pending_gimbal_attitude_->resp->message = "Gimbal attitude set.";
+      gimbalService_->send_response(*pending_gimbal_attitude_->header, *pending_gimbal_attitude_->resp);
+      pending_gimbal_attitude_.reset();
+  } else  if (pending_gimbal_attitude_ && ack.command == MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW && ack_failed) {
+    pending_gimbal_attitude_->resp->success = false;
+    pending_gimbal_attitude_->resp->message = "Autopilot rejected gimbal attitude change.";
+    gimbalService_->send_response(*pending_gimbal_attitude_->header, *pending_gimbal_attitude_->resp);
+    pending_gimbal_attitude_.reset();
   } 
 }
 
@@ -472,6 +492,26 @@ void BlueROVBridge::handleAttitude(const mavlink_message_t& msg){
   global_velocity_msg->angular.y = attitude.pitchspeed;        //Pitch rate in rad/s
   global_velocity_msg->angular.z = attitude.yawspeed;           //Yaw rate in rad/s
   
+}
+
+void BlueROVBridge::handleGimbalStatus(const mavlink_message_t& msg){
+  mavlink_gimbal_device_attitude_status_t gimbal_status;
+  mavlink_msg_gimbal_device_attitude_status_decode(&msg, &gimbal_status);
+
+  auto gimbal_status_msg = std::make_unique<auv_core_helper::msg::GimbalStatus>();
+  gimbal_status_msg->stamp = this->now();
+  gimbal_status_msg->flags = gimbal_status.flags;
+
+  tf2::Quaternion q(gimbal_status.q[1], gimbal_status.q[2], gimbal_status.q[3], gimbal_status.q[0]);
+  tf2::Matrix3x3 m(q);
+  double roll, pitch, yaw;
+  m.getRPY(roll, pitch, yaw);
+
+  gimbal_status_msg->roll = static_cast<float>(roll * 180.0 / M_PI);
+  gimbal_status_msg->pitch = static_cast<float>(pitch * 180.0 / M_PI);
+  gimbal_status_msg->yaw = static_cast<float>(yaw * 180.0 / M_PI);
+
+  gimbalStatusPublisher_->publish(*gimbal_status_msg);
 }
 
 void BlueROVBridge::safetySwitchCallback(const std_msgs::msg::Bool::SharedPtr msg){
@@ -627,6 +667,42 @@ void BlueROVBridge::setGlobalOrigin(mavlink_set_gps_global_origin_t& set_gps_glo
              (double)set_gps_global_origin.latitude/1e7, (double)set_gps_global_origin.longitude/1e7, (double)set_gps_global_origin.altitude/1000.0);
 }
 
+
+void BlueROVBridge::gimbalServiceCallback(
+  const std::shared_ptr<rmw_request_id_t> header,
+  const std::shared_ptr<auv_core_helper::srv::SetGimbalAttitude::Request> request){
+
+  setGimbalAttitude(request->pitch, request->yaw);  
+
+  auto response = std::make_shared<auv_core_helper::srv::SetGimbalAttitude::Response>();
+  response->success = false;
+  response->message = "Timed out.";
+
+  pending_gimbal_attitude_ = PendingGimbalAttitude{header, response, request, this->now() + kSrvTimeout};
+}
+
+void BlueROVBridge::setGimbalAttitude(float gimbal_pitch, float gimbal_yaw){
+  mavlink_message_t msg;
+  mavlink_msg_command_long_pack(
+    system_id_, 
+    component_id_,
+    &msg,
+    target_system_,
+    target_component_,
+    MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW,
+    0,
+    gimbal_pitch,
+    gimbal_yaw, 
+    std::numeric_limits<float>::quiet_NaN(),  //Pitch rate in deg/s (positive is up) or NaN if unused
+    std::numeric_limits<float>::quiet_NaN(),  //Yaw rate in deg/s (positive is clockwise) or NaN if unused
+    0,                                        //Flags (0=Yaw is body-frame/follow, 16=Yaw is earth-frame/lock)
+    0,                                        //not used param
+    0                                         //Gimbal device ID (0 is primary gimbal, 1 is 1st gimbal, 2 is 2nd gimbal)
+  );
+  sendMavlinkMessage(msg);
+  RCLCPP_INFO(this->get_logger(), "Gimbal attitude set to pitch: %f, yaw: %f", gimbal_pitch, gimbal_yaw);
+}
+
 void BlueROVBridge::desiredCtrlModeCallback(const std_msgs::msg::String::SharedPtr msg){
   ctrlMode =  msg->data;
 }
@@ -685,6 +761,13 @@ void BlueROVBridge::Execute(){
           flightModeService_->send_response(*pending_mode_->header, *pending_mode_->resp);
           RCLCPP_WARN(get_logger(), "Flight-mode change timed out.");
           pending_mode_.reset();
+  } 
+
+  /* TIMEOUT GIMBAL */
+  if (pending_gimbal_attitude_ && this->now() > pending_gimbal_attitude_->deadline) {
+          gimbalService_->send_response(*pending_gimbal_attitude_->header, *pending_gimbal_attitude_->resp);
+          RCLCPP_WARN(get_logger(), "Gimbal attitude change timed out.");
+          pending_gimbal_attitude_.reset();
   } 
 
   if (global_pose_msg && global_velocity_msg && got_heartbeat_) {
