@@ -587,6 +587,7 @@ struct SystemStatus {
     bool bridgeAlive = false;
     bool kclAlive = false;
     bool perceptionAlive = false;
+    bool readFirstPose = false;
     // bool kclActionServerAlive = false;
 
     SystemStatus(rcl_clock_type_t clockType)
@@ -607,7 +608,7 @@ struct SystemStatus {
     bool IsSystemAlive(rclcpp::Time now) const
     {
         auto timeWithoutSystemUpdate = now - lastSystemTime;
-        return perceptionAlive && kclAlive && bridgeAlive && timeWithoutSystemUpdate < rclcpp::Duration(5, 0);
+        return perceptionAlive && kclAlive && bridgeAlive && readFirstPose && timeWithoutSystemUpdate < rclcpp::Duration(5, 0);
     }
 };
 

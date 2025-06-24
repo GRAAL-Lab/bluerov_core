@@ -314,6 +314,7 @@ void MissionController::MissionCommandCB(
 
 void MissionController::PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg)
 {
+    systemStatus_->readFirstPose = true;
     ctrlData_->inertialF_linearPosition.latitude = msg->position.latitude;
     ctrlData_->inertialF_linearPosition.longitude = msg->position.longitude;
     ctrlData_->depth = msg->depth;
@@ -473,9 +474,11 @@ void MissionController::ActionFeedbackCallback(
     systemStatus_->lastKclFeedbackTime = this->get_clock()->now();
 
     if (systemStatus_->conf.debugPrints) {
-        RCLCPP_INFO(this->get_logger(), "KCL command FEEDBACK: [%s] with progress %.2f",
-            ctrlData_->kclData.kclActionCmd.feedback.actual_state.c_str(),
-            ctrlData_->kclData.kclActionCmd.feedback.action_progress);
+        if (std::fmod(ctrlData_->kclData.kclActionCmd.feedback.action_progress, 10.0) < 1.0) {
+            RCLCPP_INFO(this->get_logger(), "KCL command FEEDBACK: [%s] with progress %.2f",
+                ctrlData_->kclData.kclActionCmd.feedback.actual_state.c_str(),
+                ctrlData_->kclData.kclActionCmd.feedback.action_progress);
+        }
     }
 }
 
@@ -525,24 +528,38 @@ void MissionController::LoadConfiguration()
         }
 
         if (systemStatus_->conf.debugBuoys) {
+            std::cerr << "Debug buoys positions:" << std::endl;
+            std::cerr << std::setprecision(15);
             const libconfig::Setting& buoysSetting = root["buoysStonefishPositions"];
             for (int i = 0; i < buoysSetting.getLength(); ++i) {
                 const libconfig::Setting& point = buoysSetting[i];
                 Eigen::VectorXd localTmp;
                 ctb::GetParamVector(point, localTmp, "point");
-                ctb::LatLong stonefishCentroid = ctb::LatLong(44.095952330602564, 9.865115308770484); // from update pose stonefish in stonefish utils
+                ctb::LatLong stonefishCentroid(44.095952330602564, 9.865115308770484); // from update pose stonefish in stonefish utils
                 ctb::LatLong latLongTmp;
                 double alt;
                 Eigen::Vector3d localTmp3d;
                 localTmp3d << localTmp[0], localTmp[1], 0.0; // Assuming the z-coordinate is 0 for the buoy positions
 
+                double theta = 1.85;
+                Eigen::Matrix3d R_offset;
+                R_offset << std::cos(theta), -std::sin(theta), 0.0,
+                            std::sin(theta), std::cos(theta), 0.0,
+                            0.0, 0.0, 1.0;
+                localTmp3d = R_offset.transpose() * localTmp3d;
+
                 ctb::LocalNED2LatLong(localTmp3d, stonefishCentroid, latLongTmp, alt);
+                std::cerr << "  - stonefish position: " << localTmp[0] << ", " << localTmp[1] << std::endl;
+                std::cerr << "  - ned local: [" << localTmp3d[0] << ", " << localTmp3d[1] << ", " << localTmp3d[2] << "]" << std::endl;
+                std::cerr << "  - latlong: [" << latLongTmp.latitude << ", " << latLongTmp.longitude << "]" << std::endl;
+                std::cerr << " --  " << std::endl;
                 systemStatus_->conf.debugBuoysPositions.push_back(latLongTmp);
             }
-            std::cerr << "Debug buoys true positions:" << std::endl;
-            for (const auto& point : systemStatus_->conf.debugBuoysPositions) {
-                std::cerr << "  - [" << point.latitude << ", " << point.longitude << "]" << std::endl;
-            }
+            
+            // for (const auto& point : systemStatus_->conf.debugBuoysPositions) {
+            //     std::cerr << std::setprecision(15);
+            //     std::cerr << "  - [" << point.latitude << ", " << point.longitude << "]" << std::endl;
+            // }
         }
 
         RCLCPP_INFO(this->get_logger(), "Configuration loaded from file: %s", confPath.c_str());

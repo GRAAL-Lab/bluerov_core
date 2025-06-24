@@ -30,6 +30,10 @@ SystemStatusMonitor::SystemStatusMonitor()
         auv_core_helper::topicnames::objects, rclcpp::SystemDefaultsQoS(),
         std::bind(&SystemStatusMonitor::PerceptionCB, this, std::placeholders::_1));
 
+    poseSub_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(
+        auv_core_helper::topicnames::pose_actual_global_, rclcpp::SystemDefaultsQoS(),
+        std::bind(&SystemStatusMonitor::PoseCB, this, std::placeholders::_1));
+
     int pub_rate = 1; // Default rateù
     std::chrono::milliseconds pub_duration(1000 / pub_rate);
     runTimer_ = this->create_wall_timer(pub_duration, std::bind(&SystemStatusMonitor::StatusPub, this));
@@ -58,7 +62,7 @@ void SystemStatusMonitor::StatusPub()
         status.mission_ctrl = false;
     }
 
-    if (timeSinceLastBridge.seconds() > bridgeTimeout_) {
+    if (timeSinceLastBridge.seconds() > bridgeTimeout_ || !rcvFirstPose_) {
         status.bridge = false;
         status.system_operational = false;
     }
@@ -75,18 +79,25 @@ void SystemStatusMonitor::StatusPub()
     if (timeSinceLastPerception.seconds() > perceptionTimeout_) {
         status.perception = false;
         status.system_operational = false;
-    } 
+    }
 
-    if(status.system_operational) {
+    if (status.system_operational) {
         lastSystemTime = this->get_clock()->now();
     }
 
     systemStatusPub_->publish(status);
+    std::cout << "[M_Ctrl: " << (status.mission_ctrl ? "On" : "Off")
+          << "] [KCL: " << (status.kcl ? "On" : "Off")
+          << "] [Percept: " << (status.perception ? "On" : "Off")
+          << "] [Bridge: " << (status.bridge ? "On" : "Off")
+          << "] [Operational: " << (status.system_operational ? "Yes" : "No") << "]\n";
+
+
     RCLCPP_DEBUG(this->get_logger(), "System Status: %s \n  - Mission Ctrl: %s, \n  - KCL: %s, \n  - Perception: %s, \n  - Bridge: %s",
-        status.mission_ctrl ? "Alive" : "Dead",
-        status.kcl ? "Alive" : "Dead",
-        status.perception ? "Alive" : "Dead",
-        status.bridge ? "Alive" : "Dead");
+        status.mission_ctrl ? "On" : "Off",
+        status.kcl ? "On" : "Off",
+        status.perception ? "On" : "Off",
+        status.bridge ? "On" : "Off");
 }
 
 void SystemStatusMonitor::MissionCtrlCB(const auv_core_helper::msg::MissionStatus::SharedPtr msg)
@@ -108,14 +119,26 @@ void SystemStatusMonitor::KclCB(const auv_core_helper::msg::KclStatus::SharedPtr
 }
 
 void SystemStatusMonitor::PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg)
-{   
+{
     (void)msg; // Unused parameter
     lastPerceptionTime = this->get_clock()->now();
 }
 
+void SystemStatusMonitor::PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg)
+{
+    if (!rcvFirstPose_) {
+        if (msg->position.latitude != 0.0 && msg->position.longitude != 0.0) {
+            rcvFirstPose_ = true;
+            RCLCPP_INFO(get_logger(), "Received first pose, starting system status monitor.");
+        } else {
+            RCLCPP_WARN(get_logger(), "Received pose with zero coordinates, waiting for valid pose.");
+        }
+    }
+}
+
 void SystemStatusMonitor::LoadConfiguration()
 {
-    
+
     // Load configuration from file
     std::string package_share_directory = ament_index_cpp::get_package_share_directory("auv_core_helper");
     std::string confPath = package_share_directory + "/param/" + "system_monitor.conf";

@@ -36,6 +36,9 @@ class SystemStatusMonitor : public rclcpp::Node {
     rclcpp_action::Client<auv_core_helper::action::SetKCL>::SharedPtr serverKclClient_;
     rclcpp::Subscription<auv_core_helper::msg::DtcList>::SharedPtr perceptionSub_;
 
+    bool rcvFirstPose_ = false;
+    rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr poseSub_;
+
     rclcpp::Time lastSystemTime;
     rclcpp::Time lastMissionCtrlTime;
     rclcpp::Time lastBridgeTime;
@@ -52,6 +55,8 @@ class SystemStatusMonitor : public rclcpp::Node {
     void BridgeCB(const auv_core_helper::msg::HeartBeat::SharedPtr msg);
     void KclCB(const auv_core_helper::msg::KclStatus::SharedPtr msg);
     void PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg);
+
+    void PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
 
     void LoadConfiguration();
 
