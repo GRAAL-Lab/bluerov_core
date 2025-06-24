@@ -1,0 +1,37 @@
+repositories:
+  image_pipeline:
+    type: git
+    url: git@github.com:Tonelllo/image_pipeline.git
+    version: main
+  mission_ctrl:
+    type: git
+    url: git@bitbucket.org:isme_robotics/mission_ctrl.git
+    version: main
+  perception:
+    type: git
+    url: git@bitbucket.org:isme_robotics/perception.git
+    version: main
+  auv_core_helper:
+    type: git
+    url: git@bitbucket.org:isme_robotics/auv_core_helper.git
+    version: main
+  bridge:
+    type: git
+    url: git@bitbucket.org:isme_robotics/bridge.git
+    version: main
+  kcl:
+    type: git
+    url: git@bitbucket.org:isme_robotics/kcl.git
+    version: main
+  logger:
+    type: git
+    url: git@bitbucket.org:isme_robotics/logger.git
+    version: main
+  jetson_utils:
+    type: git
+    url: git@bitbucket.org:isme_robotics/jetson_utils.git
+    version: main
+  udcp_camera:
+    type: git
+    url: git@bitbucket.org:isme_robotics/udp_camera.git
+    version: main
