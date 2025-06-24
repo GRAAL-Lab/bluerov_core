@@ -15,7 +15,7 @@ const std::string safety_switch = "/auv/safety_switch";
 const std::string mission_status = "/auv/mission/status";
 
 // PERCEPTION
-const std::string objects = "/auv/perception/objects";
+const std::string objects = "/detections";
 
 // CTRL
 const std::string pose_desired_global = "/auv/global/pose_desired";
