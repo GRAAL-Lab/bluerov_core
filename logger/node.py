@@ -5,6 +5,7 @@ from sensor_msgs.msg import Image
 from datetime import datetime, timezone
 from utils.utilities import STATE_NAME_MAP, TOPICS_NAMES
 import os
+import subprocess
 import math
 import simplekml
 import time
@@ -27,13 +28,12 @@ class LoggerNode(Node):
         log_dir = os.path.expanduser('~/mission_logs')
         self.mission_dir = os.path.join(log_dir, folder_name)
         os.makedirs(self.mission_dir, exist_ok=True)
-        file_timestamp = self.mission_start_time.strftime("%Y%m%d_%H%M%S")
        
         # subscribers
         self.pose_sub = self.create_subscription(PoseStamped, TOPICS_NAMES["Pose"], self.pose_callback, 10)
         self.mission_sub = self.create_subscription(MissionStatus, TOPICS_NAMES["MissionStatus"], self.mission_callback, 10)
         self.perception_sub = self.create_subscription(Obstacles, TOPICS_NAMES["Obstacles"],self.perception_callback,10)
-        self.image_sub = self.create_subscription(Image, TOPICS_NAMES["Images"], self.image_callback, 10)
+        self.image_sub = self.create_subscription(Image, TOPICS_NAMES["Camera"], self.camera_callback, 10)
         
         #do rosbag of the video stream for post processing and create 2d/3d map
 
@@ -62,6 +62,8 @@ class LoggerNode(Node):
         self.seen_pipe_ids = set()
         self.seen_marker_ids = set()
         self.seen_number_ids = set()
+        # Initialize rosbag process handle
+        self.rosbag_process = None
 
         # Log pose at 1 Hz
         self.timer = self.create_timer(1.0, self.log_pose)
@@ -74,7 +76,7 @@ class LoggerNode(Node):
     def pose_callback(self, msg: PoseStamped):
         self.latest_pose = msg
     
-    def image_callback(self, msg: Image):
+    def camera_callback(self, msg: Image):
         try:
             self.latest_image = msg  # Save latest image for perception callback  
         except Exception as e:
@@ -83,8 +85,11 @@ class LoggerNode(Node):
         
     def mission_callback(self, msg: MissionStatus):
         try:
+            self.handle_mission_status(msg)
+            
             if self.is_mission_status_changed(msg):
-                self.log_mission_status(msg)
+                self.log_mission_status(msg)            
+                
         except Exception as e:
             self.get_logger().error(f"[MISSION] Logging error: {e}")
 
@@ -97,6 +102,23 @@ class LoggerNode(Node):
             state_object != self.last_state_object
         )
         return changed
+    
+    def is_teleoperated_mode(self, msg: MissionStatus) -> bool:
+        state = getattr(msg, 'state', None)
+        state_object = getattr(msg, 'state_object', None)
+        
+        if state == "Init" and state_object == "Teleoperation":
+            return True
+        
+        return False
+    
+    def handle_mission_status(self, msg: MissionStatus):
+        if self.is_teleoperated_mode(msg):
+            self.get_logger().info("[MISSION] Teleoperated mode detected. Starting rosbag.")
+            self.start_rosbag_recording()
+        else:
+            self.get_logger().info("[MISSION] Not in teleoperated mode. Stopping rosbag.")
+            self.stop_rosbag_recording()
 
     def log_mission_status(self, msg: MissionStatus):
         state = getattr(msg, 'state', None)
@@ -284,6 +306,28 @@ class LoggerNode(Node):
 
         except Exception as e:
             self.get_logger().error(f"[PERCEPTION] Logging error: {e}")
+            
+    
+    def start_rosbag_recording(self):
+        if self.rosbag_process is None or self.rosbag_process.poll() is not None:           
+            timestamp = datetime.now().strftime("%H%M%S")        
+            output_dir = os.path.join(self.mission_dir, "rosbag") + f"_{timestamp}"
+
+            cmd = [
+                "ros2", "bag", "record",
+                TOPICS_NAMES["Camera"],
+                "-o", output_dir
+            ]
+
+            self.get_logger().info(f"[ROS2 BAG] Starting recording to: {output_dir}")
+            self.rosbag_process = subprocess.Popen(cmd)
+
+    def stop_rosbag_recording(self):
+        if self.rosbag_process and self.rosbag_process.poll() is None:
+            self.get_logger().info("[ROS2 BAG] Stopping rosbag recording.")
+            self.rosbag_process.terminate()
+            self.rosbag_process.wait()
+            self.rosbag_process = None
 
             
     def save_logs(self):
@@ -296,6 +340,7 @@ class LoggerNode(Node):
             self.get_logger().error(f"Error saving KMLs: {e}")
 
     def destroy_node(self):
+        self.stop_rosbag_recording()
         self.save_logs()
         self.get_logger().info(f"Final KMLs file saved: {self.kml_path_nav}")
         super().destroy_node()
