@@ -79,9 +79,19 @@ MISSION_FOLDER="$LOCAL_PATH$RECENT_FOLDER"
 ROS2_LOG="$HOME/robot_ctrlstation_communication.log"
 FINAL_LOG="$MISSION_FOLDER/robot_ctrlstation_communication.log"
 
+# Check if ROS2 log file exists, create it if it doesn't
 if [ ! -f "$ROS2_LOG" ]; then
-    log_communication "${RED}ERROR: ROS2 log file not found at $ROS2_LOG${NC}"
-    exit 1
+    log_communication "${YELLOW}ROS2 log file not found - creating new file: $ROS2_LOG${NC}"
+    
+    # Create the log file with initial header
+    cat > "$ROS2_LOG" << EOF
+=== Robot Control Station Communication Log ===
+Log file created: $(date '+%Y-%m-%d %H:%M:%S')
+Control Station: $(hostname)
+================================================
+
+EOF
+    log_communication "${GREEN}✓ Created new ROS2 log file${NC}"
 fi
 
 {
