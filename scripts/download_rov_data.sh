@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Configuration
-REMOTE_USER="paolo"
-REMOTE_HOST="130.251.6.103"
-REMOTE_PATH="/home/paolo/mission_logs/"
+REMOTE_USER="jetson"
+REMOTE_HOST="192.168.4.1"
+REMOTE_PATH="~/mission_logs/"
 LOCAL_PATH="$HOME/rov_logs/"
 
 # Colors
