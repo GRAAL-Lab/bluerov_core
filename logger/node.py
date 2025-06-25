@@ -1,5 +1,5 @@
 from rclpy.node import Node
-from auv_core_helper.msg import PoseStamped, MissionStatus
+from auv_core_helper.msg import PoseStamped, MissionStatus, DtcList
 from image_pipeline_msgs.msg import Obstacles
 from sensor_msgs.msg import Image
 from datetime import datetime, timezone
@@ -34,8 +34,7 @@ class LoggerNode(Node):
         self.mission_sub = self.create_subscription(MissionStatus, TOPICS_NAMES["MissionStatus"], self.mission_callback, 10)
         self.perception_sub = self.create_subscription(Obstacles, TOPICS_NAMES["Obstacles"],self.perception_callback,10)
         self.image_sub = self.create_subscription(Image, TOPICS_NAMES["Camera"], self.camera_callback, 10)
-        
-        #do rosbag of the video stream for post processing and create 2d/3d map
+        self.detections_sub = self.create_subscription(DtcList, TOPICS_NAMES["Detections"], self.detection_callback, 10)
 
         self.kml_path_nav = os.path.join(self.mission_dir, "vehicle_navigation_data.kml")
         self.kml_path_mission = os.path.join(self.mission_dir, "mission_status_data.kml")
@@ -47,8 +46,8 @@ class LoggerNode(Node):
         self.kml_mission = simplekml.Kml()
         self.kml_objects = simplekml.Kml()
         
-        self.last_save_time = time.time()
-        self.save_interval = 10  # seconds
+        self.save_interval = 10.0  # seconds
+        self.save_timer = self.create_timer(self.save_interval, self.save_logs_callback)
         
         self.latest_pose = None
         self.latest_mission_status = None
@@ -62,8 +61,11 @@ class LoggerNode(Node):
         self.seen_pipe_ids = set()
         self.seen_marker_ids = set()
         self.seen_number_ids = set()
+        self.msn_manipulation_flag = False
+        self.dtc_manipulation_flag = False
         # Initialize rosbag process handle
         self.rosbag_process = None
+        self.rosbag_stop_timer = None
 
         # Log pose at 1 Hz
         self.timer = self.create_timer(1.0, self.log_pose)
@@ -85,7 +87,13 @@ class LoggerNode(Node):
         
     def mission_callback(self, msg: MissionStatus):
         try:
-            self.handle_mission_status(msg)
+            if self.is_manipulation(msg):
+                self.msn_manipulation_flag = True
+                self.handle_mission_status()
+            else:
+                self.msn_manipulation_flag = False
+                  
+            self.handle_mission_status()
             
             if self.is_mission_status_changed(msg):
                 self.log_mission_status(msg)            
@@ -103,22 +111,20 @@ class LoggerNode(Node):
         )
         return changed
     
-    def is_teleoperated_mode(self, msg: MissionStatus) -> bool:
+    def is_manipulation(self, msg: MissionStatus) -> bool:
         state = getattr(msg, 'state', None)
         state_object = getattr(msg, 'state_object', None)
         
-        if state == "Init" and state_object == "Teleoperation":
+        if state == "Init" and state_object == "MANIPULATION":
+            self.get_logger().info("[MISSION] Manipulation mode found in Init state.")
             return True
         
         return False
     
-    def handle_mission_status(self, msg: MissionStatus):
-        if self.is_teleoperated_mode(msg):
-            self.get_logger().info("[MISSION] Teleoperated mode detected. Starting rosbag.")
-            self.start_rosbag_recording()
-        else:
-            self.get_logger().info("[MISSION] Not in teleoperated mode. Stopping rosbag.")
-            self.stop_rosbag_recording()
+    def handle_mission_status(self):
+        if self.msn_manipulation_flag and self.dtc_manipulation_flag:
+            self.get_logger().info("[MISSION] manipulation console found in teleop mod. Starting rosbag.")
+            self.start_rosbag_recording()        
 
     def log_mission_status(self, msg: MissionStatus):
         state = getattr(msg, 'state', None)
@@ -161,11 +167,6 @@ class LoggerNode(Node):
 
             self.get_logger().info(f"[POSE] Logged at {dt}")
             
-            # Periodic save
-            current_time = time.time()
-            if current_time - self.last_save_time > self.save_interval:
-                self.save_logs()
-                self.last_save_time = current_time
         
         except Exception as e:
             self.get_logger().error(f"[POSE] Logging error: {e}")
@@ -297,16 +298,18 @@ class LoggerNode(Node):
                     line.extendeddata.newdata(name="Image", value=filename)        
             
             if object_found:
-                self.get_logger().info(f"[PERCEPTION] Logged new objects at {dt}")
-            
-            current_time = time.time()
-            if current_time - self.last_save_time > self.save_interval:
-                self.save_logs()
-                self.last_save_time = current_time
+                self.get_logger().info(f"[PERCEPTION] Logged new objects at {dt}")            
 
         except Exception as e:
             self.get_logger().error(f"[PERCEPTION] Logging error: {e}")
-            
+    
+    def detection_callback(self, msg):
+        if msg.manipulation_console:
+            self.dtc_manipulation_flag = True
+            self.handle_mission_status()
+        else:
+            self.dtc_manipulation_flag = False
+                  
     
     def start_rosbag_recording(self):
         if self.rosbag_process is None or self.rosbag_process.poll() is not None:           
@@ -321,16 +324,34 @@ class LoggerNode(Node):
 
             self.get_logger().info(f"[ROS2 BAG] Starting recording to: {output_dir}")
             self.rosbag_process = subprocess.Popen(cmd)
+            
+            # Set timer to stop after 30 seconds
+            if self.rosbag_stop_timer:
+                self.rosbag_stop_timer.cancel()
+            self.rosbag_stop_timer = self.create_timer(30.0, self.stop_rosbag_callback)
+            
+    def stop_rosbag_callback(self):
+        self.stop_rosbag_recording()
+        if self.rosbag_stop_timer:
+            self.rosbag_stop_timer.cancel()
+            self.rosbag_stop_timer = None
+
 
     def stop_rosbag_recording(self):
+        self.msn_manipulation_flag = False
+        self.dtc_manipulation_flag = False
+        
         if self.rosbag_process and self.rosbag_process.poll() is None:
             self.get_logger().info("[ROS2 BAG] Stopping rosbag recording.")
             self.rosbag_process.terminate()
             self.rosbag_process.wait()
             self.rosbag_process = None
-
+        
+        if self.rosbag_stop_timer:
+            self.rosbag_stop_timer.cancel()
+            self.rosbag_stop_timer = None            
             
-    def save_logs(self):
+    def save_logs_callback(self):
         try:
             self.kml_nav.save(self.kml_path_nav)
             self.kml_mission.save(self.kml_path_mission)
@@ -341,6 +362,6 @@ class LoggerNode(Node):
 
     def destroy_node(self):
         self.stop_rosbag_recording()
-        self.save_logs()
+        self.save_logs_callback()
         self.get_logger().info(f"Final KMLs file saved: {self.kml_path_nav}")
         super().destroy_node()
