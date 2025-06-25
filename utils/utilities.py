@@ -21,4 +21,5 @@ TOPICS_NAMES = {
     "Obstacles": "/dtc/obstacles",
     "Camera": "/testing/sf/AUV/rgb_camera", #testing topic, to be changed to /camera/image_raw ?
     "Detections": "/detections",
+    "CameraLowRes": "camera/image_low_res",
 }

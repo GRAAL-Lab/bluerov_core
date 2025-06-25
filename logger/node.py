@@ -8,7 +8,6 @@ import os
 import subprocess
 import math
 import simplekml
-import time
 import cv2
 from cv_bridge import CvBridge
 
@@ -16,7 +15,7 @@ class LoggerNode(Node):
     def __init__(self):
         super().__init__('logger_node')
         
-         # Get team name and create RAMI-compliant folder structure
+        # Get team name and create RAMI-compliant folder structure
         self.team_name = self.declare_parameter('team_name', 'UniGe_ISME').get_parameter_value().string_value
         self.mission_start_time = datetime.now(tz=timezone.utc)
         
@@ -34,7 +33,13 @@ class LoggerNode(Node):
         self.mission_sub = self.create_subscription(MissionStatus, TOPICS_NAMES["MissionStatus"], self.mission_callback, 10)
         self.perception_sub = self.create_subscription(Obstacles, TOPICS_NAMES["Obstacles"],self.perception_callback,10)
         self.image_sub = self.create_subscription(Image, TOPICS_NAMES["Camera"], self.camera_callback, 10)
-        self.detections_sub = self.create_subscription(DtcList, TOPICS_NAMES["Detections"], self.detection_callback, 10)
+        self.detections_sub = self.create_subscription(DtcList, TOPICS_NAMES["Detections"], self.detection_callback, 10) # Subscribe to original high-res image topic
+
+        # Publisher for downsampled image
+        self.lowres_image_pub = self.create_publisher(Image, TOPICS_NAMES["CameraLowRes"], 10)
+        # Optional: Limit publish rate
+        self.last_publish_time = self.get_clock().now()
+        self.publish_interval = 1.0  # seconds (adjust as needed)
 
         self.kml_path_nav = os.path.join(self.mission_dir, "vehicle_navigation_data.kml")
         self.kml_path_mission = os.path.join(self.mission_dir, "mission_status_data.kml")
@@ -68,7 +73,7 @@ class LoggerNode(Node):
         self.rosbag_stop_timer = None
 
         # Log pose at 1 Hz
-        self.timer = self.create_timer(1.0, self.log_pose)
+        self.timer = self.create_timer(1.0, self.log_pose)    
 
         self.get_logger().info(f"Logging navigation data to: {self.kml_path_nav}")
         self.get_logger().info(f"Logging mission status to: {self.kml_path_mission}")
@@ -78,9 +83,32 @@ class LoggerNode(Node):
     def pose_callback(self, msg: PoseStamped):
         self.latest_pose = msg
     
+    def convert_and_publish_lowres_image(self, msg: Image):
+        try:            
+            # Convert ROS image to OpenCV
+            cv_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+
+            # Downscale image (e.g., 640x480)
+            downscaled = cv2.resize(cv_image, (640, 480), interpolation=cv2.INTER_LINEAR)
+
+            # Limit publish rate
+            now = self.get_clock().now()
+            if (now - self.last_publish_time).nanoseconds / 1e9 >= self.publish_interval:
+                self.last_publish_time = now
+
+                # Convert back to ROS image
+                lowres_msg = self.bridge.cv2_to_imgmsg(downscaled, encoding='bgr8')
+                lowres_msg.header = msg.header
+                self.lowres_image_pub.publish(lowres_msg)
+
+        except Exception as e:
+            self.get_logger().error(f"Failed to process image: {e}")
+            
     def camera_callback(self, msg: Image):
         try:
-            self.latest_image = msg  # Save latest image for perception callback  
+            self.latest_image = msg # Save latest image for perception callback              
+            self.convert_and_publish_lowres_image(msg)            
+
         except Exception as e:
             self.get_logger().error(f"[IMAGE] Image callback failed: {e}")
 
@@ -160,12 +188,14 @@ class LoggerNode(Node):
             depth = self.latest_pose.depth
             yaw_deg = self.latest_pose.yaw * (180.0 / math.pi)
 
-            p = self.kml_nav.newpoint(name="Pose", coords=[(lon, lat)])
-            p.timestamp.when = dt
-            p.extendeddata.newdata(name="Heading", value=str(yaw_deg))
-            p.extendeddata.newdata(name="Depth", value=str(depth))
-
-            self.get_logger().info(f"[POSE] Logged at {dt}")
+            if lat is not None and lon is not None:
+                p = self.kml_nav.newpoint(name="Pose", coords=[(lon, lat)])
+                p.timestamp.when = dt
+                p.extendeddata.newdata(name="Heading", value=str(yaw_deg))
+                p.extendeddata.newdata(name="Depth", value=str(depth))
+                self.get_logger().info(f"[POSE] Logged at {dt}")
+            else:
+                self.get_logger().warn("[POSE] Latitude or longitude is None, skipping KML log.")
             
         
         except Exception as e:
@@ -173,7 +203,7 @@ class LoggerNode(Node):
     
     def save_image(self, timestamp):
         if self.latest_image is None:
-            self.get_logger().warn("[IMAGE] No latest image available to save")
+            self.get_logger().warning("[IMAGE] No latest image available to save")
             return ""
         try:
             cv_image = self.bridge.imgmsg_to_cv2(self.latest_image, desired_encoding='bgr8')
@@ -194,7 +224,7 @@ class LoggerNode(Node):
             
             # Skip if no image available yet
             if self.latest_image is None:
-                self.get_logger().warn("[IMAGE] No latest image available to save yet, skipping saving image.")
+                self.get_logger().warning("[IMAGE] No latest image available to save yet, skipping saving image.")
                 return
             
             object_found = False
@@ -318,7 +348,7 @@ class LoggerNode(Node):
 
             cmd = [
                 "ros2", "bag", "record",
-                TOPICS_NAMES["Camera"],
+                TOPICS_NAMES["CameraLowRes"],
                 "-o", output_dir
             ]
 
@@ -352,6 +382,10 @@ class LoggerNode(Node):
             self.rosbag_stop_timer = None            
             
     def save_logs_callback(self):
+        """
+        Periodically saves the current KML navigation, mission, and object recognition data to disk.
+        This method is called at regular intervals to ensure that log data is not lost.
+        """
         try:
             self.kml_nav.save(self.kml_path_nav)
             self.kml_mission.save(self.kml_path_mission)
@@ -361,6 +395,14 @@ class LoggerNode(Node):
             self.get_logger().error(f"Error saving KMLs: {e}")
 
     def destroy_node(self):
+        """
+        Cleanly shuts down the node by stopping rosbag recording, saving KML logs, 
+        and calling the parent class's destroy_node method.
+        """
+        self.stop_rosbag_recording()
+        self.save_logs_callback()
+        self.get_logger().info(f"Final KMLs file saved: {self.kml_path_nav}")
+        super().destroy_node()
         self.stop_rosbag_recording()
         self.save_logs_callback()
         self.get_logger().info(f"Final KMLs file saved: {self.kml_path_nav}")
