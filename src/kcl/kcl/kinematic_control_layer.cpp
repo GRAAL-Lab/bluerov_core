@@ -187,6 +187,7 @@ void KCL::SetupTransitions() {
     // Create states
     idleState_ = std::make_unique<IdleState>(&fsm_);
     holdState_ = std::make_unique<HoldState>(&fsm_);
+    lockDvlState_ = std::make_unique<LockDvlState>(&fsm_);
     wayPointNavigationState_ = std::make_unique<WayPointNavigationState>(&fsm_);
     pathFollowingState_ = std::make_unique<PathFollowingState>(&fsm_);
 
@@ -194,12 +195,14 @@ void KCL::SetupTransitions() {
 
     // Share control data with states
     idleState_->ctrlData = ctrlData_;
+    lockDvlState_->ctrlData = ctrlData_;
     holdState_->ctrlData = ctrlData_;
     wayPointNavigationState_->ctrlData = ctrlData_;
     pathFollowingState_->ctrlData = ctrlData_;
 
     // Add states and enable transitions
     fsm_.AddState(States::IDLE, idleState_.get());
+    fsm_.AddState(States::LOCK_DVL, lockDvlState_.get());
     fsm_.AddState(States::HOLD, holdState_.get());
     fsm_.AddState(States::WAYPOINT_NAVIGATION, wayPointNavigationState_.get());
     fsm_.AddState(States::PATH_FOLLOWING, pathFollowingState_.get());
@@ -213,15 +216,18 @@ void KCL::SetupTransitions() {
     fsm_.EnableTransition(States::HOLD, States::IDLE, true);
     fsm_.EnableTransition(States::HOLD, States::WAYPOINT_NAVIGATION, true);
     fsm_.EnableTransition(States::HOLD, States::PATH_FOLLOWING, true);
+    fsm_.EnableTransition(States::HOLD, States::LOCK_DVL, true);
 
     fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::IDLE, true);
     fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::HOLD, true);
     fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::PATH_FOLLOWING, true);
+    fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::LOCK_DVL, true);
 
 
     fsm_.EnableTransition(States::PATH_FOLLOWING, States::IDLE, true);
     fsm_.EnableTransition(States::PATH_FOLLOWING, States::HOLD, true);
     fsm_.EnableTransition(States::PATH_FOLLOWING, States::WAYPOINT_NAVIGATION, true);
+    fsm_.EnableTransition(States::PATH_FOLLOWING, States::LOCK_DVL, true);
 
 
     fsm_.SetInitState(States::IDLE);

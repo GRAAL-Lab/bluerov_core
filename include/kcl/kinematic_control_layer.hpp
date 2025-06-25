@@ -21,6 +21,7 @@
 // State headers
 #include "states/base_auv_state.hpp"
 #include "states/idle_state.hpp"
+#include "states/lock_dvl_state.hpp"
 #include "states/hold_state.hpp"
 #include "states/waypoint_navigation_state.hpp"
 #include "states/path_following_state.hpp"
@@ -67,6 +68,7 @@ private:
     
     // State objects
     std::unique_ptr<IdleState> idleState_;
+    std::unique_ptr<LockDvlState> lockDvlState_;
     std::unique_ptr<HoldState> holdState_;
     std::unique_ptr<WayPointNavigationState> wayPointNavigationState_;
     std::unique_ptr<PathFollowingState> pathFollowingState_;

@@ -68,6 +68,7 @@ message(STATUS "CMAKE_INSTALL_RPATH: ${CMAKE_INSTALL_RPATH}")
 add_library(states_lib STATIC
   src/kcl/states/base_auv_state.cpp
   src/kcl/states/idle_state.cpp
+  src/kcl/states/lock_dvl_state.cpp
   src/kcl/states/waypoint_navigation_state.cpp
   src/kcl/states/path_following_state.cpp
   src/kcl/states/hold_state.cpp
@@ -105,6 +106,7 @@ add_executable(kinematic_control_layer_node
     src/kinematic_control_layer_node.cpp
     src/kcl/states/base_auv_state.cpp
     src/kcl/states/idle_state.cpp
+    src/kcl/states/lock_dvl_state.cpp
     src/kcl/states/waypoint_navigation_state.cpp
     src/kcl/states/path_following_state.cpp
     src/kcl/states/hold_state.cpp
