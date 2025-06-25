@@ -5,6 +5,8 @@
 #include "mission_ctrl/mission_data_structs.hpp"
 #include <fsm/fsm.h>
 #include <libconfig.h++>
+#include <chrono>
+#include <thread>
 
 namespace mission {
 
@@ -20,8 +22,9 @@ namespace states {
         StateBase();
         virtual ~StateBase(void);
 
-        double stateTimeout = 60; //too long within the state
+        double stateTimeout = 9999; 
         fsm::retval SetNextMissionState();
+        fsm::retval StopMission();
     };
 }
 }

@@ -22,6 +22,9 @@ namespace states {
             return fsm::ok;
         }
 
+
+        
+
         if (!doneInit) {
             while (!taskData_->taskPhases.empty())
                 taskData_->taskPhases.pop();
@@ -45,8 +48,12 @@ namespace states {
                 
 
                 
+                //taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "SURFACE"));
+                taskData_->taskPhases.push(std::make_pair(states::ID::crossGate, ""));
+
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "SURFACE"));
-                // taskData_->taskPhases.push(std::make_pair(states::ID::crossGate, ""));
+
+
                 //taskData_->taskPhases.push(std::make_pair(states::ID::searchBuoyArea, ""));
                 // taskData_->taskPhases.push_back(std::make_pair(states::ID::moveToWp, opis::pipelineStructure));
                 // taskData_->taskPhases.push_back(std::make_pair(states::ID::inspectPipes, ""));

@@ -83,7 +83,7 @@ target_include_directories(controller_node
 )
 
 ament_target_dependencies(controller_node
-  rclcpp rclcpp_action ament_index_cpp auv_core_helper
+  rclcpp rclcpp_action ament_index_cpp auv_core_helper std_msgs
 )
 
 target_link_libraries(controller_node
@@ -101,7 +101,7 @@ target_include_directories(monitor_node
 )
 
 ament_target_dependencies(monitor_node
-  rclcpp rclcpp_action ament_index_cpp auv_core_helper
+  rclcpp rclcpp_action ament_index_cpp auv_core_helper std_msgs
 )
 
 target_link_libraries(monitor_node

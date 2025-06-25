@@ -16,14 +16,19 @@ namespace states {
     {
         taskData_->taskPhases.pop();
         if (taskData_->taskPhases.empty()) {
-            if (systemStatus_->conf.debugPrints)
-                std::cerr << "No more task phases to execute, back to init." << std::endl;
-            return fsm_->SetNextState(states::ID::init);
+            return StopMission();
         } else {
             if (systemStatus_->conf.debugPrints)
                 std::cerr << "\nNext state: " << taskData_->taskPhases.front().first << std::endl;
             return fsm_->SetNextState(taskData_->taskPhases.front().first);
         }
+    }
+
+    fsm::retval StateBase::StopMission()
+    {
+        if (systemStatus_->conf.debugPrints)
+            std::cerr << "Stopping mission, back to init." << std::endl;
+        return fsm_->SetNextState(states::ID::init);
     }
 
 }

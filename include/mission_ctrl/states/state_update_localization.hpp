@@ -9,7 +9,7 @@ namespace states {
         ctb::LatLong startingPosition;
         double maxTimeForLocalization = 5.0; // seconds
         
-        rclcpp::Time localizationStartTime;
+        std::chrono::time_point<std::chrono::steady_clock> localizationStartTime;
         bool onSurface = false;
         bool diving = false;
         

@@ -16,7 +16,6 @@ namespace states {
         startingPosition.longitude = ctrlData->inertialF_linearPosition.longitude;
         onSurface = false;
         diving = false;
-        localizationStartTime = systemStatus_->lastSystemTime;
 
         ctrlData->kclData.kclActionCmd = mission::kclCmd();
         ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
@@ -34,7 +33,7 @@ namespace states {
     {
         if (!onSurface && abs(ctrlData->depth - taskData_->surfaceDepth) < systemStatus_->conf.depthTolerance) {
             onSurface = true;
-            localizationStartTime = systemStatus_->lastSystemTime;
+            localizationStartTime = std::chrono::steady_clock::now();
             if (systemStatus_->conf.debugPrints) {
                 std::cerr << "Surfaced and waiting " << maxTimeForLocalization << " seconds for localization" << std::endl;
             }
@@ -42,7 +41,7 @@ namespace states {
             return fsm::ok;
         }
 
-        auto elapsedTime = (systemStatus_->lastSystemTime - localizationStartTime).seconds();
+        auto elapsedTime = (std::chrono::steady_clock::now() - localizationStartTime).count() / 1e9; // Convert to seconds
         if (onSurface && !diving && elapsedTime > maxTimeForLocalization) {
             diving = true;
             ctrlData->kclData.kclActionCmd = mission::kclCmd();

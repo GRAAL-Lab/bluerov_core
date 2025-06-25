@@ -15,6 +15,7 @@
 #include "mission_ctrl/states/state_search_object.hpp"
 #include "mission_ctrl/states/state_update_localization.hpp"
 
+#include "std_msgs/msg/string.hpp"
 #include "auv_core_helper/action/set_kcl.hpp"
 #include "auv_core_helper/msg/dtc_list.hpp"
 #include "auv_core_helper/msg/heart_beat.hpp"
@@ -29,7 +30,9 @@ namespace mission {
 
 class MissionController : public rclcpp::Node {
 
-    double stateTimeout = 20.0; // seconds, temp
+
+    bool systemReady_ = false; // If the system is ready to start the mission
+    bool missionReceived_ = false; // If the mission command was received
 
     std::shared_ptr<SystemStatus> systemStatus_;
     std::shared_ptr<ControlData> ctrlData_;
@@ -57,7 +60,11 @@ class MissionController : public rclcpp::Node {
     rclcpp_action::Client<auv_core_helper::action::SetKCL>::SharedPtr setKCLClient_;
     rclcpp::Service<auv_core_helper::srv::MissionCommand>::SharedPtr missionCommandService_;
 
+    std_msgs::msg::String debugMsg;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr debugPub_;
+
     rclcpp::TimerBase::SharedPtr runTimer_;
+    rclcpp::TimerBase::SharedPtr simCtrlStationTimer_;
 
     rclcpp_action::Client<auv_core_helper::action::SetKCL>::SendGoalOptions kclSendGoalOptions_;
 
@@ -65,16 +72,17 @@ class MissionController : public rclcpp::Node {
     void LoadConfiguration();
 
     bool IsPointWithinBoundaries(const ctb::LatLong& point);
-    bool kclCmd(std::string cmd = "");
-
-    // rclcpp::TimerBase::SharedPtr kclCmdTimer_;
-    // std::queue<kclCmd> kclCmdQueue_;
-    // void sendKclCmd();
+    bool kclCmd();
+    bool kclStopCmd();
+    bool kclCancelCmd();
 
     // FSM
     void SetUpFSM();
     void SetTaskDataFSM();
+    void ResetTaskDataFSM();
     void Run();
+    
+    bool StartMission();
 
     // Pubs
     void StatusPub();

@@ -58,6 +58,8 @@ struct MissionCtrlConf {
     double bridgeLivenessTimeout = 2.0;
     double kclLivenessTimeout = 2.0;
     double perceptionLivenessTimeout = 2.0;
+    double safetyAreaTimeout = 15.0; // seconds, time to wait before setting off safety area breach
+    double localizationTimeout = 15.0; // seconds, max time to get gps lock
 
     bool ignoreBuoyColor = false; // if true, the color of the buoy is not considered for the gate detection
     double gateWpsDistance = 1.0; // distance between the two gate waypoints and the center of the gate
@@ -578,40 +580,54 @@ struct InspectionAndIntervention : public TaskBenchmarkSettings {
 struct SystemStatus {
     MissionCtrlConf conf;
     bool vehicleReachedSafetyArea = false;
-    rclcpp::Time timeOutsideSafetyArea;
-    rclcpp::Time lastStateSwitchTime;
-    rclcpp::Time lastSystemTime;
-    rclcpp::Time lastKclFeedbackTime;
+    rclcpp::Time timeOutsideSafetyArea; //reset when starting a mission
+    rclcpp::Time lastStateSwitchTime; 
+    rclcpp::Time lastSystemStatusTime; // no need to reset this
+    rclcpp::Time lastKclFeedbackTime;  // 
 
-    bool missionCtrlRunning = false;
+    bool missionUnderExecution = false;
+    bool waitingForComponents = true; // true if the mission control is waiting for the components to be alive
     bool bridgeAlive = false;
     bool kclAlive = false;
     bool perceptionAlive = false;
     bool readFirstPose = false;
-    // bool kclActionServerAlive = false;
 
     SystemStatus(rcl_clock_type_t clockType)
     {
         if (clockType == 1) {
-            lastSystemTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
+            lastSystemStatusTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
             lastStateSwitchTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
             timeOutsideSafetyArea = rclcpp::Time(0, 0, RCL_ROS_TIME);
             lastKclFeedbackTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
         } else {
-            lastSystemTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
+            lastSystemStatusTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
             lastStateSwitchTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
             timeOutsideSafetyArea = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
             lastKclFeedbackTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
         }
     }
 
+    void Init(rclcpp::Time now)
+    {
+        lastSystemStatusTime = now;
+        lastStateSwitchTime = now;
+
+        waitingForComponents = true;
+        missionUnderExecution = false;
+        vehicleReachedSafetyArea = false;
+    }
+
     bool IsSystemAlive(rclcpp::Time now) const
     {
-        auto timeWithoutSystemUpdate = now - lastSystemTime;
+        auto timeWithoutSystemUpdate = now - lastSystemStatusTime;
         return perceptionAlive && kclAlive && bridgeAlive && readFirstPose && timeWithoutSystemUpdate < rclcpp::Duration(5, 0);
     }
-};
 
+    bool IsSafetyAreaBreach(rclcpp::Time now) const
+    {
+        return (now - timeOutsideSafetyArea).seconds() > conf.safetyAreaTimeout;
+    }
+};
 }
 
 #endif // MISSION_CTRL_DATA_STRUCTS_HPP

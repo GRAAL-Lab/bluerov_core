@@ -12,14 +12,24 @@ namespace states {
 
     fsm::retval StateCrossGate::OnEntry()
     {
-
+        reachedFrontOfGate = false;
         if (systemStatus_->conf.simPerception) {
             ctb::LatLong posA, posB;
-            Eigen::Vector3d localPosA(5, -1, 0);
-            Eigen::Vector3d localPosB(5, 1, 0);
-            double alt;
-            ctb::LocalNED2LatLong(localPosA, ctrlData->inertialF_linearPosition, posA, alt);
-            ctb::LocalNED2LatLong(localPosB, ctrlData->inertialF_linearPosition, posB, alt);
+            if (systemStatus_->conf.debugBuoysPositions.size() < 2) {
+                Eigen::Vector3d localPosA(5, -1, 0);
+                Eigen::Vector3d localPosB(5, 1, 0);
+                double alt;
+                ctb::LocalNED2LatLong(localPosA, ctrlData->inertialF_linearPosition, posA, alt);
+                ctb::LocalNED2LatLong(localPosB, ctrlData->inertialF_linearPosition, posB, alt);
+            } else {
+                
+
+                posA = systemStatus_->conf.debugBuoysPositions[0];
+                posB = systemStatus_->conf.debugBuoysPositions[1];
+                std::cerr << "Using debug buoys positions for gate simulation: "
+                          << posA.latitude << ", " << posA.longitude << " and "
+                          << posB.latitude << ", " << posB.longitude << "\n";
+            }
             Buoy gb1, gb2;
             Gate gt;
             gb1.position = posA;
@@ -44,28 +54,47 @@ namespace states {
         double alt;
         ctb::LocalNED2LatLong(firstWpLocal, ctrlData->missionData.gate.buoy1.position, firstWp, alt);
         ctb::LocalNED2LatLong(secondWpLocal, ctrlData->missionData.gate.buoy1.position, secondWp, alt);
+
+        double dist1, dist2, azimuthRad;
+        ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, ctrlData->missionData.gate.buoy1.position, dist1, azimuthRad);
+        ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, ctrlData->missionData.gate.buoy2.position, dist2, azimuthRad);
+        if (dist1 > dist2) {
+            ctb::LatLong temp = firstWp;
+            firstWp = secondWp;
+            secondWp = temp;
+        }
         return fsm::ok;
     }
 
     fsm::retval StateCrossGate::Execute()
     {
-        if (ctrlData->kclData.kclActionCmd.underExecution) {
-            double distance, azimuthRad;
-            if (!reachedFrontOfGate) {
-                ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, firstWp, distance, azimuthRad);
-                if (distance < systemStatus_->conf.latlongTolerance) {
-                    reachedFrontOfGate = true;
-                }
-            } else {
-                ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, secondWp, distance, azimuthRad);
-                if (distance < systemStatus_->conf.latlongTolerance) {
-                    return this->SetNextMissionState();
-                }
+
+        double distance, azimuthRad;
+        if (!reachedFrontOfGate) {
+            ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, firstWp, distance, azimuthRad);
+            if (distance < systemStatus_->conf.latlongTolerance) {
+                reachedFrontOfGate = true;
+                ctrlData->kclData.kclActionCmd.underExecution = false; // Reset the command execution state
+            }else{
+                std::cerr << "Distance to first waypoint: "<< distance << "m which is at "
+                          << firstWp.latitude << ", " << firstWp.longitude << "\n";
             }
         } else {
+            ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, secondWp, distance, azimuthRad);
+            if (distance < systemStatus_->conf.latlongTolerance) {
+                return this->SetNextMissionState();
+            }else{
+                std::cerr << "Distance to second waypoint: " << distance << "m which is at "
+                          << secondWp.latitude << ", " << secondWp.longitude << "\n";
+
+            }
+        }
+        if (!ctrlData->kclData.kclActionCmd.underExecution) {
             ctrlData->kclData.kclActionCmd = mission::kclCmd();
             ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
             if (reachedFrontOfGate) {
+                std::cerr << "Crossing gate, moving to second waypoint: "
+                          << secondWp.latitude << ", " << secondWp.longitude << "\n";
                 ctrlData->kclData.kclActionCmd.goal.position.latitude = secondWp.latitude;
                 ctrlData->kclData.kclActionCmd.goal.position.longitude = secondWp.longitude;
                 ctrlData->kclData.kclActionCmd.goal.depth = taskData_->diveDepth;
