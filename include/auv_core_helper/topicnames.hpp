@@ -10,6 +10,7 @@ namespace topicnames {
 const std::string system_status = "/auv/status";
 
 const std::string safety_switch = "/auv/safety_switch";    
+const std::string custom_switch = "/auv/custom_switch";    // The other switch
 
 // MISSION
 const std::string mission_status = "/auv/mission/status";
