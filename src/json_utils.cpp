@@ -685,43 +685,51 @@ namespace ctljsn
 
     std::string handle_status(const jsoncons::json &status_msg)
     {
-      auto name = status_msg["body"]["identifier"]["name"].as<std::string>();
-      auto status = status_msg["body"]["status"].as<std::string>();
-
-      if (status == "AVAILABLE")
+      try
       {
-        return name + " is IDLE";
-      }
-      else if (status == "ON_TASK")
-      {
-        const auto &tasks = status_msg["body"]["owned_tasks"];
+        auto name = status_msg["body"]["identifier"]["name"].as<std::string>();
+        auto status = status_msg["body"]["status"].as<std::string>();
 
-        if (tasks.empty())
+        if (status == "AVAILABLE")
         {
-          return name + " is ON_TASK but no task details found.";
+          return name + " is IDLE";
         }
-
-        std::ostringstream out;
-        out << name << " is ON_TASK:\n";
-
-        for (const auto &task : tasks.array_range())
+        else if (status == "ON_TASK")
         {
-          std::string task_name = task["identifier"]["name"].as<std::string>();
-          std::string state = task["state"].as<std::string>();
-          double percent = task["percent_complete"].as<double>();
-          std::string remaining = task["time_remaining"].as<std::string>();
+          const auto &tasks = status_msg["body"]["owned_tasks"];
 
-          out << "- Task: " << task_name << "\n"
-              << "  State: " << state << "\n"
-              << "  Completion: " << percent << "%\n"
-              << "  Time remaining: " << remaining << "\n";
+          if (tasks.empty())
+          {
+            return name + " is ON_TASK but no task details found.";
+          }
+
+          std::ostringstream out;
+          out << name << " is ON_TASK:\n";
+
+          for (const auto &task : tasks.array_range())
+          {
+            std::string task_name = task["identifier"]["name"].as<std::string>();
+            std::string state = task["state"].as<std::string>();
+            double percent = task["percent_complete"].as<double>();
+            std::string remaining = task["time_remaining"].as<std::string>();
+
+            out << "- Task: " << task_name << "\n"
+                << "  State: " << state << "\n"
+                << "  Completion: " << percent << "%\n"
+                << "  Time remaining: " << remaining << "\n";
+          }
+
+          return out.str();
         }
-
-        return out.str();
+        else
+        {
+          return name + " has unknown status: " + status;
+        }
       }
-      else
+      catch (const std::exception &e)
       {
-        return name + " has unknown status: " + status;
+        std::cerr << "Error accessing the STATUS message " << e.what() << std::endl;
+        return nullptr;
       }
     }
 
