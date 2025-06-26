@@ -6,6 +6,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 
+#include "std_msgs/msg/bool.hpp"
 #include "auv_core_helper/msg/system_status.hpp"
 #include "auv_core_helper/msg/mission_status.hpp"
 #include "auv_core_helper/action/set_kcl.hpp"
@@ -21,12 +22,17 @@ namespace mission {
 
 class SystemStatusMonitor : public rclcpp::Node {
 
-    //bool systemInit = false;
     int runRate_ = 1; // Hz
     double missionCtrlTimeout_ = 2.0;
     double bridgeTimeout_ = 2.0;
     double kclTimeout_ = 2.0;
     double perceptionTimeout_ = 2.0;
+    double vehicleMovingToSafetyAreaTimeout_ = 60.0;
+
+    bool vehicleIsSafe = true;
+    bool safetySwitchIsOff_ = true; // At start of mission
+    bool vehicleReachedSafetyArea_ = false; // At start of mission
+    std::vector<ctb::LatLong> safetyBoundary_;
 
     // Pubs and Subs, action client to KCL and service for mission command
     rclcpp::Publisher<auv_core_helper::msg::SystemStatus>::SharedPtr systemStatusPub_;
@@ -36,18 +42,22 @@ class SystemStatusMonitor : public rclcpp::Node {
     rclcpp_action::Client<auv_core_helper::action::SetKCL>::SharedPtr serverKclClient_;
     rclcpp::Subscription<auv_core_helper::msg::DtcList>::SharedPtr perceptionSub_;
 
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr safetySwitchSub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr customSwitchSub_;
+
     bool rcvFirstPose_ = false;
     rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr poseSub_;
 
-    rclcpp::Time lastSystemTime;
     rclcpp::Time lastMissionCtrlTime;
     rclcpp::Time lastBridgeTime;
     rclcpp::Time lastKCLTime;
     rclcpp::Time lastPerceptionTime;
 
+    bool missionUnderExecution = false;
+    rclcpp::Time rcvMissionCmdTime;
+    std::string missionCtrlStatus_ = "Unknown";
 
     rclcpp::TimerBase::SharedPtr runTimer_;
-
 
     // Callbacks
     void StatusPub();
@@ -55,10 +65,15 @@ class SystemStatusMonitor : public rclcpp::Node {
     void BridgeCB(const auv_core_helper::msg::HeartBeat::SharedPtr msg);
     void KclCB(const auv_core_helper::msg::KclStatus::SharedPtr msg);
     void PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg);
+    void SafetySwitchCB(const std_msgs::msg::Bool::SharedPtr msg);
+    void CustomSwitchCB(const std_msgs::msg::Bool::SharedPtr msg);
 
     void PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
 
     void LoadConfiguration();
+
+
+    bool IsPointWithinBoundaries(const ctb::LatLong& point);
 
 
 public:

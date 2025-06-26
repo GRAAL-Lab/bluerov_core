@@ -6,11 +6,11 @@ SystemStatusMonitor::SystemStatusMonitor()
 {
     //     LoadConfiguration(); // REQUIRES SYSTEM STATUS TO BE INITIALIZED
 
-    lastSystemTime = rclcpp::Time(0, 0, this->get_clock()->get_clock_type());
     lastMissionCtrlTime = rclcpp::Time(0, 0, this->get_clock()->get_clock_type());
     lastBridgeTime = rclcpp::Time(0, 0, this->get_clock()->get_clock_type());
     lastKCLTime = rclcpp::Time(0, 0, this->get_clock()->get_clock_type());
     lastPerceptionTime = rclcpp::Time(0, 0, this->get_clock()->get_clock_type());
+    rcvMissionCmdTime = rclcpp::Time(0, 0, this->get_clock()->get_clock_type());
 
     missionCtrlSub_ = this->create_subscription<auv_core_helper::msg::MissionStatus>(
         auv_core_helper::topicnames::mission_status, rclcpp::SystemDefaultsQoS(),
@@ -34,6 +34,14 @@ SystemStatusMonitor::SystemStatusMonitor()
         auv_core_helper::topicnames::pose_actual_global_, rclcpp::SystemDefaultsQoS(),
         std::bind(&SystemStatusMonitor::PoseCB, this, std::placeholders::_1));
 
+    safetySwitchSub_ = this->create_subscription<std_msgs::msg::Bool>(
+        auv_core_helper::topicnames::safety_switch, rclcpp::SystemDefaultsQoS(),
+        std::bind(&SystemStatusMonitor::SafetySwitchCB, this, std::placeholders::_1));
+
+    customSwitchSub_ = this->create_subscription<std_msgs::msg::Bool>(
+        auv_core_helper::topicnames::custom_switch, rclcpp::SystemDefaultsQoS(),
+        std::bind(&SystemStatusMonitor::CustomSwitchCB, this, std::placeholders::_1));
+
     int pub_rate = 1; // Default rateù
     std::chrono::milliseconds pub_duration(1000 / pub_rate);
     runTimer_ = this->create_wall_timer(pub_duration, std::bind(&SystemStatusMonitor::StatusPub, this));
@@ -51,7 +59,6 @@ void SystemStatusMonitor::StatusPub()
     status.kcl = true;
     status.perception = true;
     status.bridge = true;
-    status.system_operational = true;
 
     auto timeSinceLastMissionCtrl = this->get_clock()->now() - lastMissionCtrlTime;
     auto timeSinceLastBridge = this->get_clock()->now() - lastBridgeTime;
@@ -64,45 +71,42 @@ void SystemStatusMonitor::StatusPub()
 
     if (timeSinceLastBridge.seconds() > bridgeTimeout_ || !rcvFirstPose_) {
         status.bridge = false;
-        status.system_operational = false;
     }
 
     if (timeSinceLastKCL.seconds() > kclTimeout_) {
         status.kcl = false;
-        status.system_operational = false;
     }
     if (!serverKclClient_->wait_for_action_server(std::chrono::seconds(1))) {
         status.kcl = false;
-        status.system_operational = false;
     }
 
     if (timeSinceLastPerception.seconds() > perceptionTimeout_) {
         status.perception = false;
-        status.system_operational = false;
     }
 
-    if (status.system_operational) {
-        lastSystemTime = this->get_clock()->now();
-    }
+    status.vehicle_is_armed = vehicleIsSafe && safetySwitchIsOff_;
 
     systemStatusPub_->publish(status);
     std::cout << "[M_Ctrl: " << (status.mission_ctrl ? "On" : "Off")
-          << "] [KCL: " << (status.kcl ? "On" : "Off")
-          << "] [Percept: " << (status.perception ? "On" : "Off")
-          << "] [Bridge: " << (status.bridge ? "On" : "Off")
-          << "] [Operational: " << (status.system_operational ? "Yes" : "No") << "]\n";
-
-
-    RCLCPP_DEBUG(this->get_logger(), "System Status: %s \n  - Mission Ctrl: %s, \n  - KCL: %s, \n  - Perception: %s, \n  - Bridge: %s",
-        status.mission_ctrl ? "On" : "Off",
-        status.kcl ? "On" : "Off",
-        status.perception ? "On" : "Off",
-        status.bridge ? "On" : "Off");
+              << "] [KCL: " << (status.kcl ? "On" : "Off")
+              << "] [Percept: " << (status.perception ? "On" : "Off")
+              << "] [Bridge: " << (status.bridge ? "On" : "Off")
+              << "] [Vh armed: " << (status.vehicle_is_armed ? "On" : "Off") 
+              << "]\n";
 }
 
 void SystemStatusMonitor::MissionCtrlCB(const auv_core_helper::msg::MissionStatus::SharedPtr msg)
 {
-    (void)msg; // Unused parameter
+    if (missionCtrlStatus_ == "WAITING FOR CMD" && msg->state != missionCtrlStatus_) {
+        RCLCPP_INFO(get_logger(), "Mission Control status changed from 'WAITING FOR CMD' to '%s'.", msg->state.c_str());
+        missionUnderExecution = true;
+        rcvMissionCmdTime = this->get_clock()->now();
+    } else if (missionCtrlStatus_ != "WAITING FOR CMD" && msg->state == "WAITING FOR CMD") {
+        RCLCPP_INFO(get_logger(), "Mission Control status changed to 'WAITING FOR CMD'.");
+        missionUnderExecution = false;
+    }
+
+    missionCtrlStatus_ = msg->state;
     lastMissionCtrlTime = this->get_clock()->now();
 }
 
@@ -124,6 +128,17 @@ void SystemStatusMonitor::PerceptionCB(const auv_core_helper::msg::DtcList::Shar
     lastPerceptionTime = this->get_clock()->now();
 }
 
+void SystemStatusMonitor::SafetySwitchCB(const std_msgs::msg::Bool::SharedPtr msg)
+{
+    safetySwitchIsOff_ = msg->data;
+}    
+
+void SystemStatusMonitor::CustomSwitchCB(const std_msgs::msg::Bool::SharedPtr msg)
+{
+    // Custom switch logic can be added here if needed
+    (void)msg; // Unused parameter
+}
+
 void SystemStatusMonitor::PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg)
 {
     if (!rcvFirstPose_) {
@@ -134,6 +149,59 @@ void SystemStatusMonitor::PoseCB(const auv_core_helper::msg::PoseStamped::Shared
             RCLCPP_WARN(get_logger(), "Received pose with zero coordinates, waiting for valid pose.");
         }
     }
+
+    if (!missionUnderExecution) {
+        vehicleIsSafe = true;
+        return;
+    }
+
+    if (IsPointWithinBoundaries(ctb::LatLong(msg->position.latitude, msg->position.longitude))) {
+        if (!vehicleReachedSafetyArea_) {
+            vehicleReachedSafetyArea_ = true;
+        }
+        vehicleIsSafe = true;
+    } else {
+        if (!vehicleReachedSafetyArea_) {
+            auto timeLeftToReachSafetyArea = this->get_clock()->now() - rcvMissionCmdTime;
+            if (timeLeftToReachSafetyArea.seconds() > vehicleMovingToSafetyAreaTimeout_) {
+                vehicleIsSafe = false;
+                RCLCPP_ERROR(get_logger(), "Vehicle did not reach safety area soon enough.");
+            }
+        } else {
+            vehicleIsSafe = false;
+            RCLCPP_ERROR(get_logger(), "Vehicle is not in the safety area anymore.");
+        }
+    }
+}
+
+bool SystemStatusMonitor::IsPointWithinBoundaries(const ctb::LatLong& point)
+{
+    if (safetyBoundary_.size() < 3) {
+        throw std::runtime_error("Safety boundary must have at least 3 points.");
+    }
+
+    std::vector<Eigen::Vector3d> polygon;
+    for (auto& latlong : safetyBoundary_) {
+        Eigen::Vector3d bodyF_point;
+        ctb::LatLong2LocalNED(latlong, 0, point, bodyF_point);
+        polygon.push_back(bodyF_point);
+    }
+
+    bool pos = false, neg = false;
+    int i = 0;
+    for (auto point : polygon) {
+        auto nextPoint = polygon[(i + 1) % polygon.size()];
+        double cross = (nextPoint.x() - point.x()) * (-point.y()) - (nextPoint.y() - point.y()) * (-point.x());
+        if (cross < 0)
+            neg = true;
+        if (cross > 0)
+            pos = true;
+        if (pos && neg)
+            return false; // point is outside
+        i++;
+    }
+
+    return true;
 }
 
 void SystemStatusMonitor::LoadConfiguration()
@@ -151,6 +219,27 @@ void SystemStatusMonitor::LoadConfiguration()
         ctb::GetParam(confObj, bridgeTimeout_, "bridge_timeout");
         ctb::GetParam(confObj, kclTimeout_, "kcl_timeout");
         ctb::GetParam(confObj, perceptionTimeout_, "perception_timeout");
+        ctb::GetParam(confObj, vehicleMovingToSafetyAreaTimeout_, "vehicle_to_safety_area_timeout");
+
+
+
+        const libconfig::Setting& root = confObj.getRoot();
+        const libconfig::Setting& safetyBoundarySetting = root["safetyBoundary"];
+        std::cerr << "Safety boundary point: " << std::endl;
+        for (int i = 0; i < safetyBoundarySetting.getLength(); ++i) {
+            const libconfig::Setting& point = safetyBoundarySetting[i];
+            Eigen::VectorXd latLongTmp;
+            ctb::GetParamVector(point, latLongTmp, "point");
+            ctb::LatLong stonefishCentroid(44.095952330602564, 9.865115308770484); // from update pose stonefish in stonefish utils
+            // print local position
+            Eigen::Vector3d localTmp3d;
+            ctb::LatLong globalPosition(latLongTmp[0], latLongTmp[1]);
+            double alt = 0;
+            ctb::LatLong2LocalNED(globalPosition, alt, stonefishCentroid, localTmp3d);
+            std::cerr << "  - global: [" << latLongTmp[0] << ", " << latLongTmp[1] << "]" << std::endl;
+            std::cerr << "  - ned local: [" << localTmp3d[0] << ", " << localTmp3d[1] << "]" << std::endl;
+            safetyBoundary_.push_back(ctb::LatLong(latLongTmp[0], latLongTmp[1]));
+        }
 
     } catch (const libconfig::FileIOException& fioex) {
         RCLCPP_ERROR(this->get_logger(), "I/O error while reading file: %s", fioex.what());

@@ -30,10 +30,6 @@ namespace mission {
 
 class MissionController : public rclcpp::Node {
 
-
-    bool systemReady_ = false; // If the system is ready to start the mission
-    bool missionReceived_ = false; // If the mission command was received
-
     std::shared_ptr<SystemStatus> systemStatus_;
     std::shared_ptr<ControlData> ctrlData_;
     std::shared_ptr<TaskBenchmarkSettings> taskData_;
@@ -71,7 +67,7 @@ class MissionController : public rclcpp::Node {
     void SimulateMissionCmdFromFile();
     void LoadConfiguration();
 
-    bool IsPointWithinBoundaries(const ctb::LatLong& point);
+    // bool IsPointWithinBoundaries(const ctb::LatLong& point);
     bool kclCmd();
     bool kclStopCmd();
     bool kclCancelCmd();

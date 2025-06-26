@@ -23,19 +23,19 @@ namespace states {
                 std::shared_ptr<Inspection> inspectionConf = std::dynamic_pointer_cast<Inspection>(taskData_);
                 goalPose.at(0) = inspectionConf->uavWaypoint.latitude;
                 goalPose.at(1) = inspectionConf->uavWaypoint.longitude;
-                goalPose.at(2) = taskData_->diveDepth;
+                goalPose.at(2) = systemStatus_->conf.diveDepth; 
             } else if (taskData_->taskPhases.front().second == "DIVE") {
                 goalPose.at(0) = ctrlData->inertialF_linearPosition.latitude;
                 goalPose.at(1) = ctrlData->inertialF_linearPosition.longitude;
-                goalPose.at(2) = taskData_->diveDepth;
+                goalPose.at(2) = systemStatus_->conf.diveDepth; 
             } else if (taskData_->taskPhases.front().second == "SURFACE") {
                 goalPose.at(0) = ctrlData->inertialF_linearPosition.latitude;
                 goalPose.at(1) = ctrlData->inertialF_linearPosition.longitude;
-                goalPose.at(2) = taskData_->surfaceDepth;
+                goalPose.at(2) = systemStatus_->conf.surfaceDepth; 
             } else if (taskData_->taskPhases.front().second == "DEBUG") {
                 goalPose.at(0) = systemStatus_->conf.debugPosition.latitude;
                 goalPose.at(1) = systemStatus_->conf.debugPosition.longitude;
-                goalPose.at(2) = taskData_->diveDepth;
+                goalPose.at(2) = systemStatus_->conf.diveDepth; 
             }
 
             if (systemStatus_->conf.debugPrints) {
@@ -75,6 +75,7 @@ namespace states {
                 doneInit = false;
                 return this->SetNextMissionState();
             }
+            std::cerr << "Distance to goal: " << distance << "\n";
             // if (distance > 1000 && systemStatus_->conf.debugPrints) {
             //     std::cerr << "Distance to goal: " << distance << " (undetermined)" << "\n";
             // } else {

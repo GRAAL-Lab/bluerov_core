@@ -21,7 +21,7 @@ namespace states {
         ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
         ctrlData->kclData.kclActionCmd.goal.position.latitude = startingPosition.latitude;
         ctrlData->kclData.kclActionCmd.goal.position.longitude = startingPosition.longitude;
-        ctrlData->kclData.kclActionCmd.goal.depth = taskData_->surfaceDepth;
+        ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepth;
 
         if (systemStatus_->conf.debugPrints) {
             std::cerr << "Surfacing for localization" << std::endl;
@@ -31,7 +31,7 @@ namespace states {
 
     fsm::retval StateUpdateLocalization::Execute()
     {
-        if (!onSurface && abs(ctrlData->depth - taskData_->surfaceDepth) < systemStatus_->conf.depthTolerance) {
+        if (!onSurface && abs(ctrlData->depth - systemStatus_->conf.surfaceDepth) < systemStatus_->conf.depthTolerance) {
             onSurface = true;
             localizationStartTime = std::chrono::steady_clock::now();
             if (systemStatus_->conf.debugPrints) {
@@ -48,23 +48,23 @@ namespace states {
             ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
             ctrlData->kclData.kclActionCmd.goal.position.latitude = startingPosition.latitude;
             ctrlData->kclData.kclActionCmd.goal.position.longitude = startingPosition.longitude;
-            ctrlData->kclData.kclActionCmd.goal.depth = taskData_->diveDepth;
+            ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepth;
             if (systemStatus_->conf.debugPrints) {
                 std::cerr << "Done, diving again." << std::endl;
             }
             return fsm::ok;
         }
 
-        if (diving && abs(ctrlData->depth - taskData_->diveDepth) < systemStatus_->conf.depthTolerance) {
+        if (diving && abs(ctrlData->depth - systemStatus_->conf.diveDepth) < systemStatus_->conf.depthTolerance) {
             diving = false;
             onSurface = false;
             return this->SetNextMissionState();
         }
 
         if (systemStatus_->conf.simKcl && !onSurface) {
-            ctrlData->depth = taskData_->diveDepth;
+            ctrlData->depth = systemStatus_->conf.diveDepth;
         } else if (systemStatus_->conf.simKcl && diving) {
-            ctrlData->depth = taskData_->surfaceDepth;
+            ctrlData->depth = systemStatus_->conf.surfaceDepth;
         }
         return fsm::ok;
     }

@@ -22,7 +22,7 @@ namespace states {
         ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
         ctrlData->kclData.kclActionCmd.goal.position.latitude = ctrlData->inertialF_linearPosition.latitude;
         ctrlData->kclData.kclActionCmd.goal.position.longitude = ctrlData->inertialF_linearPosition.longitude;
-        ctrlData->kclData.kclActionCmd.goal.depth = taskData_->surfaceDepth;
+        ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.surfaceDepth; 
 
         return fsm::ok;
     }
@@ -30,12 +30,12 @@ namespace states {
     fsm::retval StateHoming::Execute()
     {
 
-        if (!reachedSurface && std::abs(ctrlData->depth - taskData_->surfaceDepth) > systemStatus_->conf.depthTolerance) {
+        if (!reachedSurface && std::abs(ctrlData->depth - systemStatus_->conf.surfaceDepth) > systemStatus_->conf.depthTolerance) {
             if (systemStatus_->conf.debugPrints)
-                std::cerr << "Current/Goal depth: " << ctrlData->depth << " / " << taskData_->surfaceDepth << "\n";
+                std::cerr << "Current/Goal depth: " << ctrlData->depth << " / " << systemStatus_->conf.surfaceDepth  << "\n";
             if (systemStatus_->conf.simKcl) {
                 // Simulated KCL, set the position directly
-                ctrlData->depth = taskData_->surfaceDepth;
+                ctrlData->depth = systemStatus_->conf.surfaceDepth; 
             }
             return fsm::ok;
         } else if (!reachedSurface) {
@@ -44,7 +44,7 @@ namespace states {
             ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
             ctrlData->kclData.kclActionCmd.goal.position.latitude = homePosition.latitude;
             ctrlData->kclData.kclActionCmd.goal.position.longitude = homePosition.longitude;
-            ctrlData->kclData.kclActionCmd.goal.depth = taskData_->surfaceDepth;
+            ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.surfaceDepth; 
             if (systemStatus_->conf.debugPrints)
                 std::cerr << "Reached surface, moving home: " << homePosition.latitude << ", "
                           << homePosition.longitude << "\n";

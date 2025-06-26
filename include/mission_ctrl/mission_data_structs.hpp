@@ -52,6 +52,9 @@ struct MissionCtrlConf {
     bool simCtrlStation;
     bool debugPrints;
 
+    bool useStartingDepthAsSurfaceDepth = true;
+    double surfaceDepth = 0.2; 
+    double diveDepth = 1.5; 
     double depthTolerance = 0.3;
     double latlongTolerance = 0.5;
     int ctrlRate = 1;
@@ -238,8 +241,6 @@ struct TaskBenchmarkSettings {
     std::vector<PipelineStructure> pipelineStructures;
     uint selectedPipelineStructureId;
     BuoysArea buoysArea;
-    double surfaceDepth = 0.0;
-    double diveDepth = 1.5;
 
     TaskBenchmarkSettings() = default;
 
@@ -577,55 +578,62 @@ struct InspectionAndIntervention : public TaskBenchmarkSettings {
     }
 };
 
-struct SystemStatus {
-    MissionCtrlConf conf;
-    bool vehicleReachedSafetyArea = false;
-    rclcpp::Time timeOutsideSafetyArea; //reset when starting a mission
-    rclcpp::Time lastStateSwitchTime; 
-    rclcpp::Time lastSystemStatusTime; // no need to reset this
-    rclcpp::Time lastKclFeedbackTime;  // 
+enum MissionCtrlState {
+    ON_A_MISSION,
+    WAITING_FOR_MISSION_CMD,
+    WAITING_FOR_SYSTEM_TO_BE_READY,
+};
 
-    bool missionUnderExecution = false;
-    bool waitingForComponents = true; // true if the mission control is waiting for the components to be alive
-    bool bridgeAlive = false;
-    bool kclAlive = false;
-    bool perceptionAlive = false;
-    bool readFirstPose = false;
+struct SystemStatus {
+private:
+    MissionCtrlState state_ = WAITING_FOR_SYSTEM_TO_BE_READY; // current state of the mission controller
+
+public:
+    MissionCtrlConf conf;
+
+    rclcpp::Time lastStateSwitchTime;
+    rclcpp::Time lastSystemStatusTime; // no need to reset this
+    rclcpp::Time lastKclFeedbackTime; //
 
     SystemStatus(rcl_clock_type_t clockType)
     {
         if (clockType == 1) {
             lastSystemStatusTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
             lastStateSwitchTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
-            timeOutsideSafetyArea = rclcpp::Time(0, 0, RCL_ROS_TIME);
             lastKclFeedbackTime = rclcpp::Time(0, 0, RCL_ROS_TIME);
         } else {
             lastSystemStatusTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
             lastStateSwitchTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
-            timeOutsideSafetyArea = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
             lastKclFeedbackTime = rclcpp::Time(0, 0, RCL_SYSTEM_TIME);
         }
     }
 
-    void Init(rclcpp::Time now)
+    MissionCtrlState State() const
     {
-        lastSystemStatusTime = now;
-        lastStateSwitchTime = now;
-
-        waitingForComponents = true;
-        missionUnderExecution = false;
-        vehicleReachedSafetyArea = false;
+        return state_;
     }
 
-    bool IsSystemAlive(rclcpp::Time now) const
+    bool SetState(MissionCtrlState newState)
+    {
+        if (state_ == WAITING_FOR_SYSTEM_TO_BE_READY) {
+            // Not allowed to change this
+            return false;
+        }
+        state_ = newState;
+        return true;
+    }
+
+    void SetStateReady()
+    {
+        state_ = WAITING_FOR_MISSION_CMD;
+    }
+
+    void CheckSystemLiveness(rclcpp::Time now)
     {
         auto timeWithoutSystemUpdate = now - lastSystemStatusTime;
-        return perceptionAlive && kclAlive && bridgeAlive && readFirstPose && timeWithoutSystemUpdate < rclcpp::Duration(5, 0);
-    }
-
-    bool IsSafetyAreaBreach(rclcpp::Time now) const
-    {
-        return (now - timeOutsideSafetyArea).seconds() > conf.safetyAreaTimeout;
+        if (timeWithoutSystemUpdate > rclcpp::Duration(5, 0)) {
+            state_ = WAITING_FOR_SYSTEM_TO_BE_READY;
+        }
     }
 };
 }

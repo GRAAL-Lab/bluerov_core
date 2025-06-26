@@ -16,7 +16,8 @@ namespace states {
     {
         taskData_->taskPhases.pop();
         if (taskData_->taskPhases.empty()) {
-            return StopMission();
+            systemStatus_->SetState(MissionCtrlState::WAITING_FOR_SYSTEM_TO_BE_READY);
+            return fsm::ok;
         } else {
             if (systemStatus_->conf.debugPrints)
                 std::cerr << "\nNext state: " << taskData_->taskPhases.front().first << std::endl;
@@ -24,12 +25,12 @@ namespace states {
         }
     }
 
-    fsm::retval StateBase::StopMission()
-    {
-        if (systemStatus_->conf.debugPrints)
-            std::cerr << "Stopping mission, back to init." << std::endl;
-        return fsm_->SetNextState(states::ID::init);
-    }
+    // fsm::retval StateBase::StopMission()
+    // {
+    //     if (systemStatus_->conf.debugPrints)
+    //         std::cerr << "Stopping mission, back to init." << std::endl;
+    //     return fsm_->SetNextState(states::ID::init);
+    // }
 
 }
 }

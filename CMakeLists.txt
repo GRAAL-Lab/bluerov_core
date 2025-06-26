@@ -105,6 +105,9 @@ ament_target_dependencies(monitor_node
 )
 
 target_link_libraries(monitor_node
+  Geographic
+  ctrl_toolbox
+  rml
   config++
   ${auv_core_helper_LIBRARIES}
 )

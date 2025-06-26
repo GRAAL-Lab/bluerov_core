@@ -106,7 +106,7 @@ namespace states {
             ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
             ctrlData->kclData.kclActionCmd.goal.position.latitude = pointOnPipe.latitude;
             ctrlData->kclData.kclActionCmd.goal.position.longitude = pointOnPipe.longitude;
-            ctrlData->kclData.kclActionCmd.goal.depth = taskData_->diveDepth;
+            ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepth; 
 
         } else if (currentPhase == PipelinePipeInspectionPhase::MOVING_AWAY_FROM_PIPELINE_STRUCTURE) {
             // We are close to the structure, so we have to move away from it

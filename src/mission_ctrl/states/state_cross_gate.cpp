@@ -22,7 +22,6 @@ namespace states {
                 ctb::LocalNED2LatLong(localPosA, ctrlData->inertialF_linearPosition, posA, alt);
                 ctb::LocalNED2LatLong(localPosB, ctrlData->inertialF_linearPosition, posB, alt);
             } else {
-                
 
                 posA = systemStatus_->conf.debugBuoysPositions[0];
                 posB = systemStatus_->conf.debugBuoysPositions[1];
@@ -75,33 +74,35 @@ namespace states {
             if (distance < systemStatus_->conf.latlongTolerance) {
                 reachedFrontOfGate = true;
                 ctrlData->kclData.kclActionCmd.underExecution = false; // Reset the command execution state
-            }else{
-                std::cerr << "Distance to first waypoint: "<< distance << "m which is at "
-                          << firstWp.latitude << ", " << firstWp.longitude << "\n";
-            }
+            } // }else{
+            //     std::cerr << "Distance to first waypoint: "<< distance << "m which is at "
+            //               << firstWp.latitude << ", " << firstWp.longitude << "\n";
+            // }
         } else {
             ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, secondWp, distance, azimuthRad);
             if (distance < systemStatus_->conf.latlongTolerance) {
                 return this->SetNextMissionState();
-            }else{
-                std::cerr << "Distance to second waypoint: " << distance << "m which is at "
-                          << secondWp.latitude << ", " << secondWp.longitude << "\n";
+            } // }else{
+            //     std::cerr << "Distance to second waypoint: " << distance << "m which is at "
+            //               << secondWp.latitude << ", " << secondWp.longitude << "\n";
 
-            }
+            // }
         }
         if (!ctrlData->kclData.kclActionCmd.underExecution) {
             ctrlData->kclData.kclActionCmd = mission::kclCmd();
             ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
             if (reachedFrontOfGate) {
-                std::cerr << "Crossing gate, moving to second waypoint: "
-                          << secondWp.latitude << ", " << secondWp.longitude << "\n";
+                if (systemStatus_->conf.debugPrints)
+                    std::cerr << "Reached front of gate, moving to second waypoint: "
+                              << secondWp.latitude << ", " << secondWp.longitude << "\n";
+
                 ctrlData->kclData.kclActionCmd.goal.position.latitude = secondWp.latitude;
                 ctrlData->kclData.kclActionCmd.goal.position.longitude = secondWp.longitude;
-                ctrlData->kclData.kclActionCmd.goal.depth = taskData_->diveDepth;
+                ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepth;
             } else {
                 ctrlData->kclData.kclActionCmd.goal.position.latitude = firstWp.latitude;
                 ctrlData->kclData.kclActionCmd.goal.position.longitude = firstWp.longitude;
-                ctrlData->kclData.kclActionCmd.goal.depth = taskData_->diveDepth;
+                ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepth;
             }
         }
 

@@ -78,7 +78,7 @@ namespace states {
         ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
         ctrlData->kclData.kclActionCmd.goal.position.latitude = areaPoints.front().latitude;
         ctrlData->kclData.kclActionCmd.goal.position.longitude = areaPoints.front().longitude;
-        ctrlData->kclData.kclActionCmd.goal.depth = taskData_->diveDepth;
+        ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepth; 
         return fsm::ok;
     }
 
@@ -161,7 +161,6 @@ namespace states {
 
     fsm::retval StateSearchBuoyArea::OnExit()
     {
-
         return fsm::ok;
     }
 }

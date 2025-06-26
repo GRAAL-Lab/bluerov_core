@@ -49,6 +49,7 @@ namespace states {
 
     fsm::retval StateSearchObject::OnExit()
     {
+        ctrlData->perceptionData.enableDtcBuoys = false;
         return fsm::ok;
     }
 
@@ -56,6 +57,7 @@ namespace states {
     {
         if (taskData_->taskPhases.front().second == opis::gate) {
             std::cerr << "Searching for gate...\n";
+            ctrlData->perceptionData.enableDtcBuoys = true;
 
             ctrlData->kclData.kclActionCmd = mission::kclCmd();
             ctrlData->kclData.kclActionCmd.goal.desired_state = "PATH_FOLLOWING";
