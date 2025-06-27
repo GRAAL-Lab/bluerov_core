@@ -15,41 +15,19 @@ class LoggerNode(Node):
     def __init__(self):
         super().__init__('logger_node')
         
-        # Get team name and create RAMI-compliant folder structure
-        self.team_name = self.declare_parameter('team_name', 'UniGe_ISME').get_parameter_value().string_value
-        self.mission_start_time = datetime.now(tz=timezone.utc)
+        self.team_name = None
+        self.mission_start_time = None
+        self.mission_dir = None
+        self.kml_path_nav = None
+        self.kml_path_mission = None
+        self.kml_path_objects = None
+        self.kml_nav = None
+        self.kml_mission = None
+        self.kml_objects = None
+        self.image_save_path = None
         
-        # Create RAMI-compliant folder name: TEAM_X_YYYYMMDD_HHMM
-        folder_timestamp = self.mission_start_time.strftime("%Y%m%d_%H%M")
-        folder_name = f"{self.team_name}_{folder_timestamp}"
-        
-        # Create log directory with RAMI-compliant structure
-        log_dir = os.path.expanduser('~/mission_logs')
-        self.mission_dir = os.path.join(log_dir, folder_name)
-        os.makedirs(self.mission_dir, exist_ok=True)
-       
-        # subscribers
-        self.pose_sub = self.create_subscription(PoseStamped, TOPICS_NAMES["Pose"], self.pose_callback, 10)
-        self.mission_sub = self.create_subscription(MissionStatus, TOPICS_NAMES["MissionStatus"], self.mission_callback, 10)
-        self.perception_sub = self.create_subscription(Obstacles, TOPICS_NAMES["Obstacles"],self.perception_callback,10)
-        self.image_sub = self.create_subscription(Image, TOPICS_NAMES["Camera"], self.camera_callback, 10)
-        self.detections_sub = self.create_subscription(DtcList, TOPICS_NAMES["Detections"], self.detection_callback, 10) # Subscribe to original high-res image topic
-
-        # Publisher for downsampled image
-        self.lowres_image_pub = self.create_publisher(Image, TOPICS_NAMES["CameraLowRes"], 10)
-        # Optional: Limit publish rate
-        self.last_publish_time = self.get_clock().now()
-        self.publish_interval = 1.0  # seconds (adjust as needed)
-
-        self.kml_path_nav = os.path.join(self.mission_dir, "vehicle_navigation_data.kml")
-        self.kml_path_mission = os.path.join(self.mission_dir, "mission_status_data.kml")
-        self.kml_path_objects = os.path.join(self.mission_dir, "object_recognition_data.kml")
-        self.image_save_path = os.path.join(self.mission_dir, "object_images")
-        os.makedirs(self.image_save_path, exist_ok=True)
-        
-        self.kml_nav = simplekml.Kml()
-        self.kml_mission = simplekml.Kml()
-        self.kml_objects = simplekml.Kml()
+        self.init_subs_and_pubs()
+        self.create_folders__and_files()                
         
         self.save_interval = 10.0  # seconds
         self.save_timer = self.create_timer(self.save_interval, self.save_logs_callback)
@@ -68,17 +46,63 @@ class LoggerNode(Node):
         self.seen_number_ids = set()
         self.msn_manipulation_flag = False
         self.dtc_manipulation_flag = False
+        
         # Initialize rosbag process handle
         self.rosbag_process = None
         self.rosbag_stop_timer = None
 
         # Log pose at 1 Hz
         self.timer = self.create_timer(1.0, self.log_pose)    
-
+        
+        
+    def create_folders__and_files(self):
+        """        Initializes the folder structure and KML files for logging mission data.
+        Creates a RAMI-compliant folder structure based on the team name and mission start time.
+        Creates KML files for navigation, mission status, and object recognition data.
+        Also creates a directory for saving images of recognized objects.
+        """
+        
+        # Get team name and create RAMI-compliant folder structure
+        self.team_name = self.declare_parameter('team_name', 'UniGe_ISME').get_parameter_value().string_value
+        self.mission_start_time = datetime.now(tz=timezone.utc)
+        
+        # Create RAMI-compliant folder name: TEAM_X_YYYYMMDD_HHMM
+        folder_timestamp = self.mission_start_time.strftime("%Y%m%d_%H%M")
+        folder_name = f"{self.team_name}_{folder_timestamp}"
+        
+        # Create log directory with RAMI-compliant structure
+        log_dir = os.path.expanduser('~/mission_logs')
+        self.mission_dir = os.path.join(log_dir, folder_name)
+        os.makedirs(self.mission_dir, exist_ok=True)
+        
+        self.kml_path_nav = os.path.join(self.mission_dir, "vehicle_navigation_data.kml")
+        self.kml_path_mission = os.path.join(self.mission_dir, "mission_status_data.kml")
+        self.kml_path_objects = os.path.join(self.mission_dir, "object_recognition_data.kml")
+        self.image_save_path = os.path.join(self.mission_dir, "object_images")
+        os.makedirs(self.image_save_path, exist_ok=True)
+        
+        self.kml_nav = simplekml.Kml()
+        self.kml_mission = simplekml.Kml()
+        self.kml_objects = simplekml.Kml()
+        
         self.get_logger().info(f"Logging navigation data to: {self.kml_path_nav}")
         self.get_logger().info(f"Logging mission status to: {self.kml_path_mission}")
         self.get_logger().info(f"Logging object recognition data to: {self.kml_path_objects}")
         
+        
+    def init_subs_and_pubs(self):
+        # subscribers
+        self.pose_sub = self.create_subscription(PoseStamped, TOPICS_NAMES["Pose"], self.pose_callback, 10)
+        self.mission_sub = self.create_subscription(MissionStatus, TOPICS_NAMES["MissionStatus"], self.mission_callback, 10)
+        self.perception_sub = self.create_subscription(Obstacles, TOPICS_NAMES["Obstacles"],self.perception_callback,10)
+        self.image_sub = self.create_subscription(Image, TOPICS_NAMES["Camera"], self.camera_callback, 10)
+        self.detections_sub = self.create_subscription(DtcList, TOPICS_NAMES["Detections"], self.detection_callback, 10) # Subscribe to original high-res image topic
+
+        # Publisher for downsampled image
+        self.lowres_image_pub = self.create_publisher(Image, TOPICS_NAMES["CameraLowRes"], 10)
+        # Optional: Limit publish rate
+        self.last_publish_time = self.get_clock().now()
+        self.publish_interval = 1.0  # seconds (adjust as needed)
 
     def pose_callback(self, msg: PoseStamped):
         self.latest_pose = msg
@@ -117,14 +141,13 @@ class LoggerNode(Node):
         try:
             if self.is_manipulation(msg):
                 self.msn_manipulation_flag = True
-                self.handle_mission_status()
             else:
                 self.msn_manipulation_flag = False
                   
             self.handle_mission_status()
             
             if self.is_mission_status_changed(msg):
-                self.log_mission_status(msg)            
+                self.log_mission_status(msg)          
                 
         except Exception as e:
             self.get_logger().error(f"[MISSION] Logging error: {e}")
@@ -138,7 +161,7 @@ class LoggerNode(Node):
             state_object != self.last_state_object
         )
         return changed
-    
+
     def is_manipulation(self, msg: MissionStatus) -> bool:
         state = getattr(msg, 'state', None)
         state_object = getattr(msg, 'state_object', None)
