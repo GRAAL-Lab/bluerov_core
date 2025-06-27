@@ -22,7 +22,8 @@ const std::string objects = "/detections";
 const std::string pose_desired_global = "/auv/global/pose_desired";
 const std::string velocity_desired_global = "/auv/global/velocity_desired";
 
-const std::string heart_beat = "/auv/heart_beat";
+const std::string ardusub_heartbeat = "/auv/heart_beat/ardusub";
+const std::string bridge_heartbeat = "/auv/heart_beat/bridge";
 const std::string global_origin = "/auv/global/origin";
 const std::string battery_status = "/auv/battery_status";
 const std::string ekf_status = "/auv/ekf_status";
