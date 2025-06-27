@@ -19,7 +19,7 @@ TOPICS_NAMES = {
     "Pose": "/auv/global/pose_actual",
     "MissionStatus": "/auv/mission/status",
     "Obstacles": "/dtc/obstacles",
-    "Camera": "/testing/sf/AUV/rgb_camera", #testing topic, to be changed to /camera/image_raw ?
+    "Camera": "/camera/image_raw",
     "Detections": "/detections",
     "CameraLowRes": "camera/image_low_res",
 }
