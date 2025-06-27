@@ -24,6 +24,7 @@
 #include "auv_core_helper/msg/pose_stamped.hpp"
 #include "auv_core_helper/msg/system_status.hpp"
 #include "auv_core_helper/srv/mission_command.hpp"
+#include "auv_core_helper/srv/set_gimbal_attitude.hpp"
 #include "auv_core_helper/topicnames.hpp"
 
 namespace mission {
@@ -55,6 +56,8 @@ class MissionController : public rclcpp::Node {
     rclcpp::Subscription<auv_core_helper::msg::KclStatus>::SharedPtr KclSub_;
     rclcpp_action::Client<auv_core_helper::action::SetKCL>::SharedPtr setKCLClient_;
     rclcpp::Service<auv_core_helper::srv::MissionCommand>::SharedPtr missionCommandService_;
+    rclcpp::Client<auv_core_helper::srv::SetGimbalAttitude>::SharedPtr setGimbalAttitudeService_;
+    double lastSetGimbalAttitude_ = 0.0;
 
     std_msgs::msg::String debugMsg;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr debugPub_;
@@ -64,6 +67,10 @@ class MissionController : public rclcpp::Node {
 
     rclcpp_action::Client<auv_core_helper::action::SetKCL>::SendGoalOptions kclSendGoalOptions_;
 
+    // bool latestMissionCmdSet_ = false;
+    // bool restartingLatestMissionCmd_ = false;
+    // auv_core_helper::srv::MissionCommand::Request::SharedPtr latestMissionCmdRequest_;
+
     void SimulateMissionCmdFromFile();
     void LoadConfiguration();
 
@@ -71,6 +78,7 @@ class MissionController : public rclcpp::Node {
     bool kclCmd();
     bool kclStopCmd();
     bool kclCancelCmd();
+    void SetGimbalAttitude();
 
     // FSM
     void SetUpFSM();

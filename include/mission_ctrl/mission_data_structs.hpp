@@ -10,6 +10,7 @@
 #include "rclcpp/rclcpp.hpp"
 
 #include "auv_core_helper/action/set_kcl.hpp"
+#include "auv_core_helper/msg/dtc_list.hpp"
 #include "auv_core_helper/msg/dtc_pipeline_pipe.hpp"
 #include "auv_core_helper/srv/mission_command.hpp"
 
@@ -52,15 +53,14 @@ struct MissionCtrlConf {
     bool simCtrlStation;
     bool debugPrints;
 
+    //bool restartLatestMission = false; // if true, the latest mission will be restarted once systems are back online
     bool useStartingDepthAsSurfaceDepth = true;
     double surfaceDepth = 0.2; 
     double diveDepth = 1.5; 
     double depthTolerance = 0.3;
     double latlongTolerance = 0.5;
     int ctrlRate = 1;
-    double bridgeLivenessTimeout = 2.0;
-    double kclLivenessTimeout = 2.0;
-    double perceptionLivenessTimeout = 2.0;
+
     double safetyAreaTimeout = 15.0; // seconds, time to wait before setting off safety area breach
     double localizationTimeout = 15.0; // seconds, max time to get gps lock
 
@@ -71,7 +71,8 @@ struct MissionCtrlConf {
 
     bool debugBuoys = false;
     std::vector<ctb::LatLong> debugBuoysPositions;
-    ctb::LatLong debugPosition;
+    int debug_position_selection = 0; 
+    std::vector<ctb::LatLong> debugPositions;
 };
 
 struct BuoyActionColorMap {
@@ -137,9 +138,10 @@ struct MissionData {
 };
 
 struct PerceptionData {
-    bool isAlive;
-    std::string state;
     bool newDtcFromPerception;
+    auv_core_helper::msg::DtcList dtcList;
+
+    double desiredGimbalAttitude = 0.0;
 
     bool enableDtcObstacles;
     bool enableDtcBuoys;
@@ -147,7 +149,6 @@ struct PerceptionData {
     bool enableDtcManipulationConsole;
 
     bool enableDtcPipes;
-    // PipelinePipeDtc currentPipeDtc;
     auv_core_helper::msg::DtcPipelinePipe currentPipeDtc;
 
     std::map<std::string, Buoy> detectedBuoys;
@@ -163,8 +164,6 @@ struct kclCmd {
 };
 
 struct KinematicData {
-    bool isAlive;
-    std::string state;
 
     kclCmd kclActionCmd;
 };

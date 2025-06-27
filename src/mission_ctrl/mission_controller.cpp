@@ -39,6 +39,9 @@ MissionController::MissionController()
         auv_core_helper::topicnames::mission_cmd_service,
         std::bind(&MissionController::MissionCommandCB, this, std::placeholders::_1, std::placeholders::_2));
 
+    setGimbalAttitudeService_ = this->create_client<auv_core_helper::srv::SetGimbalAttitude>(
+        auv_core_helper::topicnames::gimbal_service);
+
     kclSendGoalOptions_ = rclcpp_action::Client<auv_core_helper::action::SetKCL>::SendGoalOptions();
     kclSendGoalOptions_.result_callback = std::bind(&MissionController::ActionResultCallback, this, std::placeholders::_1);
     kclSendGoalOptions_.feedback_callback = std::bind(&MissionController::ActionFeedbackCallback, this,
@@ -86,6 +89,8 @@ void MissionController::StatusPub()
     }
     status.requests.obstacles = ctrlData_->perceptionData.enableDtcObstacles;
     status.requests.buoys = ctrlData_->perceptionData.enableDtcBuoys;
+    status.requests.main_pipe = ctrlData_->perceptionData.enableDtcMainPipe;
+    status.requests.manipulation_console = ctrlData_->perceptionData.enableDtcManipulationConsole;
 
     missionStatusPub_->publish(status);
 }
@@ -122,6 +127,9 @@ void MissionController::Run()
         // }
 
     } else {
+        if (systemStatus_->State() == MissionCtrlState::WAITING_FOR_MISSION_CMD) {
+            systemStatus_->lastStateSwitchTime = now;
+        }
         double timeSinceLastSwitch = now.seconds() - systemStatus_->lastStateSwitchTime.seconds();
         // Get current state timeout value TODO if same state with different objectives than timeout is not gonna reset
         double currentStateTimeout = statesMap_[rFsm_.GetCurrentStateName()]->stateTimeout;
@@ -143,6 +151,8 @@ void MissionController::Run()
         // kclCancelCmd();
         return;
     }
+
+    SetGimbalAttitude();
 
     if (ctrlData_->kclData.kclActionCmd.newCmd) {
         kclCmd();
@@ -178,6 +188,7 @@ void MissionController::SystemStatusCB(const auv_core_helper::msg::SystemStatus:
             if (systemStatus_->conf.simCtrlStation) {
                 simCtrlStationTimer_->reset();
             }
+            ctrlData_->perceptionData.desiredGimbalAttitude = 0.0;
         }
     } else {
         systemStatus_->SetState(MissionCtrlState::WAITING_FOR_SYSTEM_TO_BE_READY);
@@ -188,6 +199,7 @@ void MissionController::PerceptionCB(const auv_core_helper::msg::DtcList::Shared
 {
 
     ctrlData_->perceptionData.newDtcFromPerception = true;
+    ctrlData_->perceptionData.dtcList = *msg;
 
     for (auto& buoy : msg->buoys) {
         Buoy b;
@@ -230,6 +242,10 @@ void MissionController::MissionCommandCB(
     const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request,
     std::shared_ptr<auv_core_helper::srv::MissionCommand::Response> response)
 {
+    // if(systemStatus_->conf.restartLatestMission){
+    //     latestMissionCmdRequest_ = std::make_shared<auv_core_helper::srv::MissionCommand::Request>(*request);
+    //     latestMissionCmdSet_ = true;
+    // }
 
     if (!systemStatus_->SetState(MissionCtrlState::ON_A_MISSION)) {
         response->res = false;
@@ -302,7 +318,7 @@ bool MissionController::StartMission()
     if (systemStatus_->conf.useStartingDepthAsSurfaceDepth && ctrlData_->depth < 1.0) {
         systemStatus_->conf.surfaceDepth = ctrlData_->depth;
         RCLCPP_INFO(this->get_logger(), "Setting surface depth as current depth: [%f]", systemStatus_->conf.surfaceDepth);
-    } 
+    }
 
     std::stringstream ss;
     ss << *taskData_;
@@ -391,17 +407,13 @@ bool MissionController::kclStopCmd()
 {
     RCLCPP_WARN(this->get_logger(), "Sending IDLE cmd and moving to INIT state.");
 
-    // systemStatus_->Init(this->get_clock()->now());
-
-    // systemStatus_->missionUnderExecution = false;
-    // rFsm_.SetInitState(mission::states::ID::init);
-
     auv_core_helper::action::SetKCL::Goal goal;
     goal.desired_state = "IDLE";
-    while (!setKCLClient_->wait_for_action_server(std::chrono::seconds(1))) {
-        RCLCPP_WARN(this->get_logger(), "Waiting for KCL action server to be ready...");
-    }
+    // while (!setKCLClient_->wait_for_action_server(std::chrono::seconds(1))) {
+    //     RCLCPP_WARN(this->get_logger(), "Waiting for KCL action server to be ready...");
+    // }
     setKCLClient_->async_send_goal(goal, kclSendGoalOptions_);
+    RCLCPP_WARN(this->get_logger(), "KCL action server IDLE cmd sent.");
 
     ResetTaskDataFSM();
     return true;
@@ -433,7 +445,7 @@ bool MissionController::kclCmd()
         return true;
     }
     auto timeout = std::chrono::duration_cast<std::chrono::nanoseconds>(
-        std::chrono::duration<double>(systemStatus_->conf.kclLivenessTimeout));
+        std::chrono::duration<double>(0.5));
     if (setKCLClient_->wait_for_action_server(timeout)) {
         setKCLClient_->async_send_goal(goal, kclSendGoalOptions_);
     } else {
@@ -455,6 +467,7 @@ void MissionController::ActionResultCallback(const rclcpp_action::ClientGoalHand
     RCLCPP_INFO(this->get_logger(), "KCL command RESULT [%s] with message [%s]",
         ctrlData_->kclData.kclActionCmd.result.success ? "SUCCESS" : "FAILURE",
         ctrlData_->kclData.kclActionCmd.result.message.c_str());
+
     // ctrlData_->kclData.kclActionCmd.underExecution = false;
     //  if (result.result->success) {
     //      ctrlData_->kclData.kclActionCmd.completed = false;
@@ -469,6 +482,13 @@ void MissionController::ActionFeedbackCallback(
     ctrlData_->kclData.kclActionCmd.feedback.action_progress = feedback->action_progress;
     systemStatus_->lastKclFeedbackTime = this->get_clock()->now();
 
+    if (feedback->actual_state == "PATH_FOLLOWING" && feedback->action_progress >= 95.0) {
+        // probably we are doing a search path and it is almost done without founding the goal so stop the mission
+        RCLCPP_ERROR(this->get_logger(), "KCL almost done with path following, but not finding the goal, so stopping the mission.");
+        kclStopCmd();
+        
+    }
+
     if (ctrlData_->kclData.kclActionCmd.underExecution && ctrlData_->kclData.kclActionCmd.goal.desired_state != ctrlData_->kclData.kclActionCmd.feedback.actual_state) {
         RCLCPP_WARN(this->get_logger(), "Cancelling KCL action since actual state is different from the desired state: [%s] vs [%s]",
             ctrlData_->kclData.kclActionCmd.goal.desired_state.c_str(),
@@ -482,6 +502,43 @@ void MissionController::ActionFeedbackCallback(
             RCLCPP_INFO(this->get_logger(), "KCL command FEEDBACK: [%s] with progress %.2f",
                 ctrlData_->kclData.kclActionCmd.feedback.actual_state.c_str(),
                 ctrlData_->kclData.kclActionCmd.feedback.action_progress);
+        }
+    }
+}
+
+void MissionController::SetGimbalAttitude()
+{
+    if (ctrlData_->perceptionData.desiredGimbalAttitude != lastSetGimbalAttitude_) {
+        auto timeoutMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::duration<double>(0.250)); // 250 ms
+
+        std::cerr << "Setting gimbal attitude to: " << ctrlData_->perceptionData.desiredGimbalAttitude << std::endl;
+
+        if (setGimbalAttitudeService_->service_is_ready()) {
+            auto request = std::make_shared<auv_core_helper::srv::SetGimbalAttitude::Request>();
+            request->yaw = ctrlData_->perceptionData.desiredGimbalAttitude;
+
+            auto future = setGimbalAttitudeService_->async_send_request(request);
+
+            // Wait up to timeoutMilliseconds for the result
+            auto ret = rclcpp::spin_until_future_complete(
+                this->get_node_base_interface(),
+                future,
+                timeoutMilliseconds);
+
+            if (ret == rclcpp::FutureReturnCode::SUCCESS) {
+                auto response = future.get();
+                if (response->success) {
+                    lastSetGimbalAttitude_ = ctrlData_->perceptionData.desiredGimbalAttitude;
+                    RCLCPP_INFO(this->get_logger(), "Gimbal attitude set successfully.");
+                } else {
+                    RCLCPP_WARN(this->get_logger(), "Service call failed to set gimbal attitude.");
+                }
+            } else {
+                RCLCPP_WARN(this->get_logger(), "Timed out waiting for gimbal attitude service response.");
+            }
+        } else {
+            RCLCPP_WARN(this->get_logger(), "Gimbal attitude service is not ready.");
         }
     }
 }
@@ -503,31 +560,40 @@ void MissionController::LoadConfiguration()
         ctb::GetParam(confObj, systemStatus_->conf.simCtrlStation, "simulate_ctrl_station");
         ctb::GetParam(confObj, systemStatus_->conf.debugPrints, "debug_prints");
 
+        // ctb::GetParam(confObj, systemStatus_->conf.restartLatestMission, "restart_latest_mission");
         ctb::GetParam(confObj, systemStatus_->conf.useStartingDepthAsSurfaceDepth, "use_starting_depth_as_surface_depth");
         ctb::GetParam(confObj, systemStatus_->conf.surfaceDepth, "surface_depth");
         ctb::GetParam(confObj, systemStatus_->conf.diveDepth, "dive_depth");
         ctb::GetParam(confObj, systemStatus_->conf.depthTolerance, "depth_tolerance");
         ctb::GetParam(confObj, systemStatus_->conf.latlongTolerance, "latlong_tolerance");
         ctb::GetParam(confObj, systemStatus_->conf.ctrlRate, "ctrl_rate");
-        // ctb::GetParam(confObj, systemStatus_->conf.bridgeLivenessTimeout, "bridge_liveness_timeout");
-        // ctb::GetParam(confObj, systemStatus_->conf.perceptionLivenessTimeout, "perception_liveness_timeout");
-        ctb::GetParam(confObj, systemStatus_->conf.safetyAreaTimeout, "safety_area_timeout");
-        // ctb::GetParam(confObj, systemStatus_->conf.localizationTimeout, "localization_timeout");
-        //ctb::GetParam(confObj, systemStatus_->conf.kclLivenessTimeout, "kcl_liveness_timeout");
+
         ctb::GetParam(confObj, systemStatus_->conf.debugBuoys, "buoysDebug");
         ctb::GetParam(confObj, systemStatus_->conf.ignoreBuoyColor, "ignore_buoy_color");
         ctb::GetParam(confObj, systemStatus_->conf.gateWpsDistance, "gate_wps_distance");
 
         const libconfig::Setting& root = confObj.getRoot();
 
+        // debug_positions
+        ctb::GetParam(confObj, systemStatus_->conf.debug_position_selection, "debug_position_selection");
+        std::cerr << "Debug positions (selected " << systemStatus_->conf.debug_position_selection << "):" << std::endl;
+        const libconfig::Setting& debugPositionsSetting = root["debug_positions"];
+        for (int i = 0; i < debugPositionsSetting.getLength(); ++i) {
+            const libconfig::Setting& point = debugPositionsSetting[i];
+            Eigen::VectorXd localTmp;
+            ctb::GetParamVector(point, localTmp, "point");
 
-        Eigen::VectorXd latLongTmp;
-        ctb::GetParamVector(confObj, latLongTmp, "debug_position");
-        systemStatus_->conf.debugPosition.latitude = latLongTmp[0];
-        systemStatus_->conf.debugPosition.longitude = latLongTmp[1];
-        if (systemStatus_->conf.simBridge) {
-            ctrlData_->inertialF_linearPosition = systemStatus_->conf.debugPosition;
+            ctb::LatLong latLongTmp(localTmp[0], localTmp[1]);
+            systemStatus_->conf.debugPositions.push_back(latLongTmp);
         }
+
+        // Eigen::VectorXd latLongTmp;
+        // ctb::GetParamVector(confObj, latLongTmp, "debug_position");
+        // systemStatus_->conf.debugPosition.latitude = latLongTmp[0];
+        // systemStatus_->conf.debugPosition.longitude = latLongTmp[1];
+        // if (systemStatus_->conf.simBridge) {
+        //     ctrlData_->inertialF_linearPosition = systemStatus_->conf.debugPosition;
+        //}
 
         if (systemStatus_->conf.debugBuoys) {
             std::cerr << "Debug buoys positions:" << std::endl;
@@ -568,10 +634,6 @@ void MissionController::LoadConfiguration()
         RCLCPP_INFO(this->get_logger(), "depthTolerance: %f", systemStatus_->conf.depthTolerance);
         RCLCPP_INFO(this->get_logger(), "latlongTolerance: %f", systemStatus_->conf.latlongTolerance);
         RCLCPP_INFO(this->get_logger(), "ctrlRate: %i", systemStatus_->conf.ctrlRate);
-        RCLCPP_INFO(this->get_logger(), "bridgeLivenessTimeout: %f", systemStatus_->conf.bridgeLivenessTimeout);
-        RCLCPP_INFO(this->get_logger(), "perceptionLivenessTimeout: %f", systemStatus_->conf.perceptionLivenessTimeout);
-        RCLCPP_INFO(this->get_logger(), "kclLivenessTimeout: %f", systemStatus_->conf.kclLivenessTimeout);
-        RCLCPP_INFO(this->get_logger(), "safetyAreaTimeout: %f", systemStatus_->conf.safetyAreaTimeout);
         RCLCPP_INFO(this->get_logger(), "localizationTimeout: %f", systemStatus_->conf.localizationTimeout);
         RCLCPP_INFO(this->get_logger(), "Safety boundary points:");
         for (const auto& point : systemStatus_->conf.safetyBoundary) {

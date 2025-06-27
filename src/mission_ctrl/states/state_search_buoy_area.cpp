@@ -25,6 +25,7 @@ namespace states {
         }
 
         if (!resumeSearch) {
+            //First time here
             areaPoints = std::queue<ctb::LatLong>();
 
             numberOfBuoysInspected = 0;

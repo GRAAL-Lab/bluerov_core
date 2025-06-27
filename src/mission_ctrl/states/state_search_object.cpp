@@ -37,6 +37,11 @@ namespace states {
                 }
             } else if (taskData_->taskPhases.front().second == opis::mainPipe) {
             } else if (taskData_->taskPhases.front().second == opis::manipulationConsole) {
+                if (ctrlData->perceptionData.dtcList.manipulation_console){
+                    if (systemStatus_->conf.debugPrints) {
+                                std::cerr << "Manipulation console FOUND!!! \n";
+                            }
+                    return SetNextMissionState();}
             }
         }
 
@@ -50,6 +55,9 @@ namespace states {
     fsm::retval StateSearchObject::OnExit()
     {
         ctrlData->perceptionData.enableDtcBuoys = false;
+        ctrlData->perceptionData.enableDtcManipulationConsole = false;
+        ctrlData->perceptionData.desiredGimbalAttitude = 0.0;
+
         return fsm::ok;
     }
 
@@ -71,6 +79,15 @@ namespace states {
             // tell the KCL to turn around
         } else if (taskData_->taskPhases.front().second == opis::manipulationConsole) {
             std::cerr << "Searching for manipulation console...\n";
+
+            ctrlData->perceptionData.enableDtcManipulationConsole = true;
+            ctrlData->perceptionData.desiredGimbalAttitude = 45.0 / 180.0 * M_PI; // 50 degrees max
+
+            ctrlData->kclData.kclActionCmd = mission::kclCmd();
+            ctrlData->kclData.kclActionCmd.goal.desired_state = "PATH_FOLLOWING";
+            ctrlData->kclData.kclActionCmd.goal.path_mode = "Spiral2D";
+            ctrlData->kclData.kclActionCmd.goal.spiral_data.spiral_diameter = 5.0;
+            ctrlData->kclData.kclActionCmd.goal.spiral_data.spiral_increment = 0.5;
 
             // tell the KCL to turn around
         } else {

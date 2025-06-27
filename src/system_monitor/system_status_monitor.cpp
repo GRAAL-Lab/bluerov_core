@@ -4,7 +4,7 @@ namespace mission {
 SystemStatusMonitor::SystemStatusMonitor()
     : Node("system_status_monitor_node")
 {
-    //     LoadConfiguration(); // REQUIRES SYSTEM STATUS TO BE INITIALIZED
+    LoadConfiguration(); // REQUIRES SYSTEM STATUS TO BE INITIALIZED
 
     lastMissionCtrlTime = rclcpp::Time(0, 0, this->get_clock()->get_clock_type());
     lastBridgeTime = rclcpp::Time(0, 0, this->get_clock()->get_clock_type());
@@ -84,15 +84,32 @@ void SystemStatusMonitor::StatusPub()
         status.perception = false;
     }
 
-    status.vehicle_is_armed = vehicleIsSafe && safetySwitchIsOff_;
+    status.vehicle_is_armed = safetySwitchIsOff_;
+
+    if (missionUnderExecution) {
+        if (vehicleReachedSafetyArea_) {
+            status.vehicle_is_armed = status.vehicle_is_armed && vehicleIsInSafetyArea_;
+        } else {
+            auto timeLeftToReachSafetyArea = this->get_clock()->now() - rcvMissionCmdTime;
+            if (timeLeftToReachSafetyArea.seconds() > vehicleMovingToSafetyAreaTimeout_) {
+                status.vehicle_is_armed = false;
+                RCLCPP_ERROR(get_logger(), "Vehicle did not reach safety area soon enough.");
+            }
+        }
+        status.vehicle_is_armed = status.vehicle_is_armed && vehicleIsFreeToMove_;
+    } 
 
     systemStatusPub_->publish(status);
     std::cout << "[M_Ctrl: " << (status.mission_ctrl ? "On" : "Off")
               << "] [KCL: " << (status.kcl ? "On" : "Off")
               << "] [Percept: " << (status.perception ? "On" : "Off")
               << "] [Bridge: " << (status.bridge ? "On" : "Off")
-              << "] [Vh armed: " << (status.vehicle_is_armed ? "On" : "Off") 
-              << "]\n";
+              << "] [Vh armed: " << (status.vehicle_is_armed ? "On" : "Off")
+                << "\n      ->(   vehicle looks free to move:  " << (vehicleIsFreeToMove_ ? "Yes" : "No") << ",\n"
+                << "            safety switch is Off:        " << (safetySwitchIsOff_ ? "Yes" : "No") << ",\n"
+                << "            vehicle reached safety area: " << (vehicleReachedSafetyArea_ ? "Yes" : "No") << ",\n"
+                << "            vehicle is in safety area:   " << (vehicleIsInSafetyArea_ ? "Yes" : "No") << ",\n"
+                << "            mission under execution:     " << (missionUnderExecution ? "Yes" : "No") << "\n       )]\n";
 }
 
 void SystemStatusMonitor::MissionCtrlCB(const auv_core_helper::msg::MissionStatus::SharedPtr msg)
@@ -103,6 +120,7 @@ void SystemStatusMonitor::MissionCtrlCB(const auv_core_helper::msg::MissionStatu
         rcvMissionCmdTime = this->get_clock()->now();
     } else if (missionCtrlStatus_ != "WAITING FOR CMD" && msg->state == "WAITING FOR CMD") {
         RCLCPP_INFO(get_logger(), "Mission Control status changed to 'WAITING FOR CMD'.");
+        vehicleReachedSafetyArea_ = false;
         missionUnderExecution = false;
     }
 
@@ -131,7 +149,7 @@ void SystemStatusMonitor::PerceptionCB(const auv_core_helper::msg::DtcList::Shar
 void SystemStatusMonitor::SafetySwitchCB(const std_msgs::msg::Bool::SharedPtr msg)
 {
     safetySwitchIsOff_ = msg->data;
-}    
+}
 
 void SystemStatusMonitor::CustomSwitchCB(const std_msgs::msg::Bool::SharedPtr msg)
 {
@@ -150,27 +168,13 @@ void SystemStatusMonitor::PoseCB(const auv_core_helper::msg::PoseStamped::Shared
         }
     }
 
-    if (!missionUnderExecution) {
-        vehicleIsSafe = true;
-        return;
-    }
-
     if (IsPointWithinBoundaries(ctb::LatLong(msg->position.latitude, msg->position.longitude))) {
-        if (!vehicleReachedSafetyArea_) {
+        if (missionUnderExecution)
             vehicleReachedSafetyArea_ = true;
-        }
-        vehicleIsSafe = true;
+
+        vehicleIsInSafetyArea_ = true;
     } else {
-        if (!vehicleReachedSafetyArea_) {
-            auto timeLeftToReachSafetyArea = this->get_clock()->now() - rcvMissionCmdTime;
-            if (timeLeftToReachSafetyArea.seconds() > vehicleMovingToSafetyAreaTimeout_) {
-                vehicleIsSafe = false;
-                RCLCPP_ERROR(get_logger(), "Vehicle did not reach safety area soon enough.");
-            }
-        } else {
-            vehicleIsSafe = false;
-            RCLCPP_ERROR(get_logger(), "Vehicle is not in the safety area anymore.");
-        }
+        vehicleIsInSafetyArea_ = false;
     }
 }
 
@@ -221,8 +225,6 @@ void SystemStatusMonitor::LoadConfiguration()
         ctb::GetParam(confObj, perceptionTimeout_, "perception_timeout");
         ctb::GetParam(confObj, vehicleMovingToSafetyAreaTimeout_, "vehicle_to_safety_area_timeout");
 
-
-
         const libconfig::Setting& root = confObj.getRoot();
         const libconfig::Setting& safetyBoundarySetting = root["safetyBoundary"];
         std::cerr << "Safety boundary point: " << std::endl;
@@ -230,7 +232,7 @@ void SystemStatusMonitor::LoadConfiguration()
             const libconfig::Setting& point = safetyBoundarySetting[i];
             Eigen::VectorXd latLongTmp;
             ctb::GetParamVector(point, latLongTmp, "point");
-            ctb::LatLong stonefishCentroid(44.095952330602564, 9.865115308770484); // from update pose stonefish in stonefish utils
+            ctb::LatLong stonefishCentroid(44.095952330602564, 9.865115308770484); // from -update pose stonefish- in stonefish utils
             // print local position
             Eigen::Vector3d localTmp3d;
             ctb::LatLong globalPosition(latLongTmp[0], latLongTmp[1]);

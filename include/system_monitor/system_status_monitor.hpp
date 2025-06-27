@@ -1,22 +1,20 @@
-#include <cmath>
-#include <ament_index_cpp/get_package_share_directory.hpp>
-#include <libconfig.h++>
 #include "ctrl_toolbox/HelperFunctions.h"
+#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <cmath>
+#include <libconfig.h++>
 
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 
-#include "std_msgs/msg/bool.hpp"
-#include "auv_core_helper/msg/system_status.hpp"
-#include "auv_core_helper/msg/mission_status.hpp"
 #include "auv_core_helper/action/set_kcl.hpp"
 #include "auv_core_helper/msg/dtc_list.hpp"
 #include "auv_core_helper/msg/heart_beat.hpp"
 #include "auv_core_helper/msg/kcl_status.hpp"
 #include "auv_core_helper/msg/mission_status.hpp"
 #include "auv_core_helper/msg/pose_stamped.hpp"
-#include "auv_core_helper/srv/mission_command.hpp"
+#include "auv_core_helper/msg/system_status.hpp"
 #include "auv_core_helper/topicnames.hpp"
+#include "std_msgs/msg/bool.hpp"
 
 namespace mission {
 
@@ -29,8 +27,9 @@ class SystemStatusMonitor : public rclcpp::Node {
     double perceptionTimeout_ = 2.0;
     double vehicleMovingToSafetyAreaTimeout_ = 60.0;
 
-    bool vehicleIsSafe = true;
+    bool vehicleIsFreeToMove_ = true; // false if it gets stuck (not implemented yet)
     bool safetySwitchIsOff_ = true; // At start of mission
+    bool vehicleIsInSafetyArea_ = true;
     bool vehicleReachedSafetyArea_ = false; // At start of mission
     std::vector<ctb::LatLong> safetyBoundary_;
 
@@ -72,9 +71,7 @@ class SystemStatusMonitor : public rclcpp::Node {
 
     void LoadConfiguration();
 
-
     bool IsPointWithinBoundaries(const ctb::LatLong& point);
-
 
 public:
     SystemStatusMonitor();
