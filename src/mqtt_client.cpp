@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <mqtt/async_client.h>
+#include "std_srvs/srv/trigger.hpp"
 
 #include "ament_index_cpp/get_package_share_directory.hpp"
 
@@ -46,8 +47,11 @@ public:
 		
 		pub_lat_ = this->create_publisher<std_msgs::msg::Float64>("latitude", 10);
 		pub_long_ = this->create_publisher<std_msgs::msg::Float64>("longitude", 10);
+		start_trigger_client_ = this->create_client<std_srvs::srv::Trigger>("/start_logging");
 
 		client_ = std::make_unique<mqtt::async_client>(mqttAddress_, clientId_);
+		start_logger_ = true;
+		
 		mqtt::connect_options connOpts;
 		connOpts.set_user_name(username_);
 		connOpts.set_password(password_);
@@ -102,6 +106,8 @@ private:
 	std::unique_ptr<mqtt::async_client> client_;
 	rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_lat_;
 	rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr pub_long_;
+	rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr start_trigger_client_;
+	bool start_logger_;
 
 	void message_arrived(mqtt::const_message_ptr msg) override
 	{
@@ -121,6 +127,13 @@ private:
 
 			if (type == "DYNAMIC_UPDATE")
 			{
+				if(start_logger_){
+					auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
+  					auto future = start_trigger_client_->async_send_request(request);
+  					start_logger_ = false;
+				}
+				
+  				
 				double *lat_long = ctljsn::geographic::CreateLatLongPositionFromJson(wm_json);
 
 				if (lat_long != nullptr)

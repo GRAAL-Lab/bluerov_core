@@ -10,6 +10,7 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/int32.hpp"
 #include "std_msgs/msg/empty.hpp"
+#include "std_srvs/srv/trigger.hpp"
 
 class TerminalNode : public rclcpp::Node
 {
@@ -20,6 +21,7 @@ public:
     dispatch_pub_ = this->create_publisher<std_msgs::msg::Empty>("/dispatch_request", 10);
     tbm_id_pub_ = this->create_publisher<std_msgs::msg::Int32>("/tbm_id", 10);
     rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr dispatch_pub_;
+    stop_trigger_client_ = this->create_client<std_srvs::srv::Trigger>("/stop_logging");
     std::thread([this]()
                 { MenuLoop(); })
         .detach();
@@ -29,6 +31,7 @@ public:
 private:
   rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr tbm_id_pub_;
   rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr dispatch_pub_;
+  rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr stop_trigger_client_;
 
   void MenuLoop()
   {
@@ -127,6 +130,9 @@ private:
           RCLCPP_INFO(this->get_logger(), "Post-processing script executed successfully.");
         else
           RCLCPP_ERROR(this->get_logger(), "Post-processing script failed with code %d", ret);
+          
+        auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
+  	auto future = stop_trigger_client_->async_send_request(request);
 
         break;
       }
@@ -135,6 +141,7 @@ private:
         RCLCPP_INFO(this->get_logger(), "Exit requested");
         rclcpp::shutdown();
         return;
+        
 
       default:
         std::cout << "Scelta non valida, riprova." << std::endl;

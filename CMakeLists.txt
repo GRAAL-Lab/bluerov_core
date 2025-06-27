@@ -42,6 +42,7 @@ find_package(auv_core_helper REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 find_package(mission_ctrl REQUIRED)
 find_package(ctrl_toolbox REQUIRED)
+find_package(std_srvs REQUIRED)
 
 # Define json_utils static library
 add_library(json_utils STATIC
@@ -91,12 +92,14 @@ ament_target_dependencies(mqtt_client
   rclcpp
   std_msgs
   ament_index_cpp
+  std_srvs
 )
 
 ament_target_dependencies(terminal
   rclcpp
   std_msgs
   ament_index_cpp
+  std_srvs
 )
 
 # Install targets
