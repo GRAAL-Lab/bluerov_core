@@ -51,6 +51,7 @@ const std::string kcl_setter_action = "/set_kcl_state";
 
 // Perceptions
 const std::string obstacles = "/objects";
+const std::string yolo_detections = "/objects";
 }
 }
 
