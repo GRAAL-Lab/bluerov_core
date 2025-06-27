@@ -21,7 +21,7 @@ def generate_launch_description():
             PathJoinSubstitution([
                 FindPackageShare('image_pipeline_obstacle_tracking'),
                 'launch/launch/',
-                'dtc_rami.py'
+                'perception.py'
             ])
         )
     )
