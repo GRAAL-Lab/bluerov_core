@@ -6,3 +6,4 @@ bool perception
 bool bridge
 
 bool vehicle_is_armed
+VehicleArmingRequisites details
