@@ -525,7 +525,14 @@ void BlueROVBridge::safetySwitchCallback(const std_msgs::msg::Bool::SharedPtr ms
   if (failsafe_active_){
     RCLCPP_WARN(this->get_logger(), "Failsafe active! Putting vehicle to POSHOLD mode, disarming vehicle and rejecting control commands.");
     setFlightMode("POSHOLD");
-    setArmState(failsafe_active_);
+    setArmState(false);
+    uint16_t rc[18];
+    for (int i = 0; i < 18; i++) {
+      rc[i] = 1000;
+    }
+    rcChannelsOverride(rc);
+    RCLCPP_WARN(this->get_logger(), "ALL RC channels overridden to disarm values.");
+    
   } else if (!failsafe_active_){
     RCLCPP_INFO(this->get_logger(), "Failsafe inactive. Vehicle control commands are now accepted.");
   }
@@ -638,6 +645,37 @@ void BlueROVBridge::setFlightMode(const std::string& mode)
   RCLCPP_INFO(this->get_logger(), "Setting flight-mode to %s", mode.c_str());
 }
 
+void BlueROVBridge::rcChannelsOverride(uint16_t rc[]){
+
+  mavlink_message_t msg;
+  mavlink_msg_rc_channels_override_pack(
+    system_id_,
+    component_id_,
+    &msg,
+    target_system_,
+    target_component_,
+    rc[0],
+    rc[1],
+    rc[2],
+    rc[3],
+    rc[4],
+    rc[5],
+    rc[6],
+    rc[7],
+    rc[8],
+    rc[9],
+    rc[10],
+    rc[11],
+    rc[12],
+    rc[13],
+    rc[14],
+    rc[15],
+    rc[16],
+    rc[17]
+  );
+  sendMavlinkMessage(msg);
+}
+
 void BlueROVBridge::setGlobalOriginServiceCallback(const std::shared_ptr<auv_core_helper::srv::SetGlobalOrigin::Request> request,
                                                    std::shared_ptr<auv_core_helper::srv::SetGlobalOrigin::Response> response){
   RCLCPP_INFO(this->get_logger(), "Setting global origin service called: %f, %f, %f", request->latitude, request->longitude, request->altitude);
@@ -677,8 +715,11 @@ void BlueROVBridge::setGlobalOrigin(mavlink_set_gps_global_origin_t& set_gps_glo
 void BlueROVBridge::gimbalServiceCallback(
   const std::shared_ptr<rmw_request_id_t> header,
   const std::shared_ptr<auv_core_helper::srv::SetGimbalAttitude::Request> request){
-
-  setGimbalAttitude(request->pitch, request->yaw);  
+  
+  float pitch = request->pitch * 180.0 / M_PI;
+  float yaw = request->yaw * 180.0 / M_PI;  
+  
+  setGimbalAttitude(pitch, yaw);        // The mavlink command expect the pitch and yaw in degrees
 
   auto response = std::make_shared<auv_core_helper::srv::SetGimbalAttitude::Response>();
   response->success = false;

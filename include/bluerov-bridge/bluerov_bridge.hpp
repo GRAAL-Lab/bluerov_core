@@ -231,7 +231,9 @@ private:
         const std::shared_ptr<rmw_request_id_t> header,
         const std::shared_ptr<auv_core_helper::srv::SetGimbalAttitude::Request> request);
 
-    void setGimbalAttitude(float gimbal_pitch, float gimbal_yaw);    
+    void setGimbalAttitude(float gimbal_pitch, float gimbal_yaw); 
+    
+    void rcChannelsOverride(uint16_t rc[]); 
 
     void desiredCtrlModeCallback(const std_msgs::msg::String::SharedPtr msg);
     
