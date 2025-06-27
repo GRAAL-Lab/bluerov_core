@@ -58,7 +58,8 @@ private:
     //--------------------------------------------------------------------------
     // ROS Publishers, Subscribers & Services
     //--------------------------------------------------------------------------
-    rclcpp::Publisher<auv_core_helper::msg::HeartBeat>::SharedPtr heartBeatPublisher_;
+    rclcpp::Publisher<auv_core_helper::msg::HeartBeat>::SharedPtr ardusubHeartBeatPublisher_;
+    rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr bridgeHeartBeatPublisher_;
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr globalOriginPublisher_;
     rclcpp::Publisher<auv_core_helper::msg::BatteryStatus>::SharedPtr batteryStatusPublisher_;
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseActualPublisher_;
@@ -84,7 +85,7 @@ private:
     // Timers
     //--------------------------------------------------------------------------
     rclcpp::TimerBase::SharedPtr bridge_heartbeat_timer_; 
-    rclcpp::TimerBase::SharedPtr autopilot_heartbeat_watchdog_timer_;
+    rclcpp::TimerBase::SharedPtr ardusub_heartbeat_watchdog_timer_;
     rclcpp::TimerBase::SharedPtr data_timer_;         // Timer for MAVLink data reception
     rclcpp::TimerBase::SharedPtr exec_timer_;         // Timer for execution loop
 
@@ -143,6 +144,30 @@ private:
 
     std::string ctrlMode = "NOT_SET"; ///< Current flight mode, default is PoseCtrl.
 
+    struct PendingArm {
+    std::shared_ptr<rmw_request_id_t>                 header;
+    std::shared_ptr<std_srvs::srv::SetBool::Response> resp;
+    bool                                             want_arm;
+    rclcpp::Time                                     deadline;
+    };
+    std::optional<PendingArm>  pending_arm_;
+    
+    struct PendingMode {
+    std::shared_ptr<rmw_request_id_t>                              header;
+    std::shared_ptr<auv_core_helper::srv::SetFlightMode::Response> resp;
+    int32_t                                                        desired_custom;
+    rclcpp::Time                                                   deadline;
+    };
+    std::optional<PendingMode> pending_mode_;
+    
+    struct PendingGimbalAttitude {
+    std::shared_ptr<rmw_request_id_t>                                  header;
+    std::shared_ptr<auv_core_helper::srv::SetGimbalAttitude::Response> resp;
+    std::shared_ptr<auv_core_helper::srv::SetGimbalAttitude::Request>  request;
+    rclcpp::Time                                                       deadline;
+    };
+    std::optional<PendingGimbalAttitude> pending_gimbal_attitude_;
+
     //--------------------------------------------------------------------------
     // Internal Methods
     //--------------------------------------------------------------------------
@@ -154,13 +179,13 @@ private:
 
     void bridgeHeartbeat();  
     
-    void autopilotHeartbeatWatchdog();
+    void ardusubHeartbeatWatchdog();
 
     void setMessageInterval(uint16_t message_id, float frequency_hz);
 
     const char* get_message_name(uint16_t message_id);    
     
-    void handleHeartbeat(const mavlink_message_t& msg, const sockaddr_in& sender_addr);
+    void handleArduSubHeartbeat(const mavlink_message_t& msg, const sockaddr_in& sender_addr);
 
     void handleGlobalOrigin(const mavlink_message_t& msg);
 
@@ -192,6 +217,8 @@ private:
         const std::shared_ptr<rmw_request_id_t> header,
         const std::shared_ptr<SetModeSrv::Request> request);
 
+    int32_t mapModeStringToNumber(const std::string & mode) const;    
+
     void setFlightMode(const std::string& mode);
 
     void setGlobalOriginServiceCallback(
@@ -216,31 +243,5 @@ private:
     
     void SetPositionTargetGlobalInt(const mavlink_set_position_target_global_int_t& position_target_global_);
 
-    void sendConditionYaw(const mavlink_command_long_t& condition_yaw_);                            
-
-    struct PendingArm {
-    std::shared_ptr<rmw_request_id_t>            header;
-    std::shared_ptr<std_srvs::srv::SetBool::Response> resp;
-    bool                                         want_arm;
-    rclcpp::Time                                 deadline;
-    };
-    std::optional<PendingArm>  pending_arm_;
-
-    struct PendingMode {
-    std::shared_ptr<rmw_request_id_t>                  header;
-    std::shared_ptr<auv_core_helper::srv::SetFlightMode::Response> resp;
-    int32_t                                    desired_custom;
-    rclcpp::Time                               deadline;
-    };
-    std::optional<PendingMode> pending_mode_;
-
-    struct PendingGimbalAttitude {
-    std::shared_ptr<rmw_request_id_t> header;
-    std::shared_ptr<auv_core_helper::srv::SetGimbalAttitude::Response> resp;
-    std::shared_ptr<auv_core_helper::srv::SetGimbalAttitude::Request> request;
-    rclcpp::Time                                     deadline;
-    };
-    std::optional<PendingGimbalAttitude> pending_gimbal_attitude_;
-
-    int32_t mapModeStringToNumber(const std::string & mode) const;
+    void sendConditionYaw(const mavlink_command_long_t& condition_yaw_);                                
 };

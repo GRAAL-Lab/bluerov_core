@@ -38,7 +38,8 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   initMavlinkConnection();
 
   // Setup ROS pubs/subs
-  heartBeatPublisher_ = this->create_publisher<auv_core_helper::msg::HeartBeat>(auv_core_helper::topicnames::heart_beat,1);
+  ardusubHeartBeatPublisher_ = this->create_publisher<auv_core_helper::msg::HeartBeat>(auv_core_helper::topicnames::ardusub_heartbeat,1);
+  bridgeHeartBeatPublisher_ = this->create_publisher<std_msgs::msg::Int8>(auv_core_helper::topicnames::bridge_heartbeat,1);
   globalOriginPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::global_origin,1);
   batteryStatusPublisher_ = this->create_publisher<auv_core_helper::msg::BatteryStatus>(auv_core_helper::topicnames::battery_status,1);
   globalPoseActualPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_global_,1);
@@ -59,7 +60,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
 
   // Timers
   bridge_heartbeat_timer_ = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&BlueROVBridge::bridgeHeartbeat, this)); // ~1Hz
-  autopilot_heartbeat_watchdog_timer_ = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&BlueROVBridge::autopilotHeartbeatWatchdog, this)); // ~1Hz
+  ardusub_heartbeat_watchdog_timer_ = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&BlueROVBridge::ardusubHeartbeatWatchdog, this)); // ~1Hz
   data_timer_ = this->create_wall_timer(std::chrono::milliseconds(10), std::bind(&BlueROVBridge::receiveData, this)); // ~100Hz
   exec_timer_ = this->create_wall_timer(std::chrono::milliseconds(33),std::bind(&BlueROVBridge::Execute, this)); // ~30Hz
 
@@ -160,7 +161,7 @@ void BlueROVBridge::receiveData(){
         // Route message to appropriate handler based on msg.msgid
         switch (msg.msgid) {
           case MAVLINK_MSG_ID_HEARTBEAT:
-            handleHeartbeat(msg, sender_addr);
+            handleArduSubHeartbeat(msg, sender_addr);
             break;
             
           case MAVLINK_MSG_ID_ATTITUDE:
@@ -226,6 +227,10 @@ void BlueROVBridge::sendMavlinkMessage(const mavlink_message_t& msg){
 }
 
 void BlueROVBridge::bridgeHeartbeat() {
+
+  std_msgs::msg::Int8 bridgeHeartbeatMsg;
+  bridgeHeartbeatMsg.data = 1;
+  bridgeHeartBeatPublisher_->publish(bridgeHeartbeatMsg);
 
   mavlink_message_t msg;
   mavlink_msg_heartbeat_pack(
@@ -298,7 +303,7 @@ const char* BlueROVBridge::get_message_name(uint16_t message_id) {
   }
 }
 
-void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr_in& sender_addr){
+void BlueROVBridge::handleArduSubHeartbeat(const mavlink_message_t& msg, const sockaddr_in& sender_addr){
 
   mavlink_msg_heartbeat_decode(&msg, &hb);
 
@@ -311,7 +316,7 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
   heartBeatMsg->custom_mode = hb.custom_mode;
   heartBeatMsg->system_status = hb.system_status;
 
-  heartBeatPublisher_->publish(*heartBeatMsg);
+  ardusubHeartBeatPublisher_->publish(*heartBeatMsg);
 
   if (!got_heartbeat_ && (hb.type == MAV_TYPE_SUBMARINE) ) {
     target_system_    = msg.sysid;
@@ -353,7 +358,7 @@ void BlueROVBridge::handleHeartbeat(const mavlink_message_t& msg, const sockaddr
   }
 }
 
-void BlueROVBridge::autopilotHeartbeatWatchdog() {
+void BlueROVBridge::ardusubHeartbeatWatchdog() {
   
   if (!got_heartbeat_) return;
 
@@ -520,10 +525,11 @@ void BlueROVBridge::safetySwitchCallback(const std_msgs::msg::Bool::SharedPtr ms
   if (failsafe_active_){
     RCLCPP_WARN(this->get_logger(), "Failsafe active! Putting vehicle to POSHOLD mode, disarming vehicle and rejecting control commands.");
     setFlightMode("POSHOLD");
-    setArmState(false);
+    setArmState(failsafe_active_);
   } else if (!failsafe_active_){
     RCLCPP_INFO(this->get_logger(), "Failsafe inactive. Vehicle control commands are now accepted.");
-  }}
+  }
+}
 
 void BlueROVBridge::armingServiceCallback(
     const std::shared_ptr<rmw_request_id_t> header,
