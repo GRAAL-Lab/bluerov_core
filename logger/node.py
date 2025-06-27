@@ -3,6 +3,7 @@ from rclpy.node import Node
 from auv_core_helper.msg import PoseStamped, MissionStatus, DtcList
 from image_pipeline_msgs.msg import Obstacles
 from sensor_msgs.msg import Image
+from std_srvs.srv import Trigger
 from datetime import datetime, timezone
 from utils.utilities import STATE_NAME_MAP, TOPICS_NAMES
 import os
@@ -14,9 +15,9 @@ from cv_bridge import CvBridge
 
 class LoggerNode(Node):
     def __init__(self):
-        super().__init__('logger_node')
+        super().__init__('logger_node')        
         
-        self.team_name = None
+        self.team_name = self.declare_parameter('team_name', 'UniGe_ISME').get_parameter_value().string_value
         self.mission_start_time = None
         self.mission_dir = None
         self.kml_path_nav = None
@@ -28,7 +29,7 @@ class LoggerNode(Node):
         self.image_save_path = None
         
         self.init_subs_and_pubs()
-        self.create_folders_and_files()                
+        #self.create_folders_and_files()                
         
         self.save_interval = 10.0  # seconds
         self.save_timer = self.create_timer(self.save_interval, self.save_logs_callback)
@@ -48,6 +49,7 @@ class LoggerNode(Node):
         self.msn_manipulation_flag = False
         self.dtc_manipulation_flag = False
         self.lowres_image_publishing = False
+        self.logging_active = False
         
         # Initialize rosbag process handle
         self.rosbag_process = None
@@ -64,8 +66,7 @@ class LoggerNode(Node):
         Also creates a directory for saving images of recognized objects.
         """
         
-        # Get team name and create RAMI-compliant folder structure
-        self.team_name = self.declare_parameter('team_name', 'UniGe_ISME').get_parameter_value().string_value
+        # create RAMI-compliant folder structure
         self.mission_start_time = datetime.now(tz=timezone.utc)
         
         # Create RAMI-compliant folder name: TEAM_X_YYYYMMDD_HHMM
@@ -105,7 +106,34 @@ class LoggerNode(Node):
         # Optional: Limit publish rate
         self.last_publish_time = self.get_clock().now()
         self.publish_interval = 1.0  # seconds (adjust as needed)
+        
+        #service
+        self.start_srv = self.create_service(Trigger, '/start_logging', self.start_logging_callback)
+        self.stop_srv = self.create_service(Trigger, '/stop_logging', self.stop_logging_callback)
 
+    def start_logging_callback(self, request, response):
+        if not self.logging_active:            
+            self.logging_active = True
+            self.get_logger().info(f"[SERVICE] Logging STARTED")
+            response.success = True
+            self.create_folders_and_files()
+            response.message = f"Logging started"
+        else:
+            response.success = False
+            response.message = "Logging already active"
+        return response
+
+    def stop_logging_callback(self, request, response):
+        if self.logging_active:
+            self.logging_active = False
+            self.get_logger().info(f"[SERVICE] Logging STOPPED")
+            response.success = True
+            response.message = "Logging stopped successfully"
+        else:
+            response.success = False
+            response.message = "Logging was not active"
+        return response
+    
     # Pose - Vehicle Navigation Data ##########################################
     def pose_callback(self, msg: PoseStamped):
         self.latest_pose = msg        
@@ -137,6 +165,8 @@ class LoggerNode(Node):
     
     # Mission Status Data ##########################################
     def mission_callback(self, msg: MissionStatus):
+        if not self.logging_active:
+            return
         try:
             if self.is_manipulation(msg):
                 self.msn_manipulation_flag = True
@@ -201,6 +231,8 @@ class LoggerNode(Node):
         
     # Perception - Object Recognition Data ##########################################
     def perception_callback(self, msg):
+        if not self.logging_active:
+            return
         try:
             timestamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
             dt = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
@@ -311,7 +343,8 @@ class LoggerNode(Node):
                     line.extendeddata.newdata(name="Image", value=filename)        
             
             if object_found:
-                self.get_logger().info(f"[PERCEPTION] Logged new objects at {dt}")            
+                self.get_logger().info(f"[PERCEPTION] Logged new objects at {dt}")
+                object_found = False         
 
         except Exception as e:
             self.get_logger().error(f"[PERCEPTION] Logging error: {e}")
@@ -405,7 +438,9 @@ class LoggerNode(Node):
     
     # Save logs periodically ##########################################     
             
-    def save_logs_callback(self):        
+    def save_logs_callback(self):
+        if not self.logging_active:
+            return     
         try:
             self.kml_nav.save(self.kml_path_nav)
             self.kml_mission.save(self.kml_path_mission)
