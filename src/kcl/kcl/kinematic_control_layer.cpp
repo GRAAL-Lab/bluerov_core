@@ -133,6 +133,12 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
     ctrlData_->circularClockwise = goal->circular_data.clockwise;
 
 
+    Eigen::Vector3d tmpCircularCenterLocal;
+    ctb::LatLong2LocalNED(ctrlData_->circularCenterLL, -std::abs(1.0), ctrlData_->homeLL, tmpCircularCenterLocal);
+    ctrlData_->circularCenterLocal = tmpCircularCenterLocal - ctrlData_->homeLocal.head<3>();
+
+
+
 
     ctrlData_->actionProgress = 0.0;
     ctrlData_->actionSuccess  = false;
@@ -298,12 +304,6 @@ void KCL::ExecuteFSM() {
     ctrlData_->poseActualLocal.head<3>() = tmpPoseLocal - tmpHomeLocal;
     ctrlData_->poseActualLocal.tail<3>() = ctrlData_->poseActualGlobal.tail<3>();
     
-    Eigen::Vector3d tmpCircularCenterLocal;
-    ctb::LatLong2LocalNED(ctrlData_->circularCenterLL, -std::abs(1.0), ctrlData_->homeLL, tmpCircularCenterLocal);
-    ctrlData_->circularCenterLocal = tmpCircularCenterLocal - tmpHomeLocal;
-
-
-
     //publish desiredctrlmode
     deisiredCtrlModePublisher_->publish(std_msgs::msg::String().set__data(ctrlData_->deisiredCtrlMode));
 

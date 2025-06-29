@@ -79,7 +79,16 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
             std::cout << "Spiral path created with diameter: " << ctrlData->spiralDiameter << " and increment: " << ctrlData->spiralIncrement << std::endl;
 
         } else if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Circular2D) {
-            path = sisl::PathFactory::NewCircle(ctrlData->circularDiameter, ctrlData->circularCenterLocal , ctrlData->poseActualLocal.head<3>(), ctrlData->circularClockwise);
+            std::cout << "Diameter: " << ctrlData->circularDiameter << std::endl;
+            std::cout << "Center: " << ctrlData->circularCenterLocal.head<3>().transpose() << std::endl;
+            std::cout << "Clockwise: " << ctrlData->circularClockwise << std::endl;
+
+            path = sisl::PathFactory::NewCircle(
+                ctrlData->circularDiameter,
+                ctrlData->circularCenterLocal.head<3>(),
+                ctrlData->circularClockwise
+            );
+            std::cout << "Circular path created with diameter: " << ctrlData->circularDiameter << std::endl;
         }
         
         else {
@@ -279,11 +288,11 @@ fsm::retval PathFollowingState::Execute() noexcept {
         ctrlData->poseGoalLocal(3) = 0;
         ctrlData->poseGoalLocal(4) = psi_d; // desired pitch
         ctrlData->poseGoalLocal(5) = theta_psi_d; // desired yaw
-        if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Spiral2D) {
+        if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Spiral2D || (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Circular2D && !ctrlData->circularClockwise)) {
             ctrlData->poseGoalLocal(5) -= M_PI / 2.0; // adjust yaw for spiral path
             ctb::NormalizeAngle(ctrlData->poseGoalLocal(5));
         }
-        else if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Circular2D) {
+        else if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Circular2D && ctrlData->circularClockwise) {
             ctrlData->poseGoalLocal(5) += M_PI / 2.0; // adjust yaw for circular path
             ctb::NormalizeAngle(ctrlData->poseGoalLocal(5));
         }
