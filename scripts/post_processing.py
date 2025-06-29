@@ -7,7 +7,6 @@ import numpy as np
 import os
 import sys
 import zipfile
-import pyproj
 
 # --- Input arguments ---
 if len(sys.argv) < 2:
@@ -38,16 +37,6 @@ placemarks = root.findall('.//kml:Placemark', namespaces=NS)
 
 point_coords = []
 line_coords_list = []
-
-#walls Lat, Lon of corners
-coords_latlon = [
-    (44.09601434757111, 9.864511297776231),
-    (44.09614116689923, 9.865068063673895),
-    (44.09571342274439, 9.865252329430948),
-    (44.09558901666539, 9.864688844060744)
-]
-
-
 
 # --- Extract Coordinates ---
 for pm in placemarks:
@@ -88,61 +77,32 @@ if max_lon - min_lon == 0:
     max_lon += 0.0001
     min_lon -= 0.0001
 
-# Convert all lat/lon to UTM coordinates
-proj = pyproj.Proj(proj='utm', zone=32, ellps='WGS84')  # Use correct UTM zone for your region
+def latlon_to_pixel(lat, lon):
+    x = int((lon - min_lon) / (max_lon - min_lon) * WIDTH)
+    y = int((max_lat - lat) / (max_lat - min_lat) * HEIGHT)
+    return x, y
 
-def latlon_to_utm(lat, lon):
-    return proj(lon, lat)
+# --- Plot ---
+fig, ax = plt.subplots(figsize=(WIDTH / 100, HEIGHT / 100))
+ax.set_xlim(-10, WIDTH + 10)
+ax.set_ylim(-10, HEIGHT + 10)
+ax.invert_yaxis()
 
-# Convert KML points to UTM
-utm_point_coords = [(latlon_to_utm(lat, lon)[0], latlon_to_utm(lat, lon)[1], pm) for lat, lon, pm in point_coords]
-utm_line_coords_list = [([(latlon_to_utm(lat, lon)[0], latlon_to_utm(lat, lon)[1]) for lat, lon in line], pm)
-                        for line, pm in line_coords_list]
-
-# Convert wall corners to UTM
-wall_coords_utm = [latlon_to_utm(lat, lon) for lat, lon in coords_latlon]
-
-# Determine UTM bounds
-all_x = [x for x, _, _ in utm_point_coords] + [x for line, _ in utm_line_coords_list for x, _ in line] + [x for x, y in wall_coords_utm]
-all_y = [y for _, y, _ in utm_point_coords] + [y for line, _ in utm_line_coords_list for _, y in line] + [y for x, y in wall_coords_utm]
-min_x, max_x = min(all_x), max(all_x)
-min_y, max_y = min(all_y), max(all_y)
-
-# Plot with meter-scaled axis
-fig, ax = plt.subplots(figsize=(10, 8))
-ax.set_xlim(min_x - 5, max_x + 5)
-ax.set_ylim(min_y - 5, max_y + 5)
-
-# Plot KML points
-for x, y, pm in utm_point_coords:
+# Plot points
+for lat, lon, pm in point_coords:
+    x, y = latlon_to_pixel(lat, lon)
     ax.plot(x, y, 'ro', markersize=4)
     name = pm.find('kml:name', namespaces=NS)
     if name is not None and name.text:
-        ax.text(x, y + 1, name.text, fontsize=8, ha='center', va='bottom')
+        ax.text(x, y + 5, name.text, fontsize=8, ha='center', va='top', color='black')        
 
-# Plot KML lines
-for coords, pm in utm_line_coords_list:
-    xs, ys = zip(*coords)
+# Plot lines
+for coords, pm in line_coords_list:
+    pixel_coords = [latlon_to_pixel(lat, lon) for lat, lon in coords]
+    xs, ys = zip(*pixel_coords)
     ax.plot(xs, ys, 'b-', linewidth=1)
 
-# Plot wall polyline (open shape)
-wall_xs, wall_ys = zip(*wall_coords_utm)
-ax.plot(wall_xs, wall_ys, 'k-', linewidth=2, label="Walls")
-
-# Add axis and grid
-ax.set_xlabel("Easting (m)")
-ax.set_ylabel("Northing (m)")
-ax.set_title("2D Map")
-ax.grid(True)
-ax.legend()
-
-# Add cardinal direction labels on edges
-ax.text((min_x + max_x) / 2, max_y + 2, 'NORTH', ha='center', va='bottom', fontsize=12, fontweight='bold')
-ax.text((min_x + max_x) / 2, min_y - 2, 'SOUTH', ha='center', va='top', fontsize=12, fontweight='bold')
-ax.text(min_x - 2, (min_y + max_y) / 2, 'WEST', ha='right', va='center', fontsize=12, fontweight='bold', rotation=90)
-ax.text(max_x + 2, (min_y + max_y) / 2, 'EAST', ha='left', va='center', fontsize=12, fontweight='bold', rotation=270)
-
-
+ax.set_axis_off()
 plt.tight_layout()
 
 # --- Save PNG ---
@@ -156,12 +116,8 @@ with open(WORLD_FILE, "w") as f:
     f.write(f"{pixel_width:.12f}\n0.0\n0.0\n-{pixel_height:.12f}\n{min_lon:.12f}\n{max_lat:.12f}\n")
 
 # --- Convert PNG to GeoTIFF using Rasterio ---
-try:
-    img = Image.open(OUTPUT_IMAGE).convert("RGB")
-    img_np = np.array(img)
-except Exception as e:
-    print(f"❌ Error processing image: {e}")
-    sys.exit(1)
+img = Image.open(OUTPUT_IMAGE).convert("RGB")
+img_np = np.array(img)
 
 transform = from_origin(min_lon, max_lat, pixel_width, pixel_height)
 
