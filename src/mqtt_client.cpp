@@ -50,6 +50,7 @@ public:
 		client_ = std::make_unique<mqtt::async_client>(mqttAddress_, clientId_);
 		
 		mqtt::connect_options connOpts;
+		connOpts.set_mqtt_version(MQTTVERSION_3_1_1); 
 		connOpts.set_user_name(username_);
 		connOpts.set_password(password_);
 		connOpts.set_clean_session(true);
