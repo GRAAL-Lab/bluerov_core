@@ -261,9 +261,6 @@ class LoggerNode(Node):
                     placemark.timestamp.when = dt
                     placemark.coords = [(lon, lat, depth)]
                     placemark.extendeddata.newdata(name="Target ID", value=object_id)
-                    placemark.extendeddata.newdata(name="Latitude", value=str(lat))
-                    placemark.extendeddata.newdata(name="Longitude", value=str(lon))
-                    placemark.extendeddata.newdata(name="Depth", value=str(depth))
                     placemark.extendeddata.newdata(
                         name="Features", value=f"radius={buoy.radius}, color={buoy.color}"
                     )
@@ -286,9 +283,6 @@ class LoggerNode(Node):
                     placemark.timestamp.when = dt
                     placemark.coords = [(lon, lat, depth)]
                     placemark.extendeddata.newdata(name="Target ID", value=object_id)
-                    placemark.extendeddata.newdata(name="Latitude", value=str(lat))
-                    placemark.extendeddata.newdata(name="Longitude", value=str(lon))
-                    placemark.extendeddata.newdata(name="Depth", value=str(depth))
                     placemark.extendeddata.newdata(name="Features", value=f"color={marker.color}")
                     placemark.extendeddata.newdata(name="Image", value=filename)
 
@@ -309,9 +303,6 @@ class LoggerNode(Node):
                     placemark.timestamp.when = dt
                     placemark.coords = [(lon, lat, depth)]
                     placemark.extendeddata.newdata(name="Target ID", value=object_id)
-                    placemark.extendeddata.newdata(name="Latitude", value=str(lat))
-                    placemark.extendeddata.newdata(name="Longitude", value=str(lon))
-                    placemark.extendeddata.newdata(name="Depth", value=str(depth))
                     placemark.extendeddata.newdata(
                         name="Features", value=f"number={number.number}, bg_color={number.bg_color}"
                     )
@@ -336,12 +327,12 @@ class LoggerNode(Node):
                     line.timestamp.when = dt
                     line.coords = coords
                     line.extendeddata.newdata(name="Target ID", value=object_id)
-                    line.extendeddata.newdata(name="Latitude", value=str(start.latitude))
-                    line.extendeddata.newdata(name="Longitude", value=str(start.longitude))
-                    line.extendeddata.newdata(name="Depth", value=str(-start.altitude))
                     line.extendeddata.newdata(name="Features", value=f"sizes={pipe.sizes}")
                     line.extendeddata.newdata(name="Image", value=filename)        
             
+            if msg.manipulation_console:
+                filename = self.save_image(timestamp)
+                
             if object_found:
                 self.get_logger().info(f"[PERCEPTION] Logged new objects at {dt}")
                 object_found = False         
