@@ -523,18 +523,18 @@ void BlueROVBridge::safetySwitchCallback(const std_msgs::msg::Bool::SharedPtr ms
   failsafe_active_ = msg->data;
 
   if (failsafe_active_){
-    RCLCPP_WARN(this->get_logger(), "Failsafe active! Putting vehicle to POSHOLD mode, disarming vehicle and rejecting control commands.");
+    RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Failsafe active! Putting vehicle to POSHOLD mode, disarming vehicle and rejecting control commands.");
     setFlightMode("POSHOLD");
     setArmState(false);
-    uint16_t rc[18];
+    /*uint16_t rc[18];
     for (int i = 0; i < 18; i++) {
       rc[i] = 1000;
     }
     rcChannelsOverride(rc);
-    RCLCPP_WARN(this->get_logger(), "ALL RC channels overridden to disarm values.");
-    
+    RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "ALL RC channels overridden to disarm values.");
+    */
   } else if (!failsafe_active_){
-    RCLCPP_INFO(this->get_logger(), "Failsafe inactive. Vehicle control commands are now accepted.");
+    RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Failsafe inactive. Vehicle control commands are now accepted.");
   }
 }
 
@@ -548,7 +548,7 @@ void BlueROVBridge::armingServiceCallback(
     resp->success = false;
     resp->message = "Failsafe active — arming rejected!";
     armingService_->send_response(*header, *resp);
-    RCLCPP_WARN(this->get_logger(), "Arming command rejected due to failsafe.");
+    RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Arming command rejected due to failsafe.");
     return;
   }
 
@@ -596,7 +596,7 @@ void BlueROVBridge::flightModeServiceCallback(const std::shared_ptr<rmw_request_
     resp->success = false;
     resp->message = "Failsafe active — flight mode change rejected!";
     flightModeService_->send_response(*header, *resp);
-    RCLCPP_WARN(this->get_logger(), "Flight mode change rejected due to failsafe.");
+    RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Flight mode change rejected due to failsafe.");
     return;
   }
 
@@ -642,7 +642,7 @@ void BlueROVBridge::setFlightMode(const std::string& mode)
   );
 
   sendMavlinkMessage(msg);
-  RCLCPP_INFO(this->get_logger(), "Setting flight-mode to %s", mode.c_str());
+  RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Setting flight-mode to "<< mode.c_str());
 }
 
 void BlueROVBridge::rcChannelsOverride(uint16_t rc[]){
@@ -678,7 +678,7 @@ void BlueROVBridge::rcChannelsOverride(uint16_t rc[]){
 
 void BlueROVBridge::setGlobalOriginServiceCallback(const std::shared_ptr<auv_core_helper::srv::SetGlobalOrigin::Request> request,
                                                    std::shared_ptr<auv_core_helper::srv::SetGlobalOrigin::Response> response){
-  RCLCPP_INFO(this->get_logger(), "Setting global origin service called: %f, %f, %f", request->latitude, request->longitude, request->altitude);
+  RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Setting global origin service called: " << request->latitude << ", " << request->longitude << ", " << request->altitude);
   mavlink_set_gps_global_origin_t set_gps_global_origin;
   set_gps_global_origin.latitude = static_cast<int32_t>(request->latitude * 1e7);
   set_gps_global_origin.longitude = static_cast<int32_t>(request->longitude * 1e7);
@@ -707,8 +707,8 @@ void BlueROVBridge::setGlobalOrigin(mavlink_set_gps_global_origin_t& set_gps_glo
       this->now().nanoseconds()
     );
   sendMavlinkMessage(msg);
-  RCLCPP_INFO(this->get_logger(), "Global origin set message sent to %d, %f, %f, %f", target_system_,
-             (double)set_gps_global_origin.latitude/1e7, (double)set_gps_global_origin.longitude/1e7, (double)set_gps_global_origin.altitude/1000.0);
+  RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Global origin set message sent to"
+  << target_system_<<","<<(double)set_gps_global_origin.latitude/1e7 <<","<<(double)set_gps_global_origin.longitude/1e7 <<","<<(double)set_gps_global_origin.altitude/1000.0);
 }
 
 
@@ -747,7 +747,7 @@ void BlueROVBridge::setGimbalAttitude(float gimbal_pitch, float gimbal_yaw){
     0                                         //Gimbal device ID (0 is primary gimbal, 1 is 1st gimbal, 2 is 2nd gimbal)
   );
   sendMavlinkMessage(msg);
-  RCLCPP_INFO(this->get_logger(), "Gimbal attitude set to pitch: %f, yaw: %f", gimbal_pitch, gimbal_yaw);
+  RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Gimbal attitude set to pitch: " << gimbal_pitch << ", yaw: " << gimbal_yaw);
 }
 
 void BlueROVBridge::desiredCtrlModeCallback(const std_msgs::msg::String::SharedPtr msg){
@@ -824,7 +824,7 @@ void BlueROVBridge::Execute(){
       if (poseGoalGlobalChanged || velGoalGlobalChanged){        // If the pose or velocity goal has changed, send the new goal to the autopilot
 
         if (failsafe_active_){
-          RCLCPP_WARN(get_logger(), "Failsafe active, not sending goals.");
+          RCLCPP_WARN_STREAM_THROTTLE(get_logger(),*get_clock(),1000, "Failsafe active, not sending goals.");
           return; 
          }
 
@@ -894,15 +894,15 @@ void BlueROVBridge::Execute(){
       }
     }
     else {
-        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Waiting for MAVLink global position/velocity data...");
+        RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Waiting for MAVLink global position/velocity data...");
       }
 }
 
 void BlueROVBridge::SetPositionTargetGlobalInt(const mavlink_set_position_target_global_int_t& position_target_global_)
 {
   if (!got_heartbeat_) {
-    RCLCPP_WARN(this->get_logger(), 
-        "Cannot send global waypoint; no autopilot heartbeat discovered!");
+    RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+     "Cannot send global waypoint; no autopilot heartbeat discovered!");
     return;
   }
     
@@ -920,14 +920,13 @@ void BlueROVBridge::SetPositionTargetGlobalInt(const mavlink_set_position_target
 void BlueROVBridge::sendConditionYaw(const mavlink_command_long_t& condition_yaw_)
 {
   if (!got_heartbeat_) {
-    RCLCPP_WARN(this->get_logger(), 
-        "Cannot send CONDITION_YAW command; no autopilot heartbeat discovered!");
+    RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+     "Cannot send CONDITION_YAW command; no autopilot heartbeat discovered!");
     return;
   }
   
-  RCLCPP_INFO(this->get_logger(),
-      "Setting vehicle heading: %.1f degrees",
-      condition_yaw_.param1);
+  RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+      "Setting vehicle heading: " << condition_yaw_.param1 << " degrees");
     
   // Create command message
   mavlink_message_t msg;
@@ -947,5 +946,5 @@ void BlueROVBridge::sendConditionYaw(const mavlink_command_long_t& condition_yaw
   
   // Send the message
   sendMavlinkMessage(msg);
-  RCLCPP_INFO(this->get_logger(), "CONDITION_YAW command sent");
+  RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(), *this->get_clock(), 1000,"CONDITION_YAW command sent");
 }
