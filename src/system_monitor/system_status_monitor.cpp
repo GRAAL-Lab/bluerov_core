@@ -17,7 +17,7 @@ SystemStatusMonitor::SystemStatusMonitor()
         std::bind(&SystemStatusMonitor::MissionCtrlCB, this, std::placeholders::_1));
 
     bridgeSub_ = this->create_subscription<auv_core_helper::msg::HeartBeat>(
-        auv_core_helper::topicnames::heart_beat, rclcpp::SystemDefaultsQoS(),
+        auv_core_helper::topicnames::ardusub_heartbeat, rclcpp::SystemDefaultsQoS(),
         std::bind(&SystemStatusMonitor::BridgeCB, this, std::placeholders::_1));
 
     kclSub_ = this->create_subscription<auv_core_helper::msg::KclStatus>(
@@ -115,11 +115,11 @@ void SystemStatusMonitor::StatusPub()
 void SystemStatusMonitor::MissionCtrlCB(const auv_core_helper::msg::MissionStatus::SharedPtr msg)
 {
     if (missionCtrlStatus_ == "WAITING FOR CMD" && msg->state != missionCtrlStatus_) {
-        RCLCPP_INFO(get_logger(), "Mission Control status changed from 'WAITING FOR CMD' to '%s'.", msg->state.c_str());
+        RCLCPP_INFO_STREAM_THROTTLE(get_logger(),*get_clock(),1000, "Mission Control status changed from 'WAITING FOR CMD' to "<< msg->state.c_str());
         missionUnderExecution = true;
         rcvMissionCmdTime = this->get_clock()->now();
     } else if (missionCtrlStatus_ != "WAITING FOR CMD" && msg->state == "WAITING FOR CMD") {
-        RCLCPP_INFO(get_logger(), "Mission Control status changed to 'WAITING FOR CMD'.");
+        RCLCPP_INFO_STREAM_THROTTLE(get_logger(),*get_clock(),1000, "Mission Control status changed to 'WAITING FOR CMD'.");
         vehicleReachedSafetyArea_ = false;
         missionUnderExecution = false;
     }
@@ -162,9 +162,9 @@ void SystemStatusMonitor::PoseCB(const auv_core_helper::msg::PoseStamped::Shared
     if (!rcvFirstPose_) {
         if (msg->position.latitude != 0.0 && msg->position.longitude != 0.0) {
             rcvFirstPose_ = true;
-            RCLCPP_INFO(get_logger(), "Received first pose, starting system status monitor.");
+            RCLCPP_INFO_STREAM_THROTTLE(get_logger(),*get_clock(),1000,"Received first pose, starting system status monitor.");
         } else {
-            RCLCPP_WARN(get_logger(), "Received pose with zero coordinates, waiting for valid pose.");
+            RCLCPP_WARN_STREAM_THROTTLE(get_logger(),*get_clock(),1000 ,"Received pose with zero coordinates, waiting for valid pose.");
         }
     }
 
