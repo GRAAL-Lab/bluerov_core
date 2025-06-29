@@ -11,6 +11,7 @@ bool resume_path
 
 SpiralPathData spiral_data
 SerpentinePathData serpentine_data
+CircularPathData circular_data
 ---
 # Result
 bool success
