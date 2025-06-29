@@ -108,9 +108,12 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
     ctrlData_->pathPlanningMode  = goal->path_mode;
     ctrlData_->resumePath     = goal->resume_path;
 
+    // Sprial data
     ctrlData_->spiralDiameter    = goal->spiral_data.spiral_diameter;
     ctrlData_->spiralIncrement   = goal->spiral_data.spiral_increment;
 
+
+    // Serpentine data
     ctrlData_->pathArea(0, 0) = goal->serpentine_data.origin.latitude;
     ctrlData_->pathArea(1, 0) = goal->serpentine_data.origin.longitude;
 
@@ -123,6 +126,11 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
     ctrlData_->pathArea(0, 3) = goal->serpentine_data.right.latitude;
     ctrlData_->pathArea(1, 3) = goal->serpentine_data.right.longitude;
 
+    // Circular data
+    ctrlData_->circularDiameter = goal->circular_data.circular_diameter;
+    ctrlData_->circularCenterLL.latitude = goal->circular_data.center_point.latitude;
+    ctrlData_->circularCenterLL.longitude = goal->circular_data.center_point.longitude;
+    ctrlData_->circularClockwise = goal->circular_data.clockwise;
 
 
 
@@ -275,18 +283,26 @@ void KCL::CallFlightModeService(const std::string &mode)
 }
 
 void KCL::ExecuteFSM() {
-    // Convert global pose to local NED coordinates
+    // Temporary variables to hold local NED (North-East-Down) coordinates
     Eigen::Vector3d tmpHomeLocal;
     Eigen::Vector3d tmpPoseLocal;
 
-    ctrlData_->poseActualLL = ctb::LatLong(ctrlData_->poseActualGlobal(0), ctrlData_->poseActualGlobal(1)); //update current pose in global coordinates
-
+    ctrlData_->poseActualLL = ctb::LatLong(ctrlData_->poseActualGlobal(0), ctrlData_->poseActualGlobal(1));
     ctb::LatLong2LocalNED(ctrlData_->homeLL, -std::abs(ctrlData_->homeGlobal(2)), ctrlData_->homeLL, tmpHomeLocal);
-    ctb::LatLong2LocalNED(ctrlData_->poseActualLL,  -std::abs(ctrlData_->poseActualGlobal(2)), ctrlData_->homeLL, tmpPoseLocal);
+    ctb::LatLong2LocalNED(ctrlData_->poseActualLL, -std::abs(ctrlData_->poseActualGlobal(2)), ctrlData_->homeLL, tmpPoseLocal);
+
+
+
 
     ctrlData_->homeLocal.head<3>() = tmpHomeLocal;
     ctrlData_->poseActualLocal.head<3>() = tmpPoseLocal - tmpHomeLocal;
     ctrlData_->poseActualLocal.tail<3>() = ctrlData_->poseActualGlobal.tail<3>();
+    
+    Eigen::Vector3d tmpCircularCenterLocal;
+    ctb::LatLong2LocalNED(ctrlData_->circularCenterLL, -std::abs(1.0), ctrlData_->homeLL, tmpCircularCenterLocal);
+    ctrlData_->circularCenterLocal = tmpCircularCenterLocal - tmpHomeLocal;
+
+
 
     //publish desiredctrlmode
     deisiredCtrlModePublisher_->publish(std_msgs::msg::String().set__data(ctrlData_->deisiredCtrlMode));

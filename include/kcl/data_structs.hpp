@@ -31,6 +31,8 @@ struct ControlData {
     Eigen::VectorXd poseActualLocal = Eigen::VectorXd(6); ///<  Current AUV pose (x, y, z, roll, pitch, yaw).
     Eigen::VectorXd homeLocal = Eigen::VectorXd(6); ///< Home position in local coordinates (x, y, z, roll, pitch, yaw).
     Eigen::VectorXd velocityDesiredNED = Eigen::VectorXd(6); ///< Desired linear and angular velocities.
+
+    Eigen::VectorXd circularCenterLocal = Eigen::VectorXd(6); /// Center point for the circular path in local coordinates (x, y, z, roll, pitch, yaw).
     
 
     // ------------------------------
@@ -80,6 +82,13 @@ struct ControlData {
     double spiralIncrement = 0.0; ///< Increment for the spiral path.
     bool resumePath = false; ///< Flag to indicate if the path should be resumed.
 
+    // 2D Circular Path Parameters
+    double circularDiameter = 0.0; ///< Diameter for 2D circular path planning
+    ctb::LatLong circularCenterLL; ///< Center point for the circular path in LatLong format.
+    ctb::LatLong circularStartPointLL; ///< Starting point for the circular path in LatLong format.
+    bool circularClockwise = true; ///< Direction of the circular path: true = clockwise,
+    
+
     // ------------------------------
     // Planned Path
     // ------------------------------
@@ -127,7 +136,9 @@ struct ControlData {
         serpentinePolygonVertices.clear();
         homeLL = ctb::LatLong(homeGlobal(0), homeGlobal(1));    
         poseActualLL = ctb::LatLong(poseActualGlobal(0), poseActualGlobal(1));
-
+        circularCenterLL = ctb::LatLong(44.096058, 9.864761); // Default circular center.
+        circularStartPointLL = ctb::LatLong(44.096058, 9.864761); // Default circular start point.
+        circularCenterLocal.setZero(); // Initialize circular center in local coordinates.
     }
 };
 

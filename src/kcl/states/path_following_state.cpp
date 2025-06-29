@@ -78,7 +78,11 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
             );
             std::cout << "Spiral path created with diameter: " << ctrlData->spiralDiameter << " and increment: " << ctrlData->spiralIncrement << std::endl;
 
-        } else {
+        } else if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Circular2D) {
+            path = sisl::PathFactory::NewCircle(ctrlData->circularDiameter, ctrlData->circularCenterLocal , ctrlData->poseActualLocal.head<3>(), ctrlData->circularClockwise);
+        }
+        
+        else {
             RCLCPP_ERROR(rclcpp::get_logger("PathFollowingState"), "Unexpected pathPlanningMode: %s", ctrlData->pathPlanningMode.c_str());
             fsm_->SetNextState(States::HOLD);
             fsm_->SwitchState();
@@ -277,6 +281,10 @@ fsm::retval PathFollowingState::Execute() noexcept {
         ctrlData->poseGoalLocal(5) = theta_psi_d; // desired yaw
         if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Spiral2D) {
             ctrlData->poseGoalLocal(5) -= M_PI / 2.0; // adjust yaw for spiral path
+            ctb::NormalizeAngle(ctrlData->poseGoalLocal(5));
+        }
+        else if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Circular2D) {
+            ctrlData->poseGoalLocal(5) += M_PI / 2.0; // adjust yaw for circular path
             ctb::NormalizeAngle(ctrlData->poseGoalLocal(5));
         }
 
