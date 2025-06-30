@@ -36,10 +36,11 @@ class SystemStatusMonitor : public rclcpp::Node {
     // Pubs and Subs, action client to KCL and service for mission command
     rclcpp::Publisher<auv_core_helper::msg::SystemStatus>::SharedPtr systemStatusPub_;
     rclcpp::Subscription<auv_core_helper::msg::MissionStatus>::SharedPtr missionCtrlSub_;
-    rclcpp::Subscription<auv_core_helper::msg::HeartBeat>::SharedPtr bridgeSub_;
+    rclcpp::Subscription<auv_core_helper::msg::HeartBeat>::SharedPtr bridgeHeartBeathSub_;
+    rclcpp::Subscription<auv_core_helper::msg::HeartBeat>::SharedPtr ardusubHeartBeathSub_;
     rclcpp::Subscription<auv_core_helper::msg::KclStatus>::SharedPtr kclSub_;
     rclcpp_action::Client<auv_core_helper::action::SetKCL>::SharedPtr serverKclClient_;
-    rclcpp::Subscription<auv_core_helper::msg::DtcList>::SharedPtr perceptionSub_;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr perceptionSub_;
 
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr safetySwitchSub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr customSwitchSub_;
@@ -49,6 +50,7 @@ class SystemStatusMonitor : public rclcpp::Node {
 
     rclcpp::Time lastMissionCtrlTime;
     rclcpp::Time lastBridgeTime;
+    rclcpp::Time lastArdusubTime;
     rclcpp::Time lastKCLTime;
     rclcpp::Time lastPerceptionTime;
 
@@ -62,6 +64,7 @@ class SystemStatusMonitor : public rclcpp::Node {
     void StatusPub();
     void MissionCtrlCB(const auv_core_helper::msg::MissionStatus::SharedPtr msg);
     void BridgeCB(const auv_core_helper::msg::HeartBeat::SharedPtr msg);
+    void ArdusubCB(const auv_core_helper::msg::HeartBeat::SharedPtr msg);
     void KclCB(const auv_core_helper::msg::KclStatus::SharedPtr msg);
     void PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg);
     void SafetySwitchCB(const std_msgs::msg::Bool::SharedPtr msg);

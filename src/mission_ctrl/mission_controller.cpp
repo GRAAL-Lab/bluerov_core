@@ -100,6 +100,8 @@ void MissionController::Run()
     debugMsg.data = "time since last feedback: " + std::to_string((this->get_clock()->now() - systemStatus_->lastKclFeedbackTime).seconds()) + " s";
     debugPub_->publish(debugMsg);
 
+    std::cerr << "in Run()\n";
+
     systemStatus_->CheckSystemLiveness(this->get_clock()->now());
 
     // Publish status

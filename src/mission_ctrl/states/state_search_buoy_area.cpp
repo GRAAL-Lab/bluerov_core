@@ -122,13 +122,12 @@ namespace states {
 
         if (reachedLeftmostPoint && !sentPathFollowingCommand) {
             sentPathFollowingCommand = true;
-            if (resumeSearch) {
-                ctrlData->kclData.kclActionCmd.goal.resume_path = true;
-            } else {
-                ctrlData->kclData.kclActionCmd.goal.resume_path = false;
-            }
+            
             // tell kcl to follow area coverage path
             ctrlData->kclData.kclActionCmd = mission::kclCmd();
+            if (resumeSearch) {
+                ctrlData->kclData.kclActionCmd.goal.resume_path = true;
+            } 
 
             ctrlData->kclData.kclActionCmd.goal.desired_state = "PATH_FOLLOWING";
             ctrlData->kclData.kclActionCmd.goal.path_mode = "Serpentine2D";
