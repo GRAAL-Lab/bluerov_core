@@ -73,6 +73,20 @@ struct MissionCtrlConf {
     std::vector<ctb::LatLong> debugBuoysPositions;
     int debug_position_selection = 0; 
     std::vector<ctb::LatLong> debugPositions;
+
+    int initStateTimeout=5;
+    int homingStateTimeout=5;                         // time in minutes  
+    int moveToWpStateTimeout=5;                         //latlong state timeout in minutes 
+    int searchForObjectStateTimeout=5;
+    int crossGateStateTimeout=5;                      // time in minutes
+    int searchBuoyAreaStateTimeout=10;                 // time in minutes 
+    int inspectBuoyStateTimeout=3;                    // time in minutes
+    int inspectPipesStateTimeout=5;
+    int updateLocalizationStateTimeout=3;                        // time in minutes
+
+
+
+
 };
 
 struct BuoyActionColorMap {

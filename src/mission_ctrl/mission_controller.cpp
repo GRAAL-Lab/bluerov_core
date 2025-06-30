@@ -572,6 +572,18 @@ void MissionController::LoadConfiguration()
         ctb::GetParam(confObj, systemStatus_->conf.debugBuoys, "buoysDebug");
         ctb::GetParam(confObj, systemStatus_->conf.ignoreBuoyColor, "ignore_buoy_color");
         ctb::GetParam(confObj, systemStatus_->conf.gateWpsDistance, "gate_wps_distance");
+        
+
+        ctb::GetParam(confObj, systemStatus_->conf.initStateTimeout, "init_state_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.homingStateTimeout, "homing_state_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.moveToWpStateTimeout, "move_to_wp_state_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.searchForObjectStateTimeout, "search_for_object_state_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.crossGateStateTimeout,"cross_gate_state_timeout" );
+        ctb::GetParam(confObj, systemStatus_->conf.searchBuoyAreaStateTimeout,"search_buoy_area_state_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.inspectBuoyStateTimeout, "inspect_buoy_state_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.inspectPipesStateTimeout, "inspect_pipe_state_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.updateLocalizationStateTimeout, "update_localization_state_timeout");
+
 
         const libconfig::Setting& root = confObj.getRoot();
 
@@ -718,6 +730,34 @@ void MissionController::SetUpFSM()
     for (auto& state : statesMap_) {
         state.second->ctrlData = ctrlData_;
         state.second->systemStatus_ = systemStatus_;
+
+        if (state.first==states::ID::init)
+            state.second->stateTimeout=systemStatus_->conf.initStateTimeout;
+        
+        else if (state.first==states::ID::homing)
+            state.second->stateTimeout=systemStatus_->conf.homingStateTimeout;
+        
+        else if (state.first==states::ID::moveToWp)
+            state.second->stateTimeout=systemStatus_->conf.moveToWpStateTimeout;
+        
+        else if (state.first==states::ID::searchForObject)
+            state.second->stateTimeout=systemStatus_->conf.searchForObjectStateTimeout;
+        
+        else if (state.first==states::ID::crossGate)
+            state.second->stateTimeout=systemStatus_->conf.crossGateStateTimeout;
+        
+        else if (state.first==states::ID::searchBuoyArea)
+            state.second->stateTimeout=systemStatus_->conf.searchBuoyAreaStateTimeout;
+        
+        else if (state.first==states::ID::inspectBuoy)
+            state.second->stateTimeout=systemStatus_->conf.inspectBuoyStateTimeout;
+        
+        else if (state.first==states::ID::inspectPipes)
+            state.second->stateTimeout=systemStatus_->conf.inspectPipesStateTimeout;
+        
+        else if (state.first==states::ID::updateLocalization)
+            state.second->stateTimeout=systemStatus_->conf.updateLocalizationStateTimeout;
+
         state.second->SetFSM(&rFsm_);
     }
     // ADD STATES
