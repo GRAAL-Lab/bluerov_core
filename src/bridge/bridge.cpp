@@ -530,7 +530,7 @@ void BlueROVBridge::safetySwitchCallback(const std_msgs::msg::Bool::SharedPtr ms
     RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Failsafe active! Putting vehicle to POSHOLD mode, disarming vehicle and rejecting control commands.");
     setFlightMode("POSHOLD");
     setArmState(false);
-    cycleServo(14,1800,1000,3);
+    cycleServo(14,1900,1000,3);
 
   } else if (!failsafe_active_){
     RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Failsafe inactive. Vehicle control commands are now accepted.");
@@ -724,7 +724,7 @@ void BlueROVBridge::cycleServo(uint8_t servoID,uint16_t pwm,uint16_t cycleCount,
     &msg,
     target_system_,
     target_component_,
-    MAV_CMD_DO_SET_SERVO,
+    MAV_CMD_DO_REPEAT_SERVO,
     0,
     servoID,
     pwm,
