@@ -53,9 +53,9 @@ MissionController::MissionController()
     if (systemStatus_->conf.simCtrlStation) {
         simCtrlStationTimer_ = this->create_wall_timer(
             std::chrono::milliseconds(5000), std::bind(&MissionController::SimulateMissionCmdFromFile, this));
-        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No control station");
+        RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "[DEBUG SETTING] --> No control station");
     } else {
-        RCLCPP_WARN(this->get_logger(), "Waiting for task data to be set by ctrl station");
+        RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Waiting for task data to be set by ctrl station");
     }
 
     if (systemStatus_->conf.simBridge)
@@ -65,7 +65,7 @@ MissionController::MissionController()
     if (systemStatus_->conf.simPerception)
         RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> No Perception");
 
-    RCLCPP_INFO(this->get_logger(), "Waiting for components to be alive...");
+    RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Waiting for components to be alive...");
 };
 
 void MissionController::StatusPub()
@@ -118,7 +118,7 @@ void MissionController::Run()
     //=== Check the FSM ===
     auto now = this->get_clock()->now();
     if (rFsm_.GetCurrentStateName() != rFsm_.GetNextStateName()) {
-        RCLCPP_INFO(this->get_logger(), "FSM switched to state %s", rFsm_.GetNextStateName().c_str());
+        RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "FSM switched to state "<< rFsm_.GetNextStateName().c_str());
         systemStatus_->lastStateSwitchTime = now;
 
         kclCancelCmd();
@@ -136,7 +136,7 @@ void MissionController::Run()
         // Get current state timeout value TODO if same state with different objectives than timeout is not gonna reset
         double currentStateTimeout = statesMap_[rFsm_.GetCurrentStateName()]->stateTimeout;
         if (timeSinceLastSwitch > currentStateTimeout && std::fmod(timeSinceLastSwitch, 5.0) < 1.0) {
-            RCLCPP_WARN(this->get_logger(), "FSM in state %s for %i seconds", rFsm_.GetCurrentStateName().c_str(), (int)timeSinceLastSwitch);
+            RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "FSM in state" << rFsm_.GetCurrentStateName().c_str() << "for"<< (int)timeSinceLastSwitch<<"seconds");
         }
     }
 
@@ -163,7 +163,7 @@ void MissionController::Run()
     auto timeSinceLastKclFeedback = (this->get_clock()->now() - systemStatus_->lastKclFeedbackTime).seconds();
     if (ctrlData_->kclData.kclActionCmd.underExecution && timeSinceLastKclFeedback > 2) {
         ctrlData_->kclData.kclActionCmd.underExecution = false;
-        RCLCPP_WARN(this->get_logger(), "     -------     KCL command is not under execution     -------     ");
+        RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "     -------     KCL command is not under execution     -------     ");
         kclCmd();
     }
 
@@ -283,7 +283,7 @@ void MissionController::MissionCommandCB(
     //     }
     // }
 
-    RCLCPP_INFO(this->get_logger(), "Mission command received, tbm_id: %d", request->tbm_id);
+    RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Mission command received, tbm_id: "<< request->tbm_id);
     response->res = StartMission();
 }
 
@@ -314,18 +314,17 @@ bool MissionController::StartMission()
     stateHoming_->homePosition.latitude = ctrlData_->inertialF_linearPosition.latitude;
     stateHoming_->homePosition.longitude = ctrlData_->inertialF_linearPosition.longitude;
 
-    RCLCPP_INFO(this->get_logger(), "Set home position as current one: [%f, %f]",
-        stateHoming_->homePosition.latitude, stateHoming_->homePosition.longitude);
+    RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Set home position as current one: ["<<stateHoming_->homePosition.latitude<<","<<stateHoming_->homePosition.longitude<<"]");
 
     if (systemStatus_->conf.useStartingDepthAsSurfaceDepth && ctrlData_->depth < 1.0) {
         systemStatus_->conf.surfaceDepth = ctrlData_->depth;
-        RCLCPP_INFO(this->get_logger(), "Setting surface depth as current depth: [%f]", systemStatus_->conf.surfaceDepth);
+        RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Setting surface depth as current depth: ["<<systemStatus_->conf.surfaceDepth<<"]");
     }
 
     std::stringstream ss;
     ss << *taskData_;
-    RCLCPP_INFO(this->get_logger(), " ===== TaskBenchMark %s =====", taskData_->taskType.c_str());
-    RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
+    RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, " ===== TaskBenchMark  "<<taskData_->taskType.c_str()<<"=====");
+    RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, ""<< ss.str().c_str());
     return true;
 }
 
@@ -342,8 +341,7 @@ void MissionController::PoseCB(const auv_core_helper::msg::PoseStamped::SharedPt
         stateHoming_->homePositionSet = true;
         stateHoming_->homePosition.latitude = 44.09595617190768;
         stateHoming_->homePosition.longitude = 9.864626568817506;
-        RCLCPP_WARN(this->get_logger(), "[DEBUG SETTING] --> Simulating control station, setting home position as the one in front of the dock: [%f, %f]",
-            stateHoming_->homePosition.latitude, stateHoming_->homePosition.longitude);
+        RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "[DEBUG SETTING] --> Simulating control station, setting home position as the one in front of the dock:["<<stateHoming_->homePosition.latitude<<","<< stateHoming_->homePosition.longitude<<"]");
     }
 
     // if (!systemStatus_->missionUnderExecution)
@@ -407,7 +405,7 @@ bool MissionController::kclCancelCmd()
 
 bool MissionController::kclStopCmd()
 {
-    RCLCPP_WARN(this->get_logger(), "Sending IDLE cmd and moving to INIT state.");
+    RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Sending IDLE cmd and moving to INIT state.");
 
     auv_core_helper::action::SetKCL::Goal goal;
     goal.desired_state = "IDLE";
@@ -415,7 +413,7 @@ bool MissionController::kclStopCmd()
     //     RCLCPP_WARN(this->get_logger(), "Waiting for KCL action server to be ready...");
     // }
     setKCLClient_->async_send_goal(goal, kclSendGoalOptions_);
-    RCLCPP_WARN(this->get_logger(), "KCL action server IDLE cmd sent.");
+    RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "KCL action server IDLE cmd sent.");
 
     ResetTaskDataFSM();
     return true;
@@ -430,15 +428,14 @@ bool MissionController::kclCmd()
 
     if (systemStatus_->conf.debugPrints) {
         if (goal.desired_state == "WAYPOINT_NAVIGATION") {
-            RCLCPP_INFO(this->get_logger(), "Sending command to KCL [%s], %f, %f, %f", goal.desired_state.c_str(),
-                goal.position.latitude, goal.position.longitude, goal.depth);
+            RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Sending command to KCL ["<<goal.desired_state.c_str()<<"], "<<goal.position.latitude<<","<< goal.position.longitude<<","<< goal.depth);
         } else {
-            RCLCPP_INFO(this->get_logger(), "Sending command to KCL [%s]", goal.desired_state.c_str());
+            RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Sending command to KCL ["<<goal.desired_state.c_str()<<"]");
         }
     }
 
     if (systemStatus_->conf.simKcl) {
-        RCLCPP_WARN(this->get_logger(), "Received cmd for KCL but simulating it, so setting it as completed.");
+        RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Received cmd for KCL but simulating it, so setting it as completed.");
         if (goal.desired_state == "WAYPOINT_NAVIGATION") {
             ctrlData_->inertialF_linearPosition.latitude = goal.position.latitude;
             ctrlData_->inertialF_linearPosition.longitude = goal.position.longitude;
@@ -452,7 +449,7 @@ bool MissionController::kclCmd()
         setKCLClient_->async_send_goal(goal, kclSendGoalOptions_);
     } else {
         // systemStatus_->kclActionServerAlive = false;
-        RCLCPP_WARN(this->get_logger(), "KCL is not ready to rcv a cmd.");
+        RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "KCL is not ready to rcv a cmd.");
         return false;
     }
     ctrlData_->kclData.kclActionCmd.newCmd = false;
@@ -466,10 +463,16 @@ void MissionController::ActionResultCallback(const rclcpp_action::ClientGoalHand
 {
     ctrlData_->kclData.kclActionCmd.result.success = result.result->success;
     ctrlData_->kclData.kclActionCmd.result.message = result.result->message;
-    RCLCPP_INFO(this->get_logger(), "KCL command RESULT [%s] with message [%s]",
-        ctrlData_->kclData.kclActionCmd.result.success ? "SUCCESS" : "FAILURE",
-        ctrlData_->kclData.kclActionCmd.result.message.c_str());
-
+    RCLCPP_INFO_STREAM_THROTTLE(
+        this->get_logger(),
+        *get_clock(),
+        1000,
+        "KCL command RESULT ["
+        << (ctrlData_->kclData.kclActionCmd.result.success ? "SUCCESS" : "FAILURE")
+        << "] with message ["
+        << ctrlData_->kclData.kclActionCmd.result.message.c_str()
+        << "]"
+    );
     // ctrlData_->kclData.kclActionCmd.underExecution = false;
     //  if (result.result->success) {
     //      ctrlData_->kclData.kclActionCmd.completed = false;
@@ -492,18 +495,14 @@ void MissionController::ActionFeedbackCallback(
     }
 
     if (ctrlData_->kclData.kclActionCmd.underExecution && ctrlData_->kclData.kclActionCmd.goal.desired_state != ctrlData_->kclData.kclActionCmd.feedback.actual_state) {
-        RCLCPP_WARN(this->get_logger(), "Cancelling KCL action since actual state is different from the desired state: [%s] vs [%s]",
-            ctrlData_->kclData.kclActionCmd.goal.desired_state.c_str(),
-            ctrlData_->kclData.kclActionCmd.feedback.actual_state.c_str());
+        RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Cancelling KCL action since actual state is different from the desired state: ["<<ctrlData_->kclData.kclActionCmd.goal.desired_state.c_str()<<"] vs ["<<ctrlData_->kclData.kclActionCmd.feedback.actual_state.c_str()<<"]");
         kclCancelCmd();
         ctrlData_->kclData.kclActionCmd.underExecution = true; // This will trigger a new command in the next run
     }
 
     if (systemStatus_->conf.debugPrints) {
         if (std::fmod(ctrlData_->kclData.kclActionCmd.feedback.action_progress, 10.0) < 1.0) {
-            RCLCPP_INFO(this->get_logger(), "KCL command FEEDBACK: [%s] with progress %.2f",
-                ctrlData_->kclData.kclActionCmd.feedback.actual_state.c_str(),
-                ctrlData_->kclData.kclActionCmd.feedback.action_progress);
+            RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "KCL command FEEDBACK: ["<<ctrlData_->kclData.kclActionCmd.feedback.actual_state.c_str()<<"] with progress "<<ctrlData_->kclData.kclActionCmd.feedback.action_progress);
         }
     }
 }
@@ -532,15 +531,15 @@ void MissionController::SetGimbalAttitude()
                 auto response = future.get();
                 if (response->success) {
                     lastSetGimbalAttitude_ = ctrlData_->perceptionData.desiredGimbalAttitude;
-                    RCLCPP_INFO(this->get_logger(), "Gimbal attitude set successfully.");
+                    RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Gimbal attitude set successfully.");
                 } else {
-                    RCLCPP_WARN(this->get_logger(), "Service call failed to set gimbal attitude.");
+                    RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Service call failed to set gimbal attitude.");
                 }
             } else {
-                RCLCPP_WARN(this->get_logger(), "Timed out waiting for gimbal attitude service response.");
+                RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Timed out waiting for gimbal attitude service response.");
             }
         } else {
-            RCLCPP_WARN(this->get_logger(), "Gimbal attitude service is not ready.");
+            RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Gimbal attitude service is not ready.");
         }
     }
 }
