@@ -7,7 +7,11 @@ namespace auv_core_helper {
 
 namespace topicnames {
 
+    // STATUS
 const std::string system_status = "/auv/status";
+const std::string ardusub_heartbeat = "/auv/heart_beat/ardusub";
+const std::string bridge_heartbeat = "/auv/heart_beat/bridge";
+const std::string perception_heartbeat = "/auv/image_pipeline/heart_beat";
 
 const std::string safety_switch = "/auv/safety_switch";    
 const std::string custom_switch = "/auv/custom_switch";    // The other switch
@@ -22,8 +26,7 @@ const std::string objects = "/detections";
 const std::string pose_desired_global = "/auv/global/pose_desired";
 const std::string velocity_desired_global = "/auv/global/velocity_desired";
 
-const std::string ardusub_heartbeat = "/auv/heart_beat/ardusub";
-const std::string bridge_heartbeat = "/auv/heart_beat/bridge";
+
 const std::string global_origin = "/auv/global/origin";
 const std::string battery_status = "/auv/battery_status";
 const std::string ekf_status = "/auv/ekf_status";
