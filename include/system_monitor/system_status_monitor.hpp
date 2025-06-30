@@ -66,7 +66,8 @@ class SystemStatusMonitor : public rclcpp::Node {
     void BridgeCB(const auv_core_helper::msg::HeartBeat::SharedPtr msg);
     void ArdusubCB(const auv_core_helper::msg::HeartBeat::SharedPtr msg);
     void KclCB(const auv_core_helper::msg::KclStatus::SharedPtr msg);
-    void PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg);
+    void PerceptionCB(const std_msgs::msg::Bool::SharedPtr msg);
+
     void SafetySwitchCB(const std_msgs::msg::Bool::SharedPtr msg);
     void CustomSwitchCB(const std_msgs::msg::Bool::SharedPtr msg);
 
