@@ -192,9 +192,13 @@ void BlueROVBridge::receiveData(){
             handleEkfStatus(msg);
             break;
 
-          case MAVLINK_MSG_ID_GIMBAL_DEVICE_ATTITUDE_STATUS:
+          case MAVLINK_MSG_ID_GIMBAL_DEVICE_ATTITUDE_STATUS:  
             handleGimbalStatus(msg);
-            break;  
+            break;
+
+          case MAVLINK_MSG_ID_SERVO_OUTPUT_RAW:
+            setLights(msg);
+          break;  
 
           default:
             break;
@@ -526,13 +530,8 @@ void BlueROVBridge::safetySwitchCallback(const std_msgs::msg::Bool::SharedPtr ms
     RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Failsafe active! Putting vehicle to POSHOLD mode, disarming vehicle and rejecting control commands.");
     setFlightMode("POSHOLD");
     setArmState(false);
-    /*uint16_t rc[18];
-    for (int i = 0; i < 18; i++) {
-      rc[i] = 1000;
-    }
-    rcChannelsOverride(rc);
-    RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "ALL RC channels overridden to disarm values.");
-    */
+    cycleServo(14,1800,1000,3);
+
   } else if (!failsafe_active_){
     RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Failsafe inactive. Vehicle control commands are now accepted.");
   }
@@ -674,6 +673,67 @@ void BlueROVBridge::rcChannelsOverride(uint16_t rc[]){
     rc[17]
   );
   sendMavlinkMessage(msg);
+}
+
+void BlueROVBridge::setLights(const mavlink_message_t& msg)
+{
+  mavlink_servo_output_raw_t servo_output_raw;
+  mavlink_msg_servo_output_raw_decode(&msg, &servo_output_raw);
+
+  if (!failsafe_active_ && (hb.base_mode & MAV_MODE_FLAG_SAFETY_ARMED) && (hb.base_mode & MAV_MODE_FLAG_GUIDED_ENABLED))
+  {
+    if (servo_output_raw.servo14_raw != 1900)
+    {
+      setServo(14,1900);
+    }
+  }
+  else if (!failsafe_active_ && (!(hb.base_mode & MAV_MODE_FLAG_SAFETY_ARMED) || !(hb.base_mode & MAV_MODE_FLAG_GUIDED_ENABLED)))
+  {
+    if (servo_output_raw.servo14_raw != 1100)
+    {
+      setServo(14,1100);
+    }
+  }
+}
+
+void BlueROVBridge::setServo(uint8_t servoID,uint16_t pwm){
+
+  mavlink_message_t msg;
+  mavlink_msg_command_long_pack(
+    system_id_,
+    component_id_,
+    &msg,
+    target_system_,
+    target_component_,
+    MAV_CMD_DO_SET_SERVO,
+    0,
+    servoID,
+    pwm,
+    0,0,0,0,0  //param3-7 unused
+  );
+  sendMavlinkMessage(msg);
+  RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Setting servo "<< static_cast<int>(servoID) <<" to "<< pwm);
+}
+
+void BlueROVBridge::cycleServo(uint8_t servoID,uint16_t pwm,uint16_t cycleCount,uint16_t cycleTime){
+
+  mavlink_message_t msg;
+  mavlink_msg_command_long_pack(
+    system_id_,
+    component_id_,
+    &msg,
+    target_system_,
+    target_component_,
+    MAV_CMD_DO_SET_SERVO,
+    0,
+    servoID,
+    pwm,
+    cycleCount,
+    cycleTime,
+    0,0,0  //param5-7 unused
+  );
+  sendMavlinkMessage(msg);
+  RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Cycling servo "<< static_cast<int>(servoID) <<" to "<< pwm);
 }
 
 void BlueROVBridge::setGlobalOriginServiceCallback(const std::shared_ptr<auv_core_helper::srv::SetGlobalOrigin::Request> request,

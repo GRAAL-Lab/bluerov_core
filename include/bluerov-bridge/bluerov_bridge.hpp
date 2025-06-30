@@ -235,6 +235,12 @@ private:
     
     void rcChannelsOverride(uint16_t rc[]); 
 
+    void setLights(const mavlink_message_t& msg);
+
+    void setServo(uint8_t servoID,uint16_t pwm);
+
+    void cycleServo(uint8_t servoID,uint16_t pwm,uint16_t cycleCount,uint16_t cycleTime);
+
     void desiredCtrlModeCallback(const std_msgs::msg::String::SharedPtr msg);
     
     void globalPoseDesiredCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
