@@ -524,7 +524,6 @@ namespace mission
                 request->yaw = ctrlData_->perceptionData.desiredGimbalAttitude;
 
                 auto future = setGimbalAttitudeService_->async_send_request(request);
-
                 // Wait up to timeoutMilliseconds for the result
                 auto ret = rclcpp::spin_until_future_complete(
                     this->get_node_base_interface(),
@@ -585,6 +584,16 @@ namespace mission
             ctb::GetParam(confObj, systemStatus_->conf.debugBuoys, "buoysDebug");
             ctb::GetParam(confObj, systemStatus_->conf.ignoreBuoyColor, "ignore_buoy_color");
             ctb::GetParam(confObj, systemStatus_->conf.gateWpsDistance, "gate_wps_distance");
+            
+            ctb::GetParam(confObj, systemStatus_->conf.initStateTimeout, "init_state_timeout");
+            ctb::GetParam(confObj, systemStatus_->conf.homingStateTimeout, "homing_state_timeout");
+            ctb::GetParam(confObj, systemStatus_->conf.moveToWpStateTimeout, "move_to_wp_state_timeout");
+            ctb::GetParam(confObj, systemStatus_->conf.searchForObjectStateTimeout, "search_for_object_state_timeout");
+            ctb::GetParam(confObj, systemStatus_->conf.crossGateStateTimeout,"cross_gate_state_timeout" );
+            ctb::GetParam(confObj, systemStatus_->conf.searchBuoyAreaStateTimeout,"search_buoy_area_state_timeout");
+            ctb::GetParam(confObj, systemStatus_->conf.inspectBuoyStateTimeout, "inspect_buoy_state_timeout");
+            ctb::GetParam(confObj, systemStatus_->conf.inspectPipesStateTimeout, "inspect_pipe_state_timeout");
+            ctb::GetParam(confObj, systemStatus_->conf.updateLocalizationStateTimeout, "update_localization_state_timeout");
 
             const libconfig::Setting &root = confObj.getRoot();
 
