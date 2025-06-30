@@ -32,7 +32,7 @@ namespace mission
         serverKclClient_ = rclcpp_action::create_client<auv_core_helper::action::SetKCL>(
             this, auv_core_helper::topicnames::kcl_setter_action);
 
-        perceptionSub_ = this->create_subscription<std_msgs::msg::bool>(
+        perceptionSub_ = this->create_subscription<std_msgs::msg::Bool>(
             auv_core_helper::topicnames::perception_heartbeat, rclcpp::SystemDefaultsQoS(),
             std::bind(&SystemStatusMonitor::PerceptionCB, this, std::placeholders::_1));
 
