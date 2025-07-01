@@ -14,6 +14,9 @@ namespace states {
         fsm::retval OnExit() override;
 
         int debugCounter;
+        ctb::LatLong inspectionPosition;
+        Buoy buoyToInspect; // Store the buoy being inspected
+        
     };
 
 }

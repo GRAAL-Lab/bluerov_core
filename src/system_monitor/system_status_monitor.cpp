@@ -18,7 +18,7 @@ namespace mission
             auv_core_helper::topicnames::mission_status, rclcpp::SystemDefaultsQoS(),
             std::bind(&SystemStatusMonitor::MissionCtrlCB, this, std::placeholders::_1));
 
-        bridgeHeartBeathSub_ = this->create_subscription<auv_core_helper::msg::HeartBeat>(
+        bridgeHeartBeathSub_ = this->create_subscription<std_msgs::msg::Int8>(
             auv_core_helper::topicnames::bridge_heartbeat, rclcpp::SystemDefaultsQoS(),
             std::bind(&SystemStatusMonitor::BridgeCB, this, std::placeholders::_1));
 
@@ -93,7 +93,7 @@ namespace mission
 
         if (timeSinceLastPerception.seconds() > perceptionTimeout_)
         {
-            status.perception = false;
+            //              temp status.perception = false;
         }
 
         status.vehicle_is_armed = safetySwitchIsOff_;
@@ -120,13 +120,13 @@ namespace mission
         std::cout << "[M_Ctrl: " << (status.mission_ctrl ? "On" : "Off")
                   << "] [KCL: " << (status.kcl ? "On" : "Off")
                   << "] [Percept: " << (status.perception ? "On" : "Off")
-                  << "] [Bridge: " << (status.bridge ? "On" : "Off")
+                  << "] [Bridge/Ardusub: " << (status.bridge ? "On" : "Off") <<"/" << (timeSinceLastArdusub.seconds() < bridgeTimeout_ ? "On" : "Off")
                   << "] [Vh armed: " << (status.vehicle_is_armed ? "On" : "Off")
-                  << "\n      ->(   vehicle looks free to move:  " << (vehicleIsFreeToMove_ ? "Yes" : "No") << ",\n"
-                  << "            safety switch is Off:        " << (safetySwitchIsOff_ ? "Yes" : "No") << ",\n"
-                  << "            vehicle reached safety area: " << (vehicleReachedSafetyArea_ ? "Yes" : "No") << ",\n"
-                  << "            vehicle is in safety area:   " << (vehicleIsInSafetyArea_ ? "Yes" : "No") << ",\n"
-                  << "            mission under execution:     " << (missionUnderExecution ? "Yes" : "No") << "\n       )]\n";
+                  << "\n      ->(   vehicle looks free to move:       " << (vehicleIsFreeToMove_ ? "Yes" : "No") << ",\n"
+                  << "            safety switch is Off:             " << (safetySwitchIsOff_ ? "Yes" : "No") << ",\n"
+                  << "            reached safety area (on mission): " << (vehicleReachedSafetyArea_ ? "Yes" : "No") << ",\n"
+                  << "            vehicle is in safety area:        " << (vehicleIsInSafetyArea_ ? "Yes" : "No") << ",\n"
+                  << "            mission under execution:          " << (missionUnderExecution ? "Yes" : "No") << "\n       )]\n";
     }
 
     void SystemStatusMonitor::MissionCtrlCB(const auv_core_helper::msg::MissionStatus::SharedPtr msg)
@@ -148,15 +148,17 @@ namespace mission
         lastMissionCtrlTime = this->get_clock()->now();
     }
 
-    void SystemStatusMonitor::BridgeCB(const auv_core_helper::msg::HeartBeat::SharedPtr msg)
+    void SystemStatusMonitor::BridgeCB(const std_msgs::msg::Int8::SharedPtr msg)
     {
         (void)msg; // Unused parameter
         lastBridgeTime = this->get_clock()->now();
     }
-
+    
     void SystemStatusMonitor::ArdusubCB(const auv_core_helper::msg::HeartBeat::SharedPtr msg)
     {
         (void)msg; // Unused parameter
+        // auto timeSinceLastArdusub = this->get_clock()->now() - lastArdusubTime;
+        // std::cerr << "Ardusub Heartbeat received, time since last: " << timeSinceLastArdusub.seconds() << " seconds." << std::endl;
         lastArdusubTime = this->get_clock()->now();
     }
 

@@ -11,6 +11,7 @@
 #include "mission_ctrl/states/state_inspect_buoy.hpp"
 #include "mission_ctrl/states/state_inspect_pipes.hpp"
 #include "mission_ctrl/states/state_latlong.hpp"
+#include "mission_ctrl/states/state_depth.hpp"
 #include "mission_ctrl/states/state_search_buoy_area.hpp"
 #include "mission_ctrl/states/state_search_object.hpp"
 #include "mission_ctrl/states/state_update_localization.hpp"
@@ -40,6 +41,7 @@ class MissionController : public rclcpp::Node {
     std::unordered_map<std::string, std::shared_ptr<states::StateBase>> statesMap_;
     std::shared_ptr<states::StateInit> stateInit_;
     std::shared_ptr<states::StateLatLong> stateLatLong_;
+    std::shared_ptr<states::StateDepth> stateDepth_;
     std::shared_ptr<states::StateSearchObject> stateSearchObject_;
     std::shared_ptr<states::StateCrossGate> stateCrossGate_;
     std::shared_ptr<states::StateHoming> stateHoming_;
@@ -63,6 +65,7 @@ class MissionController : public rclcpp::Node {
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr debugPub_;
 
     rclcpp::TimerBase::SharedPtr runTimer_;
+    rclcpp::TimerBase::SharedPtr delayMissionStartTimer_;
     rclcpp::TimerBase::SharedPtr simCtrlStationTimer_;
 
     rclcpp_action::Client<auv_core_helper::action::SetKCL>::SendGoalOptions kclSendGoalOptions_;

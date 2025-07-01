@@ -53,10 +53,13 @@ struct MissionCtrlConf {
     bool simCtrlStation;
     bool debugPrints;
 
-    //bool restartLatestMission = false; // if true, the latest mission will be restarted once systems are back online
+    double delayMissionStart = 5.0; // seconds, delay before the mission starts
     bool useStartingDepthAsSurfaceDepth = true;
     double surfaceDepth = 0.2; 
     double diveDepth = 1.5; 
+    double diveDepthBuoys = 1.5; 
+    double diveDepthGate = 1.5; 
+    double diveDepthManipulationConsole = 1.5; 
     double depthTolerance = 0.3;
     double latlongTolerance = 0.5;
     int ctrlRate = 1;

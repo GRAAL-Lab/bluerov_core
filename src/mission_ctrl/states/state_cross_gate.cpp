@@ -98,11 +98,11 @@ namespace states {
 
                 ctrlData->kclData.kclActionCmd.goal.position.latitude = secondWp.latitude;
                 ctrlData->kclData.kclActionCmd.goal.position.longitude = secondWp.longitude;
-                ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepth;
+                ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepthGate;
             } else {
                 ctrlData->kclData.kclActionCmd.goal.position.latitude = firstWp.latitude;
                 ctrlData->kclData.kclActionCmd.goal.position.longitude = firstWp.longitude;
-                ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepth;
+                ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepthGate;
             }
         }
 

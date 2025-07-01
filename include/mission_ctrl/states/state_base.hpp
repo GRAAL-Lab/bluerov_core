@@ -24,7 +24,7 @@ namespace states {
 
         double stateTimeout = 9999; 
         fsm::retval SetNextMissionState();
-        fsm::retval StopMission();
+
     };
 }
 }

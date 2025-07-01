@@ -15,6 +15,7 @@ namespace states {
     namespace ID {
         const std::string init = "Init";
         const std::string moveToWp = "MoveToWp";
+        const std::string moveToDepth = "moveToDepth";
         const std::string searchForObject = "SearchForObject"; // gate, main pipe, manipulation console
         const std::string crossGate = "CrossGate";
         const std::string searchBuoyArea = "SearchBuoyArea";

@@ -79,7 +79,7 @@ namespace states {
         ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
         ctrlData->kclData.kclActionCmd.goal.position.latitude = areaPoints.front().latitude;
         ctrlData->kclData.kclActionCmd.goal.position.longitude = areaPoints.front().longitude;
-        ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepth; 
+        ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepthBuoys; 
         return fsm::ok;
     }
 
@@ -145,6 +145,7 @@ namespace states {
             points.pop();
             ctrlData->kclData.kclActionCmd.goal.serpentine_data.right.longitude = points.front().longitude;
             ctrlData->kclData.kclActionCmd.goal.serpentine_data.right.latitude = points.front().latitude;
+
             return fsm::ok;
         }
 

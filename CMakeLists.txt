@@ -33,6 +33,7 @@ set(MISSION_CTRL_SRCS
   src/mission_ctrl/states/state_base.cpp
   src/mission_ctrl/states/state_init.cpp
   src/mission_ctrl/states/state_latlong.cpp
+  src/mission_ctrl/states/state_depth.cpp
   src/mission_ctrl/states/state_homing.cpp
   src/mission_ctrl/states/state_search_object.cpp
   src/mission_ctrl/states/state_cross_gate.cpp

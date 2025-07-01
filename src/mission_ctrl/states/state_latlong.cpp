@@ -82,7 +82,7 @@ namespace states {
                 doneInit = false;
                 return this->SetNextMissionState();
             }
-            std::cerr << "Distance to goal: " << distance << "\n";
+            //std::cerr << "Distance to goal: " << distance << "\n";
             // if (distance > 1000 && systemStatus_->conf.debugPrints) {
             //     std::cerr << "Distance to goal: " << distance << " (undetermined)" << "\n";
             // } else {

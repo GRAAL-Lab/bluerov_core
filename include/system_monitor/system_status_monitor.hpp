@@ -15,6 +15,7 @@
 #include "auv_core_helper/msg/system_status.hpp"
 #include "auv_core_helper/topicnames.hpp"
 #include "std_msgs/msg/bool.hpp"
+#include "std_msgs/msg/int8.hpp"
 
 namespace mission {
 
@@ -36,7 +37,7 @@ class SystemStatusMonitor : public rclcpp::Node {
     // Pubs and Subs, action client to KCL and service for mission command
     rclcpp::Publisher<auv_core_helper::msg::SystemStatus>::SharedPtr systemStatusPub_;
     rclcpp::Subscription<auv_core_helper::msg::MissionStatus>::SharedPtr missionCtrlSub_;
-    rclcpp::Subscription<auv_core_helper::msg::HeartBeat>::SharedPtr bridgeHeartBeathSub_;
+    rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr bridgeHeartBeathSub_;
     rclcpp::Subscription<auv_core_helper::msg::HeartBeat>::SharedPtr ardusubHeartBeathSub_;
     rclcpp::Subscription<auv_core_helper::msg::KclStatus>::SharedPtr kclSub_;
     rclcpp_action::Client<auv_core_helper::action::SetKCL>::SharedPtr serverKclClient_;
@@ -63,11 +64,9 @@ class SystemStatusMonitor : public rclcpp::Node {
     // Callbacks
     void StatusPub();
     void MissionCtrlCB(const auv_core_helper::msg::MissionStatus::SharedPtr msg);
-    void BridgeCB(const auv_core_helper::msg::HeartBeat::SharedPtr msg);
+    void BridgeCB(const std_msgs::msg::Int8::SharedPtr msg);
     void ArdusubCB(const auv_core_helper::msg::HeartBeat::SharedPtr msg);
     void KclCB(const auv_core_helper::msg::KclStatus::SharedPtr msg);
-
-    //void PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg);
     void PerceptionCB(const std_msgs::msg::Bool::SharedPtr msg);
 
     void SafetySwitchCB(const std_msgs::msg::Bool::SharedPtr msg);
@@ -76,7 +75,6 @@ class SystemStatusMonitor : public rclcpp::Node {
 
 
     void PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
-    void ArdsubCB(const auv_core_helper::msg::HeartBeat::SharedPtr msg);
 
     void LoadConfiguration();
 
