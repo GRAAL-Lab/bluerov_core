@@ -133,8 +133,10 @@ void MissionController::Run()
         double timeSinceLastSwitch = now.seconds() - systemStatus_->lastStateSwitchTime.seconds();
         // Get current state timeout value TODO if same state with different objectives than timeout is not gonna reset
         double currentStateTimeout = statesMap_[rFsm_.GetCurrentStateName()]->stateTimeout;
-        if (timeSinceLastSwitch > currentStateTimeout && std::fmod(timeSinceLastSwitch, 5.0) < 1.0) {
+        if (timeSinceLastSwitch > currentStateTimeout ){//&& std::fmod(timeSinceLastSwitch, 5.0) < 1.0) {
             RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "FSM in state" << rFsm_.GetCurrentStateName().c_str() << "for" << (int)timeSinceLastSwitch << "seconds");
+            kclStopCmd();
+            systemStatus_->SetState(MissionCtrlState::WAITING_FOR_MISSION_CMD);
         }
     }
 
@@ -195,6 +197,7 @@ void MissionController::SystemStatusCB(const auv_core_helper::msg::SystemStatus:
     } else {
         if (systemStatus_->State() != MissionCtrlState::WAITING_FOR_SYSTEM_TO_BE_READY)
             kclStopCmd();
+
         systemStatus_->SetState(MissionCtrlState::WAITING_FOR_SYSTEM_TO_BE_READY);
     }
 }
@@ -517,6 +520,15 @@ void MissionController::LoadConfiguration()
         ctb::GetParam(confObj, systemStatus_->conf.latlongTolerance, "latlong_tolerance");
         ctb::GetParam(confObj, systemStatus_->conf.ctrlRate, "ctrl_rate");
 
+        ctb::GetParam(confObj, systemStatus_->conf.homingStateTimeout, "homing_state_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.moveToWpStateTimeout, "move_to_wp_state_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.searchForObjectStateTimeout, "search_for_object_state_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.crossGateStateTimeout, "cross_gate_state_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.searchBuoyAreaStateTimeout, "search_buoy_area_state_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.inspectBuoyStateTimeout, "inspect_buoy_state_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.inspectPipesStateTimeout, "inspect_pipe_state_timeout");
+        ctb::GetParam(confObj, systemStatus_->conf.updateLocalizationStateTimeout, "update_localization_state_timeout");
+
         ctb::GetParam(confObj, systemStatus_->conf.debugBuoys, "buoysDebug");
         ctb::GetParam(confObj, systemStatus_->conf.ignoreBuoyColor, "ignore_buoy_color");
         ctb::GetParam(confObj, systemStatus_->conf.gateWpsDistance, "gate_wps_distance");
@@ -657,6 +669,16 @@ void MissionController::SetUpFSM()
     stateInspectBuoy_ = std::make_shared<states::StateInspectBuoy>();
     stateInspectPipes_ = std::make_shared<states::StateInspectPipes>();
     stateUpdateLocalization_ = std::make_shared<states::StateUpdateLocalization>();
+
+    stateHoming_->stateTimeout = systemStatus_->conf.homingStateTimeout;
+    stateLatLong_->stateTimeout = systemStatus_->conf.moveToWpStateTimeout;
+    stateDepth_->stateTimeout = systemStatus_->conf.moveToWpStateTimeout;
+    stateSearchObject_->stateTimeout = systemStatus_->conf.searchForObjectStateTimeout;
+    stateCrossGate_->stateTimeout = systemStatus_->conf.crossGateStateTimeout;
+    stateSearchBuoyArea_->stateTimeout = systemStatus_->conf.searchBuoyAreaStateTimeout;
+    stateInspectBuoy_->stateTimeout = systemStatus_->conf.inspectBuoyStateTimeout;
+    stateInspectPipes_->stateTimeout = systemStatus_->conf.inspectPipesStateTimeout;
+    stateUpdateLocalization_->stateTimeout = systemStatus_->conf.updateLocalizationStateTimeout;
 
     statesMap_.insert({ states::ID::init, stateInit_ });
     statesMap_.insert({ states::ID::homing, stateHoming_ });

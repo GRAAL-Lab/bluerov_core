@@ -69,7 +69,7 @@ namespace states {
     {
 
         double distance, azimuthRad;
-        if (!reachedFrontOfGate) {
+        if (!reachedFrontOfGate ) {
             ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, firstWp, distance, azimuthRad);
             if (distance < systemStatus_->conf.latlongTolerance) {
                 reachedFrontOfGate = true;
