@@ -1,7 +1,6 @@
 import rclpy
 from rclpy.node import Node
 from auv_core_helper.msg import PoseStamped, MissionStatus, DtcList
-from image_pipeline_msgs.msg import Obstacles
 from sensor_msgs.msg import Image
 from std_srvs.srv import Trigger
 from datetime import datetime, timedelta, timezone
@@ -211,8 +210,6 @@ class LoggerNode(Node):
                 PoseStamped, TOPICS_NAMES["Pose"], self.pose_callback, 10)
             self.mission_sub = self.create_subscription(
                 MissionStatus, TOPICS_NAMES["MissionStatus"], self.mission_callback, 10)
-            self.perception_sub = self.create_subscription(
-                Obstacles, TOPICS_NAMES["Obstacles"], self.perception_callback, 10)
             self.image_sub = self.create_subscription(
                 Image, TOPICS_NAMES["Camera"], self.camera_callback, rclpy.qos.qos_profile_sensor_data)
             self.detections_sub = self.create_subscription(
@@ -578,29 +575,69 @@ class LoggerNode(Node):
             self.last_state_object = state_object
                 
         except Exception as e:
-            self.get_logger().error(f"Error logging mission status: {e}")
-        
-    def perception_callback(self, msg):
-        """Handle perception data with robust error handling"""
+            self.get_logger().error(f"Error logging mission status: {e}")        
+    
+    def _log_buoy(self, buoy, dt: str, timestamp: float) -> bool:
+        """Log buoy data to KML format"""
+        try:
+            if not hasattr(buoy, 'position'):
+                return False
+
+            pos = buoy.position
+            lat = getattr(pos, 'latitude', None)
+            lon = getattr(pos, 'longitude', None)
+            depth = getattr(self.latest_pose, 'depth', None)
+
+            if not self.validate_coordinates(lat, lon):
+                return False
+            
+            if not self.validate_depth(depth):
+                self.get_logger().debug("Invalid depth value, using 0")
+                depth = 0.0
+            
+            object_id = f"buoy_{buoy.id}"
+            filename = self.save_image(timestamp)  # Ensure this saves as JPEG/PNG/BMP/PPM
+
+            if self.kml_objects is not None:
+                placemark = self.kml_objects.newpoint(name=f"Buoy {buoy.id}")
+                placemark.timestamp.when = dt
+                placemark.coords = [(lon, lat, depth)]
+                
+                # Target ID
+                placemark.extendeddata.newdata(name="Target ID", value=object_id)
+                
+                # Features
+                radius = getattr(buoy, 'radius', 'unknown')
+                color = getattr(buoy, 'color', 'unknown')
+                color_conf = getattr(buoy, 'color_confidence', 'unknown')
+                feature_info = f"radius={radius}, color={color}, confidence={color_conf}"
+                placemark.extendeddata.newdata(name="Features", value=feature_info)
+                
+                # Image
+                placemark.extendeddata.newdata(name="Image", value=filename)
+
+            return True
+
+        except Exception as e:
+            self.get_logger().error(f"Error logging buoy: {e}")
+            return False
+                
+    def detection_callback(self, msg):
+        """Handle detection messages"""
         if not self.logging_active:
             return
-            
+        
         try:
-            # Validate message structure
+             # Validate message structure
             if not hasattr(msg, 'header'):
                 self.get_logger().debug("Invalid perception message structure")
                 return
-                
-            timestamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
-            dt = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
             
-            # Skip if no image available yet
-            if self.latest_image is None:
-                self.get_logger().debug("[IMAGE] No latest image available to save yet, skipping.")
-                return
+            timestamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+            dt = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()            
             
             object_found = False
-
+            
             # === BUOYS ===
             if hasattr(msg, 'buoys'):
                 for buoy in msg.buoys:
@@ -611,219 +648,26 @@ class LoggerNode(Node):
                             
                             if self._log_buoy(buoy, dt, timestamp):
                                 self.get_logger().debug(f"Logged buoy {buoy.id}")
-                    except Exception as e:
-                        self.get_logger().error(f"Error processing buoy: {e}")
-
-            # === MARKERS ===
-            if hasattr(msg, 'markers'):
-                for marker in msg.markers:
-                    try:
-                        if hasattr(marker, 'id') and marker.id not in self.seen_marker_ids:
-                            self.seen_marker_ids.add(marker.id)
-                            object_found = True
-                            
-                            if self._log_marker(marker, dt, timestamp):
-                                self.get_logger().debug(f"Logged marker {marker.id}")
-                    except Exception as e:
-                        self.get_logger().error(f"Error processing marker: {e}")
-
-            # === NUMBERS ===
-            if hasattr(msg, 'numbers'):
-                for number in msg.numbers:
-                    try:
-                        if hasattr(number, 'id') and number.id not in self.seen_number_ids:
-                            self.seen_number_ids.add(number.id)
-                            object_found = True
-                            
-                            if self._log_number(number, dt, timestamp):
-                                self.get_logger().debug(f"Logged number {number.id}")                            
-                    except Exception as e:
-                        self.get_logger().error(f"Error processing number: {e}")
-
-            # === PIPES ===
-            if hasattr(msg, 'pipes'):
-                for pipe in msg.pipes:
-                    try:
-                        if hasattr(pipe, 'id') and pipe.id not in self.seen_pipe_ids:
-                            self.seen_pipe_ids.add(pipe.id)
-                            object_found = True
-                            
-                            if self._log_pipe(pipe, dt, timestamp):
-                                self.get_logger().debug(f"Logged pipe {pipe.id}")
-                    except Exception as e:
-                        self.get_logger().error(f"Error processing pipe: {e}")
-            
-            # Handle manipulation console
-            if hasattr(msg, 'manipulation_console') and msg.manipulation_console:
-                filename = self.save_image(timestamp)
-                if filename:
-                    self.get_logger().debug("Saved manipulation console image")
-                
-            if object_found:
-                self.get_logger().info(f"[PERCEPTION] Logged new objects at {dt}")
-
-        except Exception as e:
-            self.get_logger().error(f"[PERCEPTION] Callback error: {e}")
-    
-    def _log_buoy(self, buoy, dt: str, timestamp: float) -> bool:
-        """Log buoy data to KML"""
-        try:
-            if not hasattr(buoy, 'pose') or not hasattr(buoy.pose, 'pose'):
-                return False
-                
-            pos = buoy.pose.pose.position
-            lat = getattr(pos, 'latitude', None)
-            lon = getattr(pos, 'longitude', None)
-            alt = getattr(pos, 'altitude', 0)
-            
-            if not self.validate_coordinates(lat, lon):
-                return False
-                
-            depth = -alt
-            object_id = f"buoy_{buoy.id}"
-            filename = self.save_image(timestamp)
-
-
-            if self.kml_objects is not None:
-                placemark = self.kml_objects.newpoint(name=f"Buoy {buoy.id}")
-                placemark.timestamp.when = dt
-                placemark.coords = [(lon, lat, depth)]
-                placemark.extendeddata.newdata(name="Target ID", value=object_id)                    
-                radius = getattr(buoy, 'radius', 'unknown')
-                color = getattr(buoy, 'color', 'unknown')
-                placemark.extendeddata.newdata(
-                    name="Features", value=f"radius={radius}, color={color}")
-                placemark.extendeddata.newdata(name="Image", value=filename)
-            
-            return True
-        except Exception as e:
-            self.get_logger().error(f"Error logging buoy: {e}")
-            return False
-    
-    def _log_marker(self, marker, dt: str, timestamp: float) -> bool:
-        """Log marker data to KML"""
-        try:
-            if not hasattr(marker, 'pose') or not hasattr(marker.pose, 'pose'):
-                return False
-                
-            pos = marker.pose.pose.position
-            lat = getattr(pos, 'latitude', None)
-            lon = getattr(pos, 'longitude', None)
-            alt = getattr(pos, 'altitude', 0)
-            
-            if not self.validate_coordinates(lat, lon):
-                return False
-                
-            depth = -alt
-            object_id = f"marker_{marker.id}"
-            filename = self.save_image(timestamp)
-
-            if self.kml_objects is not None:
-                placemark = self.kml_objects.newpoint(name=f"Marker {marker.id}")
-                placemark.timestamp.when = dt
-                placemark.coords = [(lon, lat, depth)]
-                placemark.extendeddata.newdata(name="Target ID", value=object_id)
                     
-                color = getattr(marker, 'color', 'unknown')
-                placemark.extendeddata.newdata(name="Features", value=f"color={color}")
-                placemark.extendeddata.newdata(name="Image", value=filename)
+                    except Exception as e:
+                        self.get_logger().error(f"Error processing buoy: {e}")                                   
             
-            return True
-        except Exception as e:
-            self.get_logger().error(f"Error logging marker: {e}")
-            return False
-    
-    def _log_number(self, number, dt: str, timestamp: float) -> bool:
-        """Log number data to KML"""
-        try:
-            if not hasattr(number, 'pose') or not hasattr(number.pose, 'pose'):
-                return False
-                
-            pos = number.pose.pose.position
-            lat = getattr(pos, 'latitude', None)
-            lon = getattr(pos, 'longitude', None)
-            alt = getattr(pos, 'altitude', 0)
-            
-            if not self.validate_coordinates(lat, lon):
-                return False
-                
-            depth = -alt
-            object_id = f"number_{number.id}"
-            filename = self.save_image(timestamp)
-
-            if self.kml_objects is not None:
-                placemark = self.kml_objects.newpoint(name=f"Number {number.id}")
-                placemark.timestamp.when = dt
-                placemark.coords = [(lon, lat, depth)]
-                placemark.extendeddata.newdata(name="Target ID", value=object_id)                    
-                num_value = getattr(number, 'number', 'unknown')
-                bg_color = getattr(number, 'bg_color', 'unknown')
-                placemark.extendeddata.newdata(
-                    name="Features", value=f"number={num_value}, bg_color={bg_color}")
-                placemark.extendeddata.newdata(name="Image", value=filename)
-            
-            return True
-        except Exception as e:
-            self.get_logger().error(f"Error logging number: {e}")
-            return False
-    
-    def _log_pipe(self, pipe, dt: str, timestamp: float) -> bool:
-        """Log pipe data to KML"""
-        try:
-            if (not hasattr(pipe, 'start_pose') or not hasattr(pipe.start_pose, 'pose') or
-                not hasattr(pipe, 'end_pose') or not hasattr(pipe.end_pose, 'pose')):
-                return False
-                
-            start = pipe.start_pose.pose.position
-            end = pipe.end_pose.pose.position
-            
-            start_lat = getattr(start, 'latitude', None)
-            start_lon = getattr(start, 'longitude', None)
-            start_alt = getattr(start, 'altitude', 0)
-            
-            end_lat = getattr(end, 'latitude', None)
-            end_lon = getattr(end, 'longitude', None)
-            end_alt = getattr(end, 'altitude', 0)
-            
-            if (not self.validate_coordinates(start_lat, start_lon) or 
-                not self.validate_coordinates(end_lat, end_lon)):
-                return False
-
-            object_id = f"pipe_{pipe.id}"
-            filename = self.save_image(timestamp)
-
-            coords = [
-                (start_lon, start_lat, -start_alt),
-                (end_lon, end_lat, -end_alt)
-            ]
-            
-            if self.kml_objects is not None:
-                line = self.kml_objects.newlinestring(name=f"Pipe {pipe.id}")
-                line.timestamp.when = dt
-                line.coords = coords
-                line.extendeddata.newdata(name="Target ID", value=object_id)
-                    
-                sizes = getattr(pipe, 'sizes', 'unknown')
-                line.extendeddata.newdata(name="Features", value=f"sizes={sizes}")
-                line.extendeddata.newdata(name="Image", value=filename)
-            
-            return True
-        except Exception as e:
-            self.get_logger().error(f"Error logging pipe: {e}")
-            return False
-    
-    def detection_callback(self, msg):
-        """Handle detection messages"""
-        try:
+            # === MANIPULATION CONSOLE ===
             if hasattr(msg, 'manipulation_console'):
                 if msg.manipulation_console:
                     self.dtc_manipulation_flag = True
+                    object_found = True
+                    self.get_logger().info("[MISSION] Manipulation console detected.")
                     self.handle_mission_status()
                 else:
                     self.dtc_manipulation_flag = False
+                    
+            if object_found:
+                self.get_logger().info(f"Detected new objects at {dt}")
+        
         except Exception as e:
             self.get_logger().error(f"Error in detection callback: {e}")
-    
+                    
     def convert_and_publish_lowres_image(self, msg: Image):
         """Convert and publish low-resolution image"""
         try:            

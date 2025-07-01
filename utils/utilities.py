@@ -18,7 +18,6 @@ STATE_NAME_MAP = {
 TOPICS_NAMES = {
     "Pose": "/auv/global/pose_actual",
     "MissionStatus": "/auv/mission/status",
-    "Obstacles": "/dtc/obstacles",
     "Camera": "/camera/image_raw",
     "Detections": "/detections",
     "CameraLowRes": "camera/image_low_res",
