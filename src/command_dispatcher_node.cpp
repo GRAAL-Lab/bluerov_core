@@ -187,8 +187,8 @@ private:
 
   bool LoadConfiguration(std::shared_ptr<TaskBenchmarkSettings> &conf)
   {
-    std::string pkg = ament_index_cpp::get_package_share_directory("ctrl_station");
-    std::string path = pkg + "/conf/tasks.conf";
+    std::string pkg = ament_index_cpp::get_package_share_directory("auv_core_helper");
+    std::string path = pkg + "/param/ctrl_station_conf/tasks.conf";
     libconfig::Config cfg;
     try
     {

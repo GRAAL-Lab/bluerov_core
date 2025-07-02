@@ -110,10 +110,6 @@ install(TARGETS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-install(DIRECTORY conf/
-  DESTINATION share/${PROJECT_NAME}/conf
-)
-
 install(PROGRAMS
   scripts/download_rov_data.sh
   DESTINATION share/${PROJECT_NAME}/scripts

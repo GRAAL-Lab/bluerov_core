@@ -28,9 +28,6 @@ public:
 	MqttClient()
 		: Node("mqtt_client")
 	{
-		std::string config_path = ament_index_cpp::get_package_share_directory("ctrl_station") + "/conf/mqtt_config.conf";
-
-		std::map<std::string, std::string> config;
 		
 		bool mqttConfigLoaded = false;
 		
@@ -158,8 +155,7 @@ private:
 	
 	bool LoadMqttConf(){
                   
-	  std::string pkg = ament_index_cpp::get_package_share_directory("ctrl_station");
-	  std::string path = pkg + "/conf/mqtt_config.conf";
+	  std::string path = ament_index_cpp::get_package_share_directory("auv_core_helper") + "/param/ctrl_station_conf/mqtt_config.conf";
 
 	  std::ifstream file(path);
 	  if (!file.is_open())
