@@ -31,13 +31,35 @@ def save_kmz(kml_path, output_path):
         kmz.write(kml_path, arcname=os.path.basename(kml_path))
 
 # --- Parse KML ---
-with open(KML_FILE, 'rt', encoding='utf-8') as f:
-    root = parser.parse(f).getroot()
-
-placemarks = root.findall('.//kml:Placemark', namespaces=NS)
-
 point_coords = []
 line_coords_list = []
+
+# Try to parse KML if it exists and is not empty
+if os.path.exists(KML_FILE):
+    try:
+        with open(KML_FILE, 'rt', encoding='utf-8') as f:
+            root = parser.parse(f).getroot()
+        
+        placemarks = root.findall('.//kml:Placemark', namespaces=NS)
+        
+        # --- Extract Coordinates ---
+        for pm in placemarks:
+            point = pm.find('.//kml:Point/kml:coordinates', namespaces=NS)
+            if point is not None:
+                lon, lat, *_ = point.text.strip().split(',')
+                point_coords.append((float(lat), float(lon), pm))
+                continue
+
+            linestring = pm.find('.//kml:LineString/kml:coordinates', namespaces=NS)
+            if linestring is not None:
+                coords = []
+                for coord in linestring.text.strip().split():
+                    lon, lat, *_ = coord.split(',')
+                    coords.append((float(lat), float(lon)))
+                line_coords_list.append((coords, pm))
+    except Exception as e:
+        print(f"Warning: Could not parse KML file: {e}")
+        print("Creating map with walls only...")
 
 #walls Lat, Lon of corners
 coords_latlon = [
@@ -47,30 +69,13 @@ coords_latlon = [
     (44.09558901666539, 9.864688844060744)
 ]
 
-# --- Extract Coordinates ---
-for pm in placemarks:
-    point = pm.find('.//kml:Point/kml:coordinates', namespaces=NS)
-    if point is not None:
-        lon, lat, *_ = point.text.strip().split(',')
-        point_coords.append((float(lat), float(lon), pm))
-        continue
-
-    linestring = pm.find('.//kml:LineString/kml:coordinates', namespaces=NS)
-    if linestring is not None:
-        coords = []
-        for coord in linestring.text.strip().split():
-            lon, lat, *_ = coord.split(',')
-            coords.append((float(lat), float(lon)))
-        line_coords_list.append((coords, pm))
-
-if not point_coords and not line_coords_list:
-    print("No coordinates found in KML.")
-    exit(1)
-
 # --- Calculate Bounds ---
+# Always include wall coordinates in bounds calculation
 all_coords = [c[:2] for c in point_coords]
 for line, _ in line_coords_list:
     all_coords.extend(line)
+# Add wall coordinates to ensure they're included in bounds
+all_coords.extend(coords_latlon)
 
 lats = [c[0] for c in all_coords]
 lons = [c[1] for c in all_coords]
@@ -92,7 +97,7 @@ proj = pyproj.Proj(proj='utm', zone=32, ellps='WGS84')  # Use correct UTM zone f
 def latlon_to_utm(lat, lon):
     return proj(lon, lat)
 
-# Convert KML points to UTM
+# Convert KML points to UTM (only if they exist)
 utm_point_coords = [(latlon_to_utm(lat, lon)[0], latlon_to_utm(lat, lon)[1], pm) for lat, lon, pm in point_coords]
 utm_line_coords_list = [([(latlon_to_utm(lat, lon)[0], latlon_to_utm(lat, lon)[1]) for lat, lon in line], pm)
                         for line, pm in line_coords_list]
@@ -106,40 +111,51 @@ all_y = [y for _, y, _ in utm_point_coords] + [y for line, _ in utm_line_coords_
 min_x, max_x = min(all_x), max(all_x)
 min_y, max_y = min(all_y), max(all_y)
 
+# Add some padding around the walls
+padding = max((max_x - min_x), (max_y - min_y)) * 0.1  # 10% padding
+min_x -= padding
+max_x += padding
+min_y -= padding
+max_y += padding
+
 # Plot with meter-scaled axis
 fig, ax = plt.subplots(figsize=(10, 8))
-ax.set_xlim(min_x - 5, max_x + 5)
-ax.set_ylim(min_y - 5, max_y + 5)
+ax.set_xlim(min_x, max_x)
+ax.set_ylim(min_y, max_y)
 
-# Plot KML points
-for x, y, pm in utm_point_coords:
-    ax.plot(x, y, 'ro', markersize=4)
-    name = pm.find('kml:name', namespaces=NS)
-    if name is not None and name.text:
-        ax.text(x, y + 1, name.text, fontsize=8, ha='center', va='bottom')
+# Plot KML points (only if they exist)
+if utm_point_coords:
+    for x, y, pm in utm_point_coords:
+        ax.plot(x, y, 'ro', markersize=4)
+        name = pm.find('kml:name', namespaces=NS)
+        if name is not None and name.text:
+            ax.text(x, y + 1, name.text, fontsize=8, ha='center', va='bottom')
 
-# Plot KML lines
-for coords, pm in utm_line_coords_list:
-    xs, ys = zip(*coords)
-    ax.plot(xs, ys, 'b-', linewidth=1)
+# Plot KML lines (only if they exist)
+if utm_line_coords_list:
+    for coords, pm in utm_line_coords_list:
+        xs, ys = zip(*coords)
+        ax.plot(xs, ys, 'b-', linewidth=1)
 
-# Plot wall polyline (open shape)
+# Plot wall polyline (open shape) - this will always be plotted
 wall_xs, wall_ys = zip(*wall_coords_utm)
 ax.plot(wall_xs, wall_ys, 'k-', linewidth=2, label="Walls")
 
 # Add axis and grid
 ax.set_xlabel("Easting (m)")
 ax.set_ylabel("Northing (m)")
-ax.set_title("2D Map")
+title = "2D Map"
+if not point_coords and not line_coords_list:
+    title += " (Walls Only - No Objects Detected)"
+ax.set_title(title)
 ax.grid(True)
 ax.legend()
 
 # Add cardinal direction labels on edges
-ax.text((min_x + max_x) / 2, max_y + 2, 'NORTH', ha='center', va='bottom', fontsize=12, fontweight='bold')
-ax.text((min_x + max_x) / 2, min_y - 2, 'SOUTH', ha='center', va='top', fontsize=12, fontweight='bold')
-ax.text(min_x - 2, (min_y + max_y) / 2, 'WEST', ha='right', va='center', fontsize=12, fontweight='bold', rotation=90)
-ax.text(max_x + 2, (min_y + max_y) / 2, 'EAST', ha='left', va='center', fontsize=12, fontweight='bold', rotation=270)
-
+ax.text((min_x + max_x) / 2, max_y - padding/4, 'NORTH', ha='center', va='bottom', fontsize=12, fontweight='bold')
+ax.text((min_x + max_x) / 2, min_y + padding/4, 'SOUTH', ha='center', va='top', fontsize=12, fontweight='bold')
+ax.text(min_x + padding/4, (min_y + max_y) / 2, 'WEST', ha='right', va='center', fontsize=12, fontweight='bold', rotation=90)
+ax.text(max_x - padding/4, (min_y + max_y) / 2, 'EAST', ha='left', va='center', fontsize=12, fontweight='bold', rotation=270)
 
 plt.tight_layout()
 
@@ -177,7 +193,15 @@ with rasterio.open(
     for i in range(3):  # Write R, G, B bands
         dst.write(img_np[:, :, i], i + 1)
 
-# --- Save KMZ ---
-save_kmz(KML_FILE, KMZ_FILE)
+# --- Save KMZ (only if KML file exists) ---
+if os.path.exists(KML_FILE):
+    save_kmz(KML_FILE, KMZ_FILE)
+    print(f"✅ All map files saved in: {OUTPUT_DIR}")
+else:
+    print(f"✅ Map files saved in: {OUTPUT_DIR} (KMZ not created - no KML file)")
 
-print(f"✅ All map files saved in: {OUTPUT_DIR}")
+# Print summary
+if not point_coords and not line_coords_list:
+    print("📍 Map created with walls only - no objects found in KML")
+else:
+    print(f"📍 Map created with {len(point_coords)} points, {len(line_coords_list)} lines, and walls")
