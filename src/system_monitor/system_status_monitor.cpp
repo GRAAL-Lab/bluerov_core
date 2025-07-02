@@ -72,6 +72,8 @@ namespace mission
         auto timeSinceLastKCL = this->get_clock()->now() - lastKCLTime;
         auto timeSinceLastPerception = this->get_clock()->now() - lastPerceptionTime;
 
+        vehicleIsFreeToMove_ = true;
+
         if (timeSinceLastMissionCtrl.seconds() > missionCtrlTimeout_)
         {
             status.mission_ctrl = false;
@@ -176,7 +178,7 @@ namespace mission
 
     void SystemStatusMonitor::SafetySwitchCB(const std_msgs::msg::Bool::SharedPtr msg)
     {
-        safetySwitchIsOff_ = msg->data;
+        safetySwitchIsOff_ = !msg->data; // Safety switch is off when the message data is false
     }
 
     void SystemStatusMonitor::CustomSwitchCB(const std_msgs::msg::Bool::SharedPtr msg)

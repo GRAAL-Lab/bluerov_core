@@ -101,6 +101,16 @@ namespace states {
                 }
             }
 
+            // if(ctrlData->missionData.foundGate){
+            //     double distance1, distance2, azimuthRad;
+            //     ctb::DistanceAndAzimuthRad(db.second.position, ctrlData->missionData.gate.buoy1.position, distance1, azimuthRad);
+            //     ctb::DistanceAndAzimuthRad(db.second.position, ctrlData->missionData.gate.buoy2.position, distance2, azimuthRad);
+            //     if(distance1 < 1 !! || distance2 < 1) {
+            //         // Buoy is part of the gate, skip it
+            //         continue;
+            //     }
+            // }
+
             // save path so far
             resumeSearch = true;
             // tell kcl to inspect buoy
