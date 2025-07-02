@@ -34,6 +34,7 @@ private:
   rclcpp::Publisher<std_msgs::msg::Empty>::SharedPtr dispatch_pub_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr stop_trigger_client_;
   rclcpp::Client<std_srvs::srv::Trigger>::SharedPtr start_trigger_client_;
+  bool tbm_done_ = false;
 
   void MenuLoop()
   {
@@ -61,17 +62,33 @@ private:
         std_msgs::msg::Int32 msg;
         msg.data = tbm;
         tbm_id_pub_->publish(msg);
+        tbm_done_ = true;
         RCLCPP_INFO(this->get_logger(), "Published TBM ID: %d", tbm);
         break;
       }
 
       case 2:
       {
-        auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
-  			auto future = start_trigger_client_->async_send_request(request);
-        std_msgs::msg::Empty msg;
-        dispatch_pub_->publish(msg);
-        RCLCPP_INFO(this->get_logger(), "Dispatched MissionCommand request");
+        std::string confirm;
+        RCLCPP_INFO(this->get_logger(), "Confirm the requested mission? (y/n)");
+        std::cin >> confirm;
+        if(tbm_done_ && confirm == "y")
+        {
+          auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
+          auto future = start_trigger_client_->async_send_request(request);
+          std_msgs::msg::Empty msg;
+          dispatch_pub_->publish(msg);
+          RCLCPP_INFO(this->get_logger(), "Dispatched MissionCommand request");
+          tbm_done_ = false;
+        }
+        else if (confirm != "y")
+        {
+          RCLCPP_INFO(this->get_logger(), "Mission command cancelled.");
+        }
+        else
+        {
+          RCLCPP_ERROR(this->get_logger(), "TBM ID not set, please select a TBM ID first.");
+        }
         break;
       }
 

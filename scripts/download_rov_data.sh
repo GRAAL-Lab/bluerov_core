@@ -2,7 +2,7 @@
 
 # Configuration
 REMOTE_USER="jetson"
-REMOTE_HOST="192.168.4.1"
+REMOTE_HOST="192.168.2.3"
 REMOTE_PATH="~/mission_logs/"
 LOCAL_PATH="$HOME/rov_logs/"
 

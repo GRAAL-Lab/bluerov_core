@@ -137,10 +137,10 @@ private:
       return;
     }
 
-    if (tbm_done)
+    if (tbm_done && conf_)
     {
-      if (conf_ && lat_done && long_done)
-      {
+      //if (conf_ && lat_done && long_done)
+      //{
         auto request = std::make_shared<MissionCommand::Request>();
         BuildMissionRequest(request);
 
@@ -179,7 +179,7 @@ private:
         tbm_done = false;
         lat_done = false;
         long_done = false;
-      }
+      //}
     }
     else
       RCLCPP_ERROR(this->get_logger(), "tbm_id not selected");
