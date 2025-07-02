@@ -33,6 +33,7 @@ namespace states {
                             if (systemStatus_->conf.debugPrints) {
                                 std::cerr << "Gate found: " << db_first.second.detectionId << " and " << db_second.second.detectionId << "\n";
                             }
+                            ctrlData->missionData.foundGate = true;
                             return SetNextMissionState();
                         }
                     }
@@ -102,6 +103,7 @@ namespace states {
     {
         if (taskData_->taskPhases.front().second == opis::gate) {
             std::cerr << "Searching for gate...\n";
+            ctrlData->missionData.foundGate = false;
             ctrlData->perceptionData.enableDtcBuoys = true;
 
             // ctrlData->kclData.kclActionCmd = mission::kclCmd();

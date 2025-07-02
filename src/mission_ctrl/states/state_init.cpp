@@ -30,7 +30,7 @@ namespace states {
                 taskData_->taskPhases.push(std::make_pair(states::ID::init, ""));
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DIVE"));
 
-                //taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DEBUG"));
+                // taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DEBUG"));
 
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, opis::uavWaypoint));
 
@@ -43,7 +43,7 @@ namespace states {
                 taskData_->taskPhases.push(std::make_pair(states::ID::searchBuoyArea, ""));
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToDepth, ""));
 
-                //taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DEBUG"));
+                // taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DEBUG"));
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "SURFACE"));
                 
                 // taskData_->taskPhases.push(std::make_pair(states::ID::moveToDepth, "BUOYS_SEARCH"));

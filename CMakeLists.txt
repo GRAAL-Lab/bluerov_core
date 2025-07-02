@@ -23,6 +23,8 @@ find_package(ctrl_toolbox      REQUIRED)
 find_package(sisl_toolbox       REQUIRED)
 find_package(auv_core_helper    REQUIRED)
 
+find_library(GEOGRAPHIC_LIBRARY NAMES Geographic)
+
 # pkg-config for jsoncpp
 find_package(PkgConfig          REQUIRED)
 pkg_check_modules(JSONCPP       REQUIRED jsoncpp)

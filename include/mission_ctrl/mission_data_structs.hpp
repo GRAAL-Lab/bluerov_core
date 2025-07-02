@@ -151,6 +151,8 @@ struct Gate {
 
 struct MissionData {
     std::vector<Buoy> inspectedBuoys;
+
+    bool foundGate = false;
     Gate gate;
     // PipelinePipe damagedPipe;
 };

@@ -217,6 +217,16 @@ void MissionController::PerceptionCB(const auv_core_helper::msg::DtcList::Shared
         b.color = buoy.color;
         b.colorConfidence = buoy.color_confidence;
 
+        if (ctrlData_->missionData.foundGate) {
+            double distance1, distance2, azimuthRad;
+            ctb::DistanceAndAzimuthRad(b.position, ctrlData_->missionData.gate.buoy1.position, distance1, azimuthRad);
+            ctb::DistanceAndAzimuthRad(b.position, ctrlData_->missionData.gate.buoy2.position, distance2, azimuthRad);
+            if (distance1 < 1 || distance2 < 1) {
+                // Buoy is part of the gate, skip it
+                continue;
+            }
+        }
+
         ctrlData_->perceptionData.detectedBuoys[buoy.id] = b;
         // std::cerr << "Detected buoy: " << buoy.id << " at position: ["
         //           << buoy.position.latitude << ", " << buoy.position.longitude << "]\n";
