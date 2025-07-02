@@ -508,7 +508,7 @@ void BlueROVBridge::handleGimbalStatus(const mavlink_message_t& msg){
   mavlink_msg_gimbal_device_attitude_status_decode(&msg, &gimbal_status);
 
   auto gimbal_status_msg = std::make_unique<auv_core_helper::msg::GimbalStatus>();
-  gimbal_status_msg->stamp = this->now();
+  gimbal_status_msg->header.stamp = now();
   gimbal_status_msg->flags = gimbal_status.flags;
 
   tf2::Quaternion q(gimbal_status.q[1], gimbal_status.q[2], gimbal_status.q[3], gimbal_status.q[0]);
