@@ -12,7 +12,8 @@ STATE_NAME_MAP = {
     "InterventionOnConsole": "Performing Intervention on Console",
     "UpdateLocalization": "Updating Localization",
     "Homing": "Returning to Home",
-    "Halt": "Mission Halted"
+    "Halt": "Mission Halted",
+    "moveToDepth": "Moving to Depth",
 }
 
 TOPICS_NAMES = {

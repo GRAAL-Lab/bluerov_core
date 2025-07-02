@@ -657,10 +657,37 @@ class LoggerNode(Node):
                 if msg.manipulation_console:
                     self.dtc_manipulation_flag = True
                     object_found = True
+                    self.save_image(timestamp)
                     self.get_logger().info("[MISSION] Manipulation console detected.")
                     self.handle_mission_status()
                 else:
                     self.dtc_manipulation_flag = False
+                    
+            # === RED MARKER ===
+            if hasattr(msg, 'pipeline_pipe') and msg.pipeline_pipe is not None:
+                pipe = msg.pipeline_pipe
+                
+                if hasattr(pipe, 'found_red_marker') and pipe.found_red_marker:
+                    self.get_logger().info("[MISSION] Red marker found on pipe!")
+                    
+                    # Save image when red marker is detected
+                    try:
+                        # Save current frame/image
+                        if hasattr(self, 'current_image') and self.current_image is not None:
+                            timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+                            image_filename = f"red_marker_{timestamp_str}.jpg"
+                            # Save image logic here
+                            self.get_logger().info(f"[MISSION] Saved red marker image: {image_filename}")
+                        
+                        # Log red marker position
+                        if hasattr(pipe, 'red_marker_position'):
+                            self.get_logger().debug(f"Red marker position logged")
+                            # Log the actual position coordinates
+                            if self._log_red_marker(pipe.red_marker_position, dt, timestamp):
+                                self.get_logger().debug("Red marker position saved to database")
+                                
+                    except Exception as e:
+                        self.get_logger().error(f"Error saving red marker data: {e}")
                     
             if object_found:
                 self.get_logger().info(f"Detected new objects at {dt}")
