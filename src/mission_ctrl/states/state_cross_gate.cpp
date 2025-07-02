@@ -69,11 +69,13 @@ namespace states {
     {
 
         double distance, azimuthRad;
-        if (!reachedFrontOfGate ) {
+        if (!reachedFrontOfGate) {
             ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, firstWp, distance, azimuthRad);
             if (distance < systemStatus_->conf.latlongTolerance) {
                 reachedFrontOfGate = true;
-                ctrlData->kclData.kclActionCmd.underExecution = false; // Reset the command execution state
+                ctrlData->kclData.kclActionCmd = mission::kclCmd();
+
+                // ctrlData->kclData.kclActionCmd.underExecution = false; // Reset the command execution state
             } // }else{
             //     std::cerr << "Distance to first waypoint: "<< distance << "m which is at "
             //               << firstWp.latitude << ", " << firstWp.longitude << "\n";
@@ -88,7 +90,7 @@ namespace states {
 
             // }
         }
-        if (!ctrlData->kclData.kclActionCmd.underExecution) {
+        if (ctrlData->kclData.kclActionCmd.feedback.actual_state != "WAYPOINT_NAVIGATION") {
             ctrlData->kclData.kclActionCmd = mission::kclCmd();
             ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
             if (reachedFrontOfGate) {

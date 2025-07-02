@@ -120,7 +120,7 @@ void MissionController::Run()
         systemStatus_->lastStateSwitchTime = now;
 
         // std::cerr << "Cancelling goals due to fsm state change\n";
-        kclCancelCmd();
+        // kclCancelCmd();
         // if (rFsm_.GetNextStateName() == states::ID::init) {
         //     // Back to initial state
         //     // systemStatus_->SetState(MissionCtrlState::WAITING_FOR_MISSION_CMD); DONE INTO STATE BASE
@@ -133,7 +133,7 @@ void MissionController::Run()
         double timeSinceLastSwitch = now.seconds() - systemStatus_->lastStateSwitchTime.seconds();
         // Get current state timeout value TODO if same state with different objectives than timeout is not gonna reset
         double currentStateTimeout = statesMap_[rFsm_.GetCurrentStateName()]->stateTimeout;
-        if (timeSinceLastSwitch > currentStateTimeout ){//&& std::fmod(timeSinceLastSwitch, 5.0) < 1.0) {
+        if (timeSinceLastSwitch > currentStateTimeout) { //&& std::fmod(timeSinceLastSwitch, 5.0) < 1.0) {
             RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "FSM in state" << rFsm_.GetCurrentStateName().c_str() << "for" << (int)timeSinceLastSwitch << "seconds");
             kclStopCmd();
             systemStatus_->SetState(MissionCtrlState::WAITING_FOR_MISSION_CMD);
@@ -161,8 +161,8 @@ void MissionController::Run()
     }
 
     auto timeSinceLastKclFeedback = (this->get_clock()->now() - systemStatus_->lastKclFeedbackTime).seconds();
-    if (ctrlData_->kclData.kclActionCmd.underExecution && timeSinceLastKclFeedback > 2) {
-        ctrlData_->kclData.kclActionCmd.underExecution = false;
+    if (ctrlData_->kclData.kclActionCmd.goal.desired_state != "" && timeSinceLastKclFeedback > 60) {
+        // ctrlData_->kclData.kclActionCmd.underExecution = false;
         RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "     -------     KCL command is not under execution     -------     ");
         kclCmd();
     }
@@ -346,7 +346,9 @@ void MissionController::PoseCB(const auv_core_helper::msg::PoseStamped::SharedPt
 bool MissionController::kclCancelCmd()
 {
     setKCLClient_->async_cancel_all_goals();
-    ctrlData_->kclData.kclActionCmd.underExecution = false;
+    ctrlData_->kclData.kclActionCmd = mission::kclCmd();
+
+    // ctrlData_->kclData.kclActionCmd.underExecution = false;
     return true;
 }
 
@@ -400,7 +402,7 @@ bool MissionController::kclCmd()
         return false;
     }
     ctrlData_->kclData.kclActionCmd.newCmd = false;
-    ctrlData_->kclData.kclActionCmd.underExecution = true;
+    // ctrlData_->kclData.kclActionCmd.underExecution = true;
     systemStatus_->lastKclFeedbackTime = this->get_clock()->now();
 
     return true;
@@ -443,10 +445,10 @@ void MissionController::ActionFeedbackCallback(
         kclStopCmd();
     }
 
-    if (ctrlData_->kclData.kclActionCmd.underExecution && ctrlData_->kclData.kclActionCmd.goal.desired_state != ctrlData_->kclData.kclActionCmd.feedback.actual_state) {
-        RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "Cancelling KCL action since actual state is different from the desired state: [" << ctrlData_->kclData.kclActionCmd.goal.desired_state.c_str() << "] vs [" << ctrlData_->kclData.kclActionCmd.feedback.actual_state.c_str() << "]");
-        kclCancelCmd();
-        ctrlData_->kclData.kclActionCmd.underExecution = true; // This will trigger a new command in the next run
+    if (/*ctrlData_->kclData.kclActionCmd.underExecution && */ ctrlData_->kclData.kclActionCmd.goal.desired_state != ctrlData_->kclData.kclActionCmd.feedback.actual_state) {
+        RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "(NOT) Cancelling KCL action since actual state is different from the desired state: [" << ctrlData_->kclData.kclActionCmd.goal.desired_state.c_str() << "] vs [" << ctrlData_->kclData.kclActionCmd.feedback.actual_state.c_str() << "]");
+        // kclCancelCmd();
+        // ctrlData_->kclData.kclActionCmd.underExecution = true; // This will trigger a new command in the next run
     }
 
     if (systemStatus_->conf.debugPrints) {
@@ -532,6 +534,8 @@ void MissionController::LoadConfiguration()
         ctb::GetParam(confObj, systemStatus_->conf.debugBuoys, "buoysDebug");
         ctb::GetParam(confObj, systemStatus_->conf.ignoreBuoyColor, "ignore_buoy_color");
         ctb::GetParam(confObj, systemStatus_->conf.gateWpsDistance, "gate_wps_distance");
+        ctb::GetParam(confObj, systemStatus_->conf.inspectBuoyOrbitingRadius, "inspect_buoy_orbiting_radius");
+        ctb::GetParam(confObj, systemStatus_->conf.inspectBuoyOrbitingTimeout, "inspect_buoy_orbiting_radius");
 
         const libconfig::Setting& root = confObj.getRoot();
 

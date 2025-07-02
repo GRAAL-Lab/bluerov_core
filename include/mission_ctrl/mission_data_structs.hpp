@@ -62,6 +62,8 @@ struct MissionCtrlConf {
     double diveDepthManipulationConsole = 1.5; 
     double depthTolerance = 0.3;
     double latlongTolerance = 0.5;
+    double inspectBuoyOrbitingTimeout = 10.0; // seconds, timeout for the buoy inspection orbiting
+    double inspectBuoyOrbitingRadius = 1.0; // meters, radius for
     int ctrlRate = 1;
 
     double safetyAreaTimeout = 15.0; // seconds, time to wait before setting off safety area breach

@@ -37,7 +37,7 @@ namespace states {
                     std::cerr << "Debug waypoint requested, but no debug positions are configured OR 0 was selected. Skipping.\n";
                     return this->SetNextMissionState();
                 }
-                std::cerr << "Debug waypoint requested, using debug position" << systemStatus_->conf.debug_position_selection - 1 << ": ";
+                std::cerr << "Debug waypoint requested, using debug position " << systemStatus_->conf.debug_position_selection - 1 << ": ";
                 std::cerr << systemStatus_->conf.debugPositions[systemStatus_->conf.debug_position_selection - 1].latitude << ", "
                           << systemStatus_->conf.debugPositions[systemStatus_->conf.debug_position_selection - 1].longitude << ", "
                           << systemStatus_->conf.diveDepth << "\n";

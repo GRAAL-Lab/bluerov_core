@@ -35,14 +35,14 @@ namespace states {
             onSurface = true;
             localizationStartTime = std::chrono::steady_clock::now();
             if (systemStatus_->conf.debugPrints) {
-                std::cerr << "Surfaced and waiting " << maxTimeForLocalization << " seconds for localization" << std::endl;
+                std::cerr << "Surfaced and waiting " << systemStatus_->conf.localizationTimeout << " seconds for localization" << std::endl;
             }
 
             return fsm::ok;
         }
 
         auto elapsedTime = (std::chrono::steady_clock::now() - localizationStartTime).count() / 1e9; // Convert to seconds
-        if (onSurface && !diving && elapsedTime > maxTimeForLocalization) {
+        if (onSurface && !diving && elapsedTime > systemStatus_->conf.localizationTimeout) {
             diving = true;
             ctrlData->kclData.kclActionCmd = mission::kclCmd();
             ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";

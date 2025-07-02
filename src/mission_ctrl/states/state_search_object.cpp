@@ -45,7 +45,7 @@ namespace states {
             }
         }
 
-        if (!ctrlData->kclData.kclActionCmd.underExecution) {
+        if (ctrlData->kclData.kclActionCmd.feedback.actual_state != "PATH_FOLLOWING" ) {
             return StartSearch();
         }
 

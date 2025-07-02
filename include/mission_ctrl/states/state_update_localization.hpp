@@ -7,8 +7,7 @@ namespace states {
     class StateUpdateLocalization : public StateBase {
 
         ctb::LatLong startingPosition;
-        double maxTimeForLocalization = 5.0; // seconds
-        
+            
         std::chrono::time_point<std::chrono::steady_clock> localizationStartTime;
         bool onSurface = false;
         bool diving = false;
