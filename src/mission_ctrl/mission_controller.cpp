@@ -705,7 +705,7 @@ void MissionController::SetUpFSM()
     statesMap_.insert({ states::ID::inspectBuoy, stateInspectBuoy_ });
     statesMap_.insert({ states::ID::inspectPipes, stateInspectPipes_ });
     statesMap_.insert({ states::ID::updateLocalization, stateUpdateLocalization_ });
-    statesMap_.insert({ states::ID::stateSleep, stateSleep_ });
+    statesMap_.insert({ states::ID::sleep, stateSleep_ });
 
     // ***** STATES ***** //
     // Set the fsm and the structure that the states need.

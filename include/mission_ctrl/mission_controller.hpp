@@ -15,6 +15,7 @@
 #include "mission_ctrl/states/state_search_buoy_area.hpp"
 #include "mission_ctrl/states/state_search_object.hpp"
 #include "mission_ctrl/states/state_update_localization.hpp"
+#include "mission_ctrl/states/state_sleep.hpp"
 
 #include "std_msgs/msg/string.hpp"
 #include "auv_core_helper/action/set_kcl.hpp"
