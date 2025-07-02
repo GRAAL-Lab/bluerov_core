@@ -25,6 +25,7 @@ namespace states {
         const std::string interventionOnConsole = "InterventionOnConsole";
         const std::string updateLocalization = "UpdateLocalization";
         const std::string homing = "Homing";
+        const std::string sleep = "Sleep";
         const std::string halt = "Halt";
     }
 }

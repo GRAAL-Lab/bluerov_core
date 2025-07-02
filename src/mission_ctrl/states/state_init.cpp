@@ -56,6 +56,8 @@ namespace states {
             } else if (taskData_->taskType == taskBenchmarks::INTERVENTION) {
                 taskData_->taskPhases.push(std::make_pair(states::ID::init, ""));
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DIVE"));
+                
+                taskData_->taskPhases.push(std::make_pair(states::ID::sleep, "30"));
 
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DEBUG"));
 

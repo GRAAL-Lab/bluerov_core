@@ -4,6 +4,7 @@
 #include <ament_index_cpp/get_package_share_directory.hpp>
 #include <libconfig.h++>
 #include <queue>
+#include <string>
 
 #include "ctrl_toolbox/HelperFunctions.h"
 #include "mission_ctrl/mission_ctrl_defines.hpp"

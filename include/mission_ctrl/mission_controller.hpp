@@ -49,6 +49,7 @@ class MissionController : public rclcpp::Node {
     std::shared_ptr<states::StateInspectBuoy> stateInspectBuoy_;
     std::shared_ptr<states::StateInspectPipes> stateInspectPipes_;
     std::shared_ptr<states::StateUpdateLocalization> stateUpdateLocalization_;
+    std::shared_ptr<states::StateSleep> stateSleep_;
 
     // Pubs and Subs, action client to KCL and service for mission command
     rclcpp::Publisher<auv_core_helper::msg::MissionStatus>::SharedPtr missionStatusPub_;

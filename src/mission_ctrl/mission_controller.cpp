@@ -683,6 +683,7 @@ void MissionController::SetUpFSM()
     stateInspectBuoy_ = std::make_shared<states::StateInspectBuoy>();
     stateInspectPipes_ = std::make_shared<states::StateInspectPipes>();
     stateUpdateLocalization_ = std::make_shared<states::StateUpdateLocalization>();
+    stateSleep_ = std::make_shared<states::StateSleep>();
 
     stateHoming_->stateTimeout = systemStatus_->conf.homingStateTimeout;
     stateLatLong_->stateTimeout = systemStatus_->conf.moveToWpStateTimeout;
@@ -704,6 +705,7 @@ void MissionController::SetUpFSM()
     statesMap_.insert({ states::ID::inspectBuoy, stateInspectBuoy_ });
     statesMap_.insert({ states::ID::inspectPipes, stateInspectPipes_ });
     statesMap_.insert({ states::ID::updateLocalization, stateUpdateLocalization_ });
+    statesMap_.insert({ states::ID::stateSleep, stateSleep_ });
 
     // ***** STATES ***** //
     // Set the fsm and the structure that the states need.
