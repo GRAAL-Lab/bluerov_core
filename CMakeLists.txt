@@ -23,6 +23,8 @@ find_package(ctrl_toolbox      REQUIRED)
 find_package(sisl_toolbox       REQUIRED)
 find_package(auv_core_helper    REQUIRED)
 
+find_library(GEOGRAPHIC_LIBRARY NAMES GeographicLib)
+
 # pkg-config for jsoncpp
 find_package(PkgConfig          REQUIRED)
 pkg_check_modules(JSONCPP       REQUIRED jsoncpp)
@@ -65,7 +67,7 @@ ament_target_dependencies(mission_ctrl_lib
 
 target_link_libraries(mission_ctrl_lib
   config++
-  Geographic
+  GeographicLib
   rml
   fsm
   ctrl_toolbox
@@ -106,7 +108,7 @@ ament_target_dependencies(monitor_node
 )
 
 target_link_libraries(monitor_node
-  Geographic
+  GeographicLib
   ctrl_toolbox
   rml
   config++
