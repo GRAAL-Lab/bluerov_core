@@ -14,6 +14,11 @@ namespace states {
         fsm::retval OnExit() override;
 
         fsm::retval StartSearch();
+
+        //things to make it do the serpentine instead of the spiral
+        bool reachedLeftmostPoint = false;
+        bool sentPathFollowingCommand = false;
+        std::queue<ctb::LatLong> areaPoints;
         
     };
 

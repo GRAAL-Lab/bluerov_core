@@ -12,6 +12,8 @@ namespace states {
 
     fsm::retval StateSearchObject::OnEntry()
     {
+        reachedLeftmostPoint = false;
+        sentPathFollowingCommand = false;
         return StartSearch();
     }
 
@@ -37,17 +39,52 @@ namespace states {
                 }
             } else if (taskData_->taskPhases.front().second == opis::mainPipe) {
             } else if (taskData_->taskPhases.front().second == opis::manipulationConsole) {
-                if (ctrlData->perceptionData.dtcList.manipulation_console){
+                if (ctrlData->perceptionData.dtcList.manipulation_console) {
                     if (systemStatus_->conf.debugPrints) {
-                                std::cerr << "Manipulation console FOUND!!! \n";
-                            }
-                    return SetNextMissionState();}
+                        std::cerr << "Manipulation console FOUND!!! \n";
+                    }
+                    return SetNextMissionState();
+                }
             }
         }
 
-        if (ctrlData->kclData.kclActionCmd.feedback.actual_state != "PATH_FOLLOWING" ) {
-            return StartSearch();
+        if (!reachedLeftmostPoint) {
+            double distance, azimuthRad;
+            ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, areaPoints.front(), distance, azimuthRad);
+            if (distance < systemStatus_->conf.latlongTolerance) {
+                reachedLeftmostPoint = true;
+            }
+            return fsm::ok;
         }
+
+        if (reachedLeftmostPoint && !sentPathFollowingCommand) {
+            sentPathFollowingCommand = true;
+
+            // tell kcl to follow area coverage path
+            ctrlData->kclData.kclActionCmd = mission::kclCmd();
+
+            ctrlData->kclData.kclActionCmd.goal.desired_state = "PATH_FOLLOWING";
+            ctrlData->kclData.kclActionCmd.goal.path_mode = "Serpentine2D";
+
+            auto points = areaPoints;
+
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.origin.latitude = points.front().latitude;
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.origin.longitude = points.front().longitude;
+            points.pop();
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.front_left.longitude = points.front().longitude;
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.front_left.latitude = points.front().latitude;
+            points.pop();
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.front_right.longitude = points.front().longitude;
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.front_right.latitude = points.front().latitude;
+            points.pop();
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.right.longitude = points.front().longitude;
+            ctrlData->kclData.kclActionCmd.goal.serpentine_data.right.latitude = points.front().latitude;
+
+            return fsm::ok;
+        }
+        // if (ctrlData->kclData.kclActionCmd.feedback.actual_state != "PATH_FOLLOWING") {
+        //     return StartSearch();
+        // }
 
         return fsm::ok;
     }
@@ -67,11 +104,53 @@ namespace states {
             std::cerr << "Searching for gate...\n";
             ctrlData->perceptionData.enableDtcBuoys = true;
 
+            // ctrlData->kclData.kclActionCmd = mission::kclCmd();
+            // ctrlData->kclData.kclActionCmd.goal.desired_state = "PATH_FOLLOWING";
+            // ctrlData->kclData.kclActionCmd.goal.path_mode = "Spiral2D";
+            // ctrlData->kclData.kclActionCmd.goal.spiral_data.spiral_diameter = 5.0;
+            // ctrlData->kclData.kclActionCmd.goal.spiral_data.spiral_increment = 0.5;
+
+            areaPoints = std::queue<ctb::LatLong>();
+
+            // Ordering points for the area coverage path (depening on current position)
+            auto points = taskData_->buoysArea.points;
+            auto removePoint = [&points](const ctb::LatLong& point) {
+                points.erase(
+                    std::remove_if(points.begin(), points.end(),
+                        [&point](const ctb::LatLong& p) {
+                            return p.latitude == point.latitude && p.longitude == point.longitude;
+                        }),
+                    points.end());
+            };
+            auto findLeftmostPoint = [&](const ctb::LatLong& reference) -> std::optional<ctb::LatLong> {
+                if (points.empty())
+                    return std::nullopt;
+                ctb::LatLong leftmostPoint = points.front();
+                double minAzimuthRad = M_PI;
+                for (const auto& point : points) {
+                    double distance, azimuthRad;
+                    ctb::DistanceAndAzimuthRad(reference, point, distance, azimuthRad);
+                    if (azimuthRad < minAzimuthRad) {
+                        minAzimuthRad = azimuthRad;
+                        leftmostPoint = point;
+                    }
+                }
+                return leftmostPoint;
+            };
+            for (size_t i = 0; i < taskData_->buoysArea.points.size(); ++i) {
+                auto maybePoint = findLeftmostPoint(ctrlData->inertialF_linearPosition);
+                if (!maybePoint)
+                    break; // no more points
+                areaPoints.push(*maybePoint);
+                removePoint(*maybePoint);
+            }
+
+            // Move to leftmost point
             ctrlData->kclData.kclActionCmd = mission::kclCmd();
-            ctrlData->kclData.kclActionCmd.goal.desired_state = "PATH_FOLLOWING";
-            ctrlData->kclData.kclActionCmd.goal.path_mode = "Spiral2D";
-            ctrlData->kclData.kclActionCmd.goal.spiral_data.spiral_diameter = 5.0;
-            ctrlData->kclData.kclActionCmd.goal.spiral_data.spiral_increment = 0.5;
+            ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+            ctrlData->kclData.kclActionCmd.goal.position.latitude = areaPoints.front().latitude;
+            ctrlData->kclData.kclActionCmd.goal.position.longitude = areaPoints.front().longitude;
+            ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepthGate;
 
         } else if (taskData_->taskPhases.front().second == opis::mainPipe) {
             std::cerr << "Searching for main pipe...\n";

@@ -179,6 +179,10 @@ struct kclCmd {
     auv_core_helper::action::SetKCL::Goal goal;
     auv_core_helper::action::SetKCL::Result result;
     auv_core_helper::action::SetKCL::Feedback feedback;
+
+    kclCmd(){
+        goal.desired_state = "HOLD";
+    }
 };
 
 struct KinematicData {
