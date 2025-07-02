@@ -455,11 +455,11 @@ void MissionController::ActionFeedbackCallback(
         kclStopCmd();
     }
 
-    if (/*ctrlData_->kclData.kclActionCmd.underExecution && */ ctrlData_->kclData.kclActionCmd.goal.desired_state != ctrlData_->kclData.kclActionCmd.feedback.actual_state) {
-        RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "(NOT) Cancelling KCL action since actual state is different from the desired state: [" << ctrlData_->kclData.kclActionCmd.goal.desired_state.c_str() << "] vs [" << ctrlData_->kclData.kclActionCmd.feedback.actual_state.c_str() << "]");
-        // kclCancelCmd();
-        // ctrlData_->kclData.kclActionCmd.underExecution = true; // This will trigger a new command in the next run
-    }
+    // if (/*ctrlData_->kclData.kclActionCmd.underExecution && */ ctrlData_->kclData.kclActionCmd.goal.desired_state != ctrlData_->kclData.kclActionCmd.feedback.actual_state) {
+    //     RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "(NOT) Cancelling KCL action since actual state is different from the desired state: [" << ctrlData_->kclData.kclActionCmd.goal.desired_state.c_str() << "] vs [" << ctrlData_->kclData.kclActionCmd.feedback.actual_state.c_str() << "]");
+    //     // kclCancelCmd();
+    //     // ctrlData_->kclData.kclActionCmd.underExecution = true; // This will trigger a new command in the next run
+    // }
 
     if (systemStatus_->conf.debugPrints) {
         RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(), *get_clock(), 5000, "KCL command FEEDBACK: [" << ctrlData_->kclData.kclActionCmd.feedback.actual_state.c_str() << "] with progress " << ctrlData_->kclData.kclActionCmd.feedback.action_progress);
