@@ -4,7 +4,9 @@
 REMOTE_USER="jetson"
 REMOTE_HOST="192.168.2.3"
 REMOTE_PATH="~/mission_logs/"
+REMOTE_IMG_PATH="~/yolo/images/"
 LOCAL_PATH="$HOME/rov_logs/"
+LOCAL_IMG_PATH="$HOME/rov_logs/images/"
 
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -74,6 +76,32 @@ fi
 TRANSFER_END=$(date +%s)
 TRANSFER_TIME=$((TRANSFER_END - TRANSFER_START))
 log_communication "${GREEN}Transfer completed in ${TRANSFER_TIME} seconds${NC}"
+
+# Check if remote images directory exists and copy it
+log_communication "${YELLOW}Checking for images directory on robot...${NC}"
+REMOTE_IMG_EXISTS=$(ssh "$REMOTE_USER@$REMOTE_HOST" "[ -d $REMOTE_IMG_PATH ] && echo 'exists'" 2>/dev/null)
+if [ "$REMOTE_IMG_EXISTS" = "exists" ]; then
+    log_communication "${GREEN}Images directory found on robot${NC}"
+    
+    # Create local images directory if it doesn't exist
+    if [ ! -d "$LOCAL_IMG_PATH" ]; then
+        log_communication "${YELLOW}Creating local images directory: $LOCAL_IMG_PATH${NC}"
+        mkdir -p "$LOCAL_IMG_PATH"
+    fi
+    
+    log_communication "${YELLOW}Starting images transfer...${NC}"
+    IMG_TRANSFER_START=$(date +%s)
+    scp -r "$REMOTE_USER@$REMOTE_HOST:$REMOTE_IMG_PATH"* "$LOCAL_IMG_PATH"
+    if [ $? -ne 0 ]; then
+        log_communication "${RED}ERROR: Images transfer failed${NC}"
+        exit 1
+    fi
+    IMG_TRANSFER_END=$(date +%s)
+    IMG_TRANSFER_TIME=$((IMG_TRANSFER_END - IMG_TRANSFER_START))
+    log_communication "${GREEN}Images transfer completed in ${IMG_TRANSFER_TIME} seconds${NC}"
+else
+    log_communication "${YELLOW}Images directory not found on robot - skipping${NC}"
+fi
 
 MISSION_FOLDER="$LOCAL_PATH$RECENT_FOLDER"
 ROS2_LOG="$HOME/robot_ctrlstation_communication.log"
