@@ -64,7 +64,7 @@ struct ControlData {
     std::string actualState = "IDLE"; ///< Current state of the AUV control system.
     double actionProgress = 0.0; ///< Progress of the current action, from 0.0 to 100.0 %.
 
-    // ------------------------------
+    // ------------------------------ 
     // Path Planning Parameters
     // ------------------------------
     std::string pathPlanningMode = "Serpentine2D"; ///< Path planning mode as string.
@@ -73,7 +73,7 @@ struct ControlData {
     //TO DO: MOVE TO PARAM FILE 
     Eigen::MatrixXd pathArea; /// Area for 2D serpentine path planning, defined by rows (latitude, longitude) and columns (vertices).
     double serpentineAngle = 90.0; ///< Angle for 2D serpentine path planning.
-    bool serpentineDirection = true; ///< Direction: true = forward, false = backward.
+    bool serpentineDirection = false; ///< Direction: true = forward, false = backward.
     double serpentineOffset = 1.0; ///< Offset for the serpentine path.
     std::vector<Eigen::Vector3d> serpentinePolygonVertices; ///< Polygon vertices for 2D serpentine planning.
 
