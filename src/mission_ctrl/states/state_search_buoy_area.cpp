@@ -75,11 +75,12 @@ namespace states {
         }
 
         // Move to leftmost point
-        ctrlData->kclData.kclActionCmd = mission::kclCmd();
-        ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
-        ctrlData->kclData.kclActionCmd.goal.position.latitude = areaPoints.front().latitude;
-        ctrlData->kclData.kclActionCmd.goal.position.longitude = areaPoints.front().longitude;
-        ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepthBuoys; 
+        reachedLeftmostPoint = true;
+        // ctrlData->kclData.kclActionCmd = mission::kclCmd();
+        // ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+        // ctrlData->kclData.kclActionCmd.goal.position.latitude = areaPoints.front().latitude;
+        // ctrlData->kclData.kclActionCmd.goal.position.longitude = areaPoints.front().longitude;
+        // ctrlData->kclData.kclActionCmd.goal.depth = systemStatus_->conf.diveDepthBuoys; 
         return fsm::ok;
     }
 

@@ -72,7 +72,24 @@ namespace states {
 
 
             } else if (taskData_->taskType == taskBenchmarks::INSPECTION_AND_INTERVENTION) {
-                // taskData_->taskPhases.push(std::make_pair(states::ID::init, ""));
+                taskData_->taskPhases.push(std::make_pair(states::ID::init, ""));
+                taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "GOAL_1"));
+                taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "GOAL_2"));
+
+                taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "GOAL_3"));
+
+                taskData_->taskPhases.push(std::make_pair(states::ID::moveToDepth, "GATE_SEARCH"));
+                taskData_->taskPhases.push(std::make_pair(states::ID::searchForObject, opis::gate));
+                taskData_->taskPhases.push(std::make_pair(states::ID::crossGate, ""));
+                taskData_->taskPhases.push(std::make_pair(states::ID::moveToDepth, ""));
+
+                taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "GOAL_4"));
+                taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "GOAL_5"));
+
+                taskData_->taskPhases.push(std::make_pair(states::ID::moveToDepth, "BUOYS_SEARCH"));
+                taskData_->taskPhases.push(std::make_pair(states::ID::searchBuoyArea, ""));
+                taskData_->taskPhases.push(std::make_pair(states::ID::moveToDepth, ""));
+
                 // taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DIVE"));
                 // taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DEBUG"));
                 // taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "SURFACE"));

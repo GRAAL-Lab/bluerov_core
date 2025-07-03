@@ -551,8 +551,8 @@ void MissionController::LoadConfiguration()
         const libconfig::Setting& root = confObj.getRoot();
 
         // goal_positions
-        ctb::GetParam(confObj, systemStatus_->conf.goalPositionSelection, "goal_position_selection");
-        std::cerr << "Debug positions (selected " << systemStatus_->conf.goalPositionSelection << "):" << std::endl;
+        //ctb::GetParam(confObj, systemStatus_->conf.goalPositionSelection, "goal_position_selection");
+        std::cerr << "Goal positions: \n";// (selected " << systemStatus_->conf.goalPositionSelection << "):" << std::endl;
         const libconfig::Setting& goalPositionsSetting = root["goal_positions"];
         for (int i = 0; i < goalPositionsSetting.getLength(); ++i) {
             const libconfig::Setting& point = goalPositionsSetting[i];
@@ -562,6 +562,7 @@ void MissionController::LoadConfiguration()
             GoalWaypoint wp;
             wp.position = ctb::LatLong(localTmp[0], localTmp[1]);
             wp.depth = localTmp[2];
+            std::cerr << "  - goal position: " << localTmp[0] << ", " << localTmp[1] << ", " << localTmp[2] << std::endl;
             systemStatus_->conf.goalPositions.push_back(wp);
         }
 
