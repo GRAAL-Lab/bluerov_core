@@ -4,3 +4,5 @@ Buoy[]  buoys
 GenericObject main_pipe
 bool manipulation_console
 DtcPipelinePipe pipeline_pipe
+geometry_msgs/Pose manipulation_console_pose
+
