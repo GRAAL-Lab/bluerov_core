@@ -316,15 +316,15 @@ namespace mission
                     this->buoysArea.points.push_back(latLong);
                 }
 
-                auto manipulationArea = request->manipulation_area_points;
-                for (size_t i = 0; i < manipulationArea.size(); ++i)
-                {
-                    const auto &point = manipulationArea[i];
-                    ctb::LatLong latLong;
-                    latLong.latitude = point.latitude;
-                    latLong.longitude = point.longitude;
-                    this->manipulationArea.points.push_back(latLong);
-                }
+                // auto manipulationArea = request->manipulation_area_points;
+                // for (size_t i = 0; i < manipulationArea.size(); ++i)
+                // {
+                //     const auto &point = manipulationArea[i];
+                //     ctb::LatLong latLong;
+                //     latLong.latitude = point.latitude;
+                //     latLong.longitude = point.longitude;
+                //     this->manipulationArea.points.push_back(latLong);
+                // }
             }
             catch (...)
             {

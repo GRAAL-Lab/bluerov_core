@@ -27,6 +27,8 @@ namespace states {
                 taskData_->taskPhases.pop();
 
             if (taskData_->taskType == taskBenchmarks::INSPECTION) {
+                std::cerr << " /////=====  INSPECTION\n";
+
                 taskData_->taskPhases.push(std::make_pair(states::ID::init, ""));
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DIVE"));
 
@@ -54,6 +56,8 @@ namespace states {
                 // taskData_->taskPhases.push_back(std::make_pair(states::ID::inspectPipes, ""));
                 // taskData_->taskPhases.push(std::make_pair(states::ID::homing, ""));
             } else if (taskData_->taskType == taskBenchmarks::INTERVENTION) {
+                std::cerr << " /////=====  INTERVENTION\n";
+
                 taskData_->taskPhases.push(std::make_pair(states::ID::init, ""));
 
                 // taskData_->taskPhases.push(std::make_pair(states::ID::sleep, "30"));
@@ -71,9 +75,11 @@ namespace states {
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "SURFACE"));
 
             } else if (taskData_->taskType == taskBenchmarks::INSPECTION_AND_INTERVENTION) {
+                std::cerr << " /////=====  INSPECTION_AND_INTERVENTION\n";
+
                 taskData_->taskPhases.push(std::make_pair(states::ID::init, ""));
 
-                std::cerr << "STARTING FROM TASK: " << systemStatus_->conf.startFromTask << "\n";
+                std::cerr << " /////=====  STARTING FROM TASK: " << systemStatus_->conf.startFromTask << "\n";
 
                 if (systemStatus_->conf.startFromTask <= 1) {
                     // PIPE FOLLOWING
@@ -82,7 +88,7 @@ namespace states {
                 }
 
                 if (systemStatus_->conf.startFromTask <= 2) {
-                    taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "GOAL_5"));
+                    taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "GOAL_3"));
 
                     taskData_->taskPhases.push(std::make_pair(states::ID::moveToDepth, "BUOYS_SEARCH"));
                     taskData_->taskPhases.push(std::make_pair(states::ID::searchBuoyArea, ""));
@@ -91,14 +97,14 @@ namespace states {
 
                 if (systemStatus_->conf.startFromTask <= 3) {
                     // GATE SEARCH STARTING
-                    taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "GOAL_3"));
+                    taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "GOAL_4"));
                     // GATE SEARCH
                     taskData_->taskPhases.push(std::make_pair(states::ID::moveToDepth, "GATE_SEARCH"));
                     taskData_->taskPhases.push(std::make_pair(states::ID::searchForObject, opis::gate));
                     taskData_->taskPhases.push(std::make_pair(states::ID::crossGate, ""));
                     taskData_->taskPhases.push(std::make_pair(states::ID::moveToDepth, ""));
 
-                    taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "GOAL_4"));
+                    taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "GOAL_5"));
                 }
 
                 
@@ -109,13 +115,7 @@ namespace states {
                 }
 
                 taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "SURFACE"));
-            } else {
-                // TODO, ignore
-                // taskData_->taskPhases.push(std::make_pair(states::ID::init, ""));
-                // taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DIVE"));
-                // taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "DEBUG"));
-                // taskData_->taskPhases.push(std::make_pair(states::ID::moveToWp, "SURFACE"));
-            }
+            } 
 
             doneInit = true;
         }
