@@ -40,7 +40,7 @@ find_package(rclcpp_action REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(auv_core_helper REQUIRED)
 find_package(ament_index_cpp REQUIRED)
-find_package(mission_ctrl REQUIRED)
+#find_package(mission_ctrl REQUIRED)
 find_package(ctrl_toolbox REQUIRED)
 find_package(std_srvs REQUIRED)
 
@@ -56,16 +56,16 @@ target_include_directories(json_utils PUBLIC
 # Executables
 add_executable(mqtt_client src/mqtt_client.cpp)
 add_executable(terminal src/terminal_node.cpp)
-add_executable(cmd_dispatcher src/command_dispatcher_node.cpp)
+# add_executable(cmd_dispatcher src/command_dispatcher_node.cpp)
 
-target_include_directories(cmd_dispatcher PRIVATE
-  ${mission_ctrl_INCLUDE_DIRS}
-)
+# target_include_directories(cmd_dispatcher PRIVATE
+#   ${mission_ctrl_INCLUDE_DIRS}
+# )
 
 # Set compile features explicitly (optional since CMAKE_CXX_STANDARD is set)
 target_compile_features(mqtt_client PUBLIC cxx_std_17)
 target_compile_features(terminal PUBLIC cxx_std_17)
-target_compile_features(cmd_dispatcher PUBLIC cxx_std_17)
+# target_compile_features(cmd_dispatcher PUBLIC cxx_std_17)
 
 # Link libraries to executables
 target_link_libraries(mqtt_client
@@ -74,19 +74,19 @@ target_link_libraries(mqtt_client
   ${PAHO_MQTT3AS_LIB}
 )
 
-target_link_libraries(cmd_dispatcher
-  config++
-)
+# target_link_libraries(cmd_dispatcher
+#   config++
+# )
 
 # Link dependencies using ament for ROS2 targets
-ament_target_dependencies(cmd_dispatcher
-  rclcpp
-  rclcpp_action
-  std_msgs
-  auv_core_helper
-  ament_index_cpp
-  ctrl_toolbox
-)
+# ament_target_dependencies(cmd_dispatcher
+#   rclcpp
+#   rclcpp_action
+#   std_msgs
+#   auv_core_helper
+#   ament_index_cpp
+#   ctrl_toolbox
+# )
 
 ament_target_dependencies(mqtt_client
   rclcpp
@@ -105,7 +105,7 @@ ament_target_dependencies(terminal
 # Install targets
 install(TARGETS
   terminal
-  cmd_dispatcher
+  # cmd_dispatcher
   mqtt_client
   DESTINATION lib/${PROJECT_NAME}
 )
