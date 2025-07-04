@@ -43,6 +43,15 @@ namespace states {
                       << gb2.position.longitude << "\n";
         }
 
+        //=====
+        Buoy gb1, gb2;
+        Gate gt;
+        gb1.position = ctb::LatLong(44.0957630, 9.8644845);
+        gb2.position = ctb::LatLong(44.0957390, 9.8644840);
+        gt.SetGateBuoys(gb1, gb2, true);
+        ctrlData->missionData.gate = gt;
+        //=====
+
         systemStatus_->conf.gateWpsDistance;
 
         Eigen::Vector3d buoy1_buoy2Pos;

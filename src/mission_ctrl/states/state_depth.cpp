@@ -23,8 +23,8 @@ namespace states {
             goalPose.at(1) = ctrlData->inertialF_linearPosition.longitude;
             goalPose.at(2) = systemStatus_->conf.diveDepthGate;
         } else if (taskData_->taskPhases.front().second == "MANIPULATION_CONSOLE_SEARCH") {
-            goalPose.at(0) = systemStatus_->conf.debugPositions[0].latitude;
-            goalPose.at(1) = systemStatus_->conf.debugPositions[0].longitude;
+            goalPose.at(0) = ctrlData->inertialF_linearPosition.latitude;
+            goalPose.at(1) = ctrlData->inertialF_linearPosition.longitude;
             goalPose.at(2) = systemStatus_->conf.diveDepthManipulationConsole;
         } else {
             std::cerr << "[WARNING] No task phase set for StateDepth, using default values.\n";
@@ -46,7 +46,7 @@ namespace states {
                       << ctrlData->depth << "\n";
             std::cerr << "         to LatLong: ("
                       << goalPose.at(0) << ", "
-                      << goalPose.at(1) << ") and Depth: "
+                      << goalPose.at(1) << ") and Depth ("<<taskData_->taskPhases.front().second<<"): "
                       << goalPose.at(2) << "\n";
         }
 

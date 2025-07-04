@@ -160,12 +160,12 @@ void MissionController::Run()
         kclCmd();
     }
 
-    auto timeSinceLastKclFeedback = (this->get_clock()->now() - systemStatus_->lastKclFeedbackTime).seconds();
-    if (ctrlData_->kclData.kclActionCmd.goal.desired_state != "" && timeSinceLastKclFeedback > 60) {
-        // ctrlData_->kclData.kclActionCmd.underExecution = false;
-        RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "     -------     KCL command is not under execution     -------     ");
-        kclCmd();
-    }
+    // auto timeSinceLastKclFeedback = (this->get_clock()->now() - systemStatus_->lastKclFeedbackTime).seconds();
+    // if (ctrlData_->kclData.kclActionCmd.goal.desired_state != "" && timeSinceLastKclFeedback > 60) {
+    //     // ctrlData_->kclData.kclActionCmd.underExecution = false;
+    //     RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "     -------     KCL command is not under execution     -------     ");
+    //     kclCmd();
+    // }
 
     // if (taskData_->taskPhases.empty()) {
     //     ResetTaskDataFSM();
@@ -473,33 +473,33 @@ void MissionController::SetGimbalAttitude()
             std::chrono::duration<double>(0.250)); // 250 ms
 
         std::cerr << "Setting gimbal attitude to: " << ctrlData_->perceptionData.desiredGimbalAttitude << std::endl;
+        lastSetGimbalAttitude_ = ctrlData_->perceptionData.desiredGimbalAttitude;
+        // if (setGimbalAttitudeService_->service_is_ready()) {
+        //     auto request = std::make_shared<auv_core_helper::srv::SetGimbalAttitude::Request>();
+        //     request->yaw = ctrlData_->perceptionData.desiredGimbalAttitude;
 
-        if (setGimbalAttitudeService_->service_is_ready()) {
-            auto request = std::make_shared<auv_core_helper::srv::SetGimbalAttitude::Request>();
-            request->yaw = ctrlData_->perceptionData.desiredGimbalAttitude;
+        //     auto future = setGimbalAttitudeService_->async_send_request(request);
 
-            auto future = setGimbalAttitudeService_->async_send_request(request);
+        //     // Wait up to timeoutMilliseconds for the result
+        //     auto ret = rclcpp::spin_until_future_complete(
+        //         this->get_node_base_interface(),
+        //         future,
+        //         timeoutMilliseconds);
 
-            // Wait up to timeoutMilliseconds for the result
-            auto ret = rclcpp::spin_until_future_complete(
-                this->get_node_base_interface(),
-                future,
-                timeoutMilliseconds);
-
-            if (ret == rclcpp::FutureReturnCode::SUCCESS) {
-                auto response = future.get();
-                if (response->success) {
-                    lastSetGimbalAttitude_ = ctrlData_->perceptionData.desiredGimbalAttitude;
-                    RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "Gimbal attitude set successfully.");
-                } else {
-                    RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "Service call failed to set gimbal attitude.");
-                }
-            } else {
-                RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "Timed out waiting for gimbal attitude service response.");
-            }
-        } else {
-            RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "Gimbal attitude service is not ready.");
-        }
+        //     if (ret == rclcpp::FutureReturnCode::SUCCESS) {
+        //         auto response = future.get();
+        //         if (response->success) {
+        //             lastSetGimbalAttitude_ = ctrlData_->perceptionData.desiredGimbalAttitude;
+        //             RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "Gimbal attitude set successfully.");
+        //         } else {
+        //             RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "Service call failed to set gimbal attitude.");
+        //         }
+        //     } else {
+        //         RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "Timed out waiting for gimbal attitude service response.");
+        //     }
+        // } else {
+        //     RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "Gimbal attitude service is not ready.");
+        // }
     }
 }
 
@@ -520,6 +520,7 @@ void MissionController::LoadConfiguration()
         ctb::GetParam(confObj, systemStatus_->conf.simCtrlStation, "simulate_ctrl_station");
         ctb::GetParam(confObj, systemStatus_->conf.debugPrints, "debug_prints");
 
+        ctb::GetParam(confObj, systemStatus_->conf.startFromTask, "startFromTask");
         ctb::GetParam(confObj, systemStatus_->conf.delayMissionStart, "delay_mission_start");
         ctb::GetParam(confObj, systemStatus_->conf.useStartingDepthAsSurfaceDepth, "use_starting_depth_as_surface_depth");
         ctb::GetParam(confObj, systemStatus_->conf.surfaceDepth, "surface_depth");
@@ -532,6 +533,7 @@ void MissionController::LoadConfiguration()
         ctb::GetParam(confObj, systemStatus_->conf.latlongTolerance, "latlong_tolerance");
         ctb::GetParam(confObj, systemStatus_->conf.ctrlRate, "ctrl_rate");
 
+        ctb::GetParam(confObj, systemStatus_->conf.systemStatusTimeout, "system_status_timeout");
         ctb::GetParam(confObj, systemStatus_->conf.homingStateTimeout, "homing_state_timeout");
         ctb::GetParam(confObj, systemStatus_->conf.moveToWpStateTimeout, "move_to_wp_state_timeout");
         ctb::GetParam(confObj, systemStatus_->conf.searchForObjectStateTimeout, "search_for_object_state_timeout");
@@ -549,9 +551,25 @@ void MissionController::LoadConfiguration()
 
         const libconfig::Setting& root = confObj.getRoot();
 
+        // goal_positions
+        //ctb::GetParam(confObj, systemStatus_->conf.goalPositionSelection, "goal_position_selection");
+        std::cerr << "Goal positions: \n";// (selected " << systemStatus_->conf.goalPositionSelection << "):" << std::endl;
+        const libconfig::Setting& goalPositionsSetting = root["goal_positions"];
+        for (int i = 0; i < goalPositionsSetting.getLength(); ++i) {
+            const libconfig::Setting& point = goalPositionsSetting[i];
+            Eigen::VectorXd localTmp;
+            ctb::GetParamVector(point, localTmp, "point");
+
+            GoalWaypoint wp;
+            wp.position = ctb::LatLong(localTmp[0], localTmp[1]);
+            wp.depth = localTmp[2];
+            std::cerr << "  - goal position: " << localTmp[0] << ", " << localTmp[1] << ", " << localTmp[2] << std::endl;
+            systemStatus_->conf.goalPositions.push_back(wp);
+        }
+
         // debug_positions
-        ctb::GetParam(confObj, systemStatus_->conf.debug_position_selection, "debug_position_selection");
-        std::cerr << "Debug positions (selected " << systemStatus_->conf.debug_position_selection << "):" << std::endl;
+        ctb::GetParam(confObj, systemStatus_->conf.debugPositionSelection, "debugPositionSelection");
+        std::cerr << "Debug positions (selected " << systemStatus_->conf.debugPositionSelection << "):" << std::endl;
         const libconfig::Setting& debugPositionsSetting = root["debug_positions"];
         for (int i = 0; i < debugPositionsSetting.getLength(); ++i) {
             const libconfig::Setting& point = debugPositionsSetting[i];
