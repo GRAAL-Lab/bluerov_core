@@ -520,6 +520,7 @@ void MissionController::LoadConfiguration()
         ctb::GetParam(confObj, systemStatus_->conf.simCtrlStation, "simulate_ctrl_station");
         ctb::GetParam(confObj, systemStatus_->conf.debugPrints, "debug_prints");
 
+        ctb::GetParam(confObj, systemStatus_->conf.startFromTask, "startFromTask");
         ctb::GetParam(confObj, systemStatus_->conf.delayMissionStart, "delay_mission_start");
         ctb::GetParam(confObj, systemStatus_->conf.useStartingDepthAsSurfaceDepth, "use_starting_depth_as_surface_depth");
         ctb::GetParam(confObj, systemStatus_->conf.surfaceDepth, "surface_depth");

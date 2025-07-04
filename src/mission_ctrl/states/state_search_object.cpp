@@ -19,49 +19,49 @@ namespace states {
 
     fsm::retval StateSearchObject::Execute()
     {
-        if (taskData_->taskPhases.front().second == opis::gate && ctrlData->kclData.kclActionCmd.feedback.action_progress >= 80.0)
+        if (taskData_->taskPhases.front().second == opis::gate && ctrlData->kclData.kclActionCmd.feedback.action_progress >= 50.0)
             SetNextMissionState();
 
-        if (!systemStatus_->conf.simPerception && ctrlData->perceptionData.newDtcFromPerception) {
-            ctrlData->perceptionData.newDtcFromPerception = false;
-            if (taskData_->taskPhases.front().second == opis::gate) {
-                for (auto& db_first : ctrlData->perceptionData.detectedBuoys) {
-                    for (auto& db_second : ctrlData->perceptionData.detectedBuoys) {
-                        if (db_first.second.detectionId == db_second.second.detectionId) {
-                            continue; // same buoy
-                        }
-                        if (ctrlData->missionData.gate.SetGateBuoys(db_first.second, db_second.second, systemStatus_->conf.ignoreBuoyColor)) {
-                            // Found the gate
-                            if (systemStatus_->conf.debugPrints) {
-                                std::cerr << "Gate found: " << db_first.second.detectionId << " and " << db_second.second.detectionId << "\n";
-                            }
-                            ctrlData->missionData.foundGate = true;
-                            return SetNextMissionState();
-                        }
+        // if (!systemStatus_->conf.simPerception && ctrlData->perceptionData.newDtcFromPerception) {
+        //     ctrlData->perceptionData.newDtcFromPerception = false;
+        if (taskData_->taskPhases.front().second == opis::gate) {
+            for (auto& db_first : ctrlData->perceptionData.detectedBuoys) {
+                for (auto& db_second : ctrlData->perceptionData.detectedBuoys) {
+                    if (db_first.second.detectionId == db_second.second.detectionId) {
+                        continue; // same buoy
                     }
-                }
-            } else if (taskData_->taskPhases.front().second == opis::mainPipe) {
-            } else if (taskData_->taskPhases.front().second == opis::manipulationConsole) {
-                if (ctrlData->perceptionData.dtcList.manipulation_console) {
-                    if (systemStatus_->conf.debugPrints) {
-                        std::cerr << "Manipulation console FOUND!!! \n";
+                    if (ctrlData->missionData.gate.SetGateBuoys(db_first.second, db_second.second, systemStatus_->conf.ignoreBuoyColor)) {
+                        // Found the gate
+                        if (systemStatus_->conf.debugPrints) {
+                            std::cerr << "Gate found: " << db_first.second.detectionId << " and " << db_second.second.detectionId << "\n";
+                        }
+                        ctrlData->missionData.foundGate = true;
+                        return SetNextMissionState();
                     }
-                    return SetNextMissionState();
                 }
             }
+        } else if (taskData_->taskPhases.front().second == opis::mainPipe) {
+        } else if (taskData_->taskPhases.front().second == opis::manipulationConsole) {
+            if (ctrlData->perceptionData.dtcList.manipulation_console) {
+                if (systemStatus_->conf.debugPrints) {
+                    std::cerr << "Manipulation console FOUND!!! \n";
+                }
+                return SetNextMissionState();
+            }
         }
+        // }
 
         // if (!doingSerpentine)
         //     return fsm::ok;
 
-        if (!reachedLeftmostPoint) {
-            double distance, azimuthRad;
-            ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, areaPoints.front(), distance, azimuthRad);
-            if (distance < systemStatus_->conf.latlongTolerance) {
-                reachedLeftmostPoint = true;
-            }
-            return fsm::ok;
-        }
+        // if (!reachedLeftmostPoint) {
+        //     double distance, azimuthRad;
+        //     ctb::DistanceAndAzimuthRad(ctrlData->inertialF_linearPosition, areaPoints.front(), distance, azimuthRad);
+        //     if (distance < systemStatus_->conf.latlongTolerance) {
+        //         reachedLeftmostPoint = true;
+        //     }
+        //     return fsm::ok;
+        // }
 
         if (reachedLeftmostPoint && !sentPathFollowingCommand) {
             sentPathFollowingCommand = true;
@@ -109,37 +109,37 @@ namespace states {
         areaPoints = std::queue<ctb::LatLong>();
 
         // Ordering points for the area coverage path (depening on current position)
-        auto points = taskData_->buoysArea.points;
-        auto removePoint = [&points](const ctb::LatLong& point) {
-            points.erase(
-                std::remove_if(points.begin(), points.end(),
-                    [&point](const ctb::LatLong& p) {
-                        return p.latitude == point.latitude && p.longitude == point.longitude;
-                    }),
-                points.end());
-        };
-        auto findLeftmostPoint = [&](const ctb::LatLong& reference) -> std::optional<ctb::LatLong> {
-            if (points.empty())
-                return std::nullopt;
-            ctb::LatLong leftmostPoint = points.front();
-            double minAzimuthRad = M_PI;
-            for (const auto& point : points) {
-                double distance, azimuthRad;
-                ctb::DistanceAndAzimuthRad(reference, point, distance, azimuthRad);
-                if (azimuthRad < minAzimuthRad) {
-                    minAzimuthRad = azimuthRad;
-                    leftmostPoint = point;
-                }
-            }
-            return leftmostPoint;
-        };
-        for (size_t i = 0; i < taskData_->buoysArea.points.size(); ++i) {
-            auto maybePoint = findLeftmostPoint(ctrlData->inertialF_linearPosition);
-            if (!maybePoint)
-                break; // no more points
-            areaPoints.push(*maybePoint);
-            removePoint(*maybePoint);
-        }
+        // auto points = taskData_->buoysArea.points;
+        // auto removePoint = [&points](const ctb::LatLong& point) {
+        //     points.erase(
+        //         std::remove_if(points.begin(), points.end(),
+        //             [&point](const ctb::LatLong& p) {
+        //                 return p.latitude == point.latitude && p.longitude == point.longitude;
+        //             }),
+        //         points.end());
+        // };
+        // auto findLeftmostPoint = [&](const ctb::LatLong& reference) -> std::optional<ctb::LatLong> {
+        //     if (points.empty())
+        //         return std::nullopt;
+        //     ctb::LatLong leftmostPoint = points.front();
+        //     double minAzimuthRad = M_PI;
+        //     for (const auto& point : points) {
+        //         double distance, azimuthRad;
+        //         ctb::DistanceAndAzimuthRad(reference, point, distance, azimuthRad);
+        //         if (azimuthRad < minAzimuthRad) {
+        //             minAzimuthRad = azimuthRad;
+        //             leftmostPoint = point;
+        //         }
+        //     }
+        //     return leftmostPoint;
+        // };
+        // for (size_t i = 0; i < taskData_->buoysArea.points.size(); ++i) {
+        //     auto maybePoint = findLeftmostPoint(ctrlData->inertialF_linearPosition);
+        //     if (!maybePoint)
+        //         break; // no more points
+        //     areaPoints.push(*maybePoint);
+        //     removePoint(*maybePoint);
+        // }
 
         if (taskData_->taskPhases.front().second == opis::gate) {
             std::cerr << "Searching for gate...\n";
@@ -151,6 +151,7 @@ namespace states {
             ctrlData->kclData.kclActionCmd.goal.path_mode = "Spiral2D";
             ctrlData->kclData.kclActionCmd.goal.spiral_data.spiral_diameter = 2.5;
             ctrlData->kclData.kclActionCmd.goal.spiral_data.spiral_increment = 0.5;
+            sentPathFollowingCommand = true;
 
             // Move to leftmost point
             // doingSerpentine = true;
@@ -168,6 +169,10 @@ namespace states {
 
             ctrlData->perceptionData.enableDtcManipulationConsole = true;
             ctrlData->perceptionData.desiredGimbalAttitude = 45.0 / 180.0 * M_PI; // 50 degrees max
+
+            for(auto& point : taskData_->manipulationArea.points) {
+                areaPoints.push(point);
+            }
 
             // ctrlData->kclData.kclActionCmd = mission::kclCmd();
             // ctrlData->kclData.kclActionCmd.goal.desired_state = "PATH_FOLLOWING";

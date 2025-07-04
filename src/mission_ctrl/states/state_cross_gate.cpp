@@ -46,8 +46,8 @@ namespace states {
         //=====
         Buoy gb1, gb2;
         Gate gt;
-        gb1.position = ctb::LatLong(44.0959258, 9.8642437);
-        gb2.position = ctb::LatLong(44.0959278, 9.8643818);
+        gb1.position = ctb::LatLong(44.0957630, 9.8644845);
+        gb2.position = ctb::LatLong(44.0957390, 9.8644840);
         gt.SetGateBuoys(gb1, gb2, true);
         ctrlData->missionData.gate = gt;
         //=====

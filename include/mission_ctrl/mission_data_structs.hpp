@@ -30,7 +30,7 @@ namespace mission
 
     struct Buoy;
     struct Gate;
-    struct BuoysArea;
+    struct SearchArea;
     struct PipelinePipeDtc;
     struct PipelinePipe;
     struct PipelineStructure;
@@ -56,6 +56,7 @@ namespace mission
         bool simCtrlStation;
         bool debugPrints;
 
+        int startFromTask;
         double delayMissionStart = 5.0; // seconds, delay before the mission starts
         bool useStartingDepthAsSurfaceDepth = true;
         double surfaceDepth = 0.2;
@@ -219,13 +220,13 @@ namespace mission
         MissionData missionData;
     };
 
-    struct BuoysArea
+    struct SearchArea
     {
         std::vector<ctb::LatLong> points;
 
-        friend std::ostream &operator<<(std::ostream &os, BuoysArea const &area)
+        friend std::ostream &operator<<(std::ostream &os, SearchArea const &area)
         {
-            os << "BuoysArea {\n";
+            os << "SearchArea {\n";
             for (const auto &point : area.points)
             {
                 os << "  Point: (" << point.latitude << ", " << point.longitude << ")\n";
@@ -286,7 +287,8 @@ namespace mission
 
         std::vector<PipelineStructure> pipelineStructures;
         uint selectedPipelineStructureId;
-        BuoysArea buoysArea;
+        SearchArea buoysArea;
+        SearchArea manipulationArea;
 
         TaskBenchmarkSettings() = default;
 
@@ -312,6 +314,16 @@ namespace mission
                     latLong.latitude = point.latitude;
                     latLong.longitude = point.longitude;
                     this->buoysArea.points.push_back(latLong);
+                }
+
+                auto manipulationArea = request->manipulation_area_points;
+                for (size_t i = 0; i < manipulationArea.size(); ++i)
+                {
+                    const auto &point = manipulationArea[i];
+                    ctb::LatLong latLong;
+                    latLong.latitude = point.latitude;
+                    latLong.longitude = point.longitude;
+                    this->manipulationArea.points.push_back(latLong);
                 }
             }
             catch (...)
@@ -355,6 +367,24 @@ namespace mission
             if (buoysArea.points.size() < 4)
             {
                 std::cerr << "Buoys area must have 4 points" << std::endl;
+                return false;
+            }
+
+            const libconfig::Setting &manipulationAreaSetting = root["manipulationArea"];
+            for (int i = 0; i < manipulationAreaSetting.getLength(); ++i)
+            {
+                const libconfig::Setting &point = manipulationAreaSetting[i];
+                ctb::LatLong latLong;
+                if (!LatLongFromConfig(point, latLong, "point"))
+                {
+                    std::cerr << "Failed to load manipulation area point from file" << std::endl;
+                    return false;
+                };
+                manipulationArea.points.push_back(latLong);
+            }
+            if (manipulationArea.points.size() < 4)
+            {
+                std::cerr << "Manipulation area must have 4 points" << std::endl;
                 return false;
             }
 
@@ -460,6 +490,7 @@ namespace mission
                 os << ps;
             os << "SelectedPipelineStructureId: " << selectedPipelineStructureId << "\n";
             os << buoysArea;
+            os << manipulationArea;
         }
 
         // 2) Make operator<< non‐overload, always dispatch via dump()
