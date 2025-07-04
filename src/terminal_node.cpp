@@ -45,7 +45,8 @@ private:
       std::cout << "2. Send mission command" << std::endl;
       std::cout << "3. SSH into AUV" << std::endl;
       std::cout << "4. Start post-processing operation" << std::endl;
-      std::cout << "5. Exit" << std::endl;
+      std::cout << "5. Stop logging" << std::endl;
+      std::cout << "6. Exit" << std::endl;
       std::cout << "> ";
 
       int choice;
@@ -59,6 +60,8 @@ private:
         int tbm;
         std::cout << "Insert desired TBM number id -> ";
         std::cin >> tbm;
+        auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
+        auto future = start_trigger_client_->async_send_request(request);
         std_msgs::msg::Int32 msg;
         msg.data = tbm;
         tbm_id_pub_->publish(msg);
@@ -74,8 +77,8 @@ private:
         std::cin >> confirm;
         if(tbm_done_ && confirm == "y")
         {
-          auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
-          auto future = start_trigger_client_->async_send_request(request);
+          //auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
+          //auto future = start_trigger_client_->async_send_request(request);
           std_msgs::msg::Empty msg;
           dispatch_pub_->publish(msg);
           RCLCPP_INFO(this->get_logger(), "Dispatched MissionCommand request");
@@ -106,8 +109,8 @@ private:
         else
           RCLCPP_ERROR(this->get_logger(), "ROV log sync script failed with code %d", ret);
 
-        auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
-  	    auto future = stop_trigger_client_->async_send_request(request);
+        //auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
+  	    //auto future = stop_trigger_client_->async_send_request(request);
 
         break;
       }
@@ -159,6 +162,13 @@ private:
       }
 
       case 5:
+      {
+        auto request = std::make_shared<std_srvs::srv::Trigger::Request>();
+  	    auto future = stop_trigger_client_->async_send_request(request);
+
+        break;
+      }
+      case 6:
         RCLCPP_INFO(this->get_logger(), "Exit requested");
         rclcpp::shutdown();
         return;
