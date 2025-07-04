@@ -231,21 +231,21 @@ void MissionController::PerceptionCB(const auv_core_helper::msg::DtcList::Shared
         // std::cerr << "Detected buoy: " << buoy.id << " at position: ["
         //           << buoy.position.latitude << ", " << buoy.position.longitude << "]\n";
 
-        if (systemStatus_->conf.debugBuoys) {
-            // find the closest true postion and compute error
-            ctb::LatLong closestTruePosition;
-            double minDistance = std::numeric_limits<double>::max();
-            for (const auto& gt_buoy : systemStatus_->conf.debugBuoysPositions) {
-                double azimuth, distance;
-                ctb::DistanceAndAzimuthRad(b.position, gt_buoy, distance, azimuth);
-                if (distance < minDistance) {
-                    minDistance = distance;
-                    closestTruePosition = gt_buoy;
-                }
-            }
-            // std::cerr << "Closest true position: [" << closestTruePosition.latitude << ", "
-            //           << closestTruePosition.longitude << "] with distance: " << minDistance << "\n";
-        }
+        // if (systemStatus_->conf.debugBuoys) {
+        //     // find the closest true postion and compute error
+        //     ctb::LatLong closestTruePosition;
+        //     double minDistance = std::numeric_limits<double>::max();
+        //     for (const auto& gt_buoy : systemStatus_->conf.debugBuoysPositions) {
+        //         double azimuth, distance;
+        //         ctb::DistanceAndAzimuthRad(b.position, gt_buoy, distance, azimuth);
+        //         if (distance < minDistance) {
+        //             minDistance = distance;
+        //             closestTruePosition = gt_buoy;
+        //         }
+        //     }
+        //     // std::cerr << "Closest true position: [" << closestTruePosition.latitude << ", "
+        //     //           << closestTruePosition.longitude << "] with distance: " << minDistance << "\n";
+        // }
     }
 }
 
@@ -330,8 +330,11 @@ bool MissionController::StartMission()
 
     std::stringstream ss;
     ss << *taskData_;
-    RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, " ===== TaskBenchMark  " << taskData_->taskType.c_str() << "=====");
-    RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "" << ss.str().c_str());
+    // RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, " ===== TaskBenchMark  " << taskData_->taskType.c_str() << "=====");
+    // RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "" << ss.str().c_str());
+    std::cerr << " ===== TaskBenchMark  " << taskData_->taskType.c_str() << "=====\n";
+    std::cerr << std::setprecision(10) << std::fixed;
+    std::cerr << ss.str().c_str() << "\n";
 
     return true;
 }
@@ -400,6 +403,9 @@ bool MissionController::kclCmd()
             ctrlData_->inertialF_linearPosition.longitude = goal.position.longitude;
             ctrlData_->depth = goal.depth;
         }
+        ctrlData_->kclData.kclActionCmd.newCmd = false;
+        // ctrlData_->kclData.kclActionCmd.underExecution = true;
+        systemStatus_->lastKclFeedbackTime = this->get_clock()->now();
         return true;
     }
     auto timeout = std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -514,6 +520,8 @@ void MissionController::LoadConfiguration()
 
     try {
         confObj.readFile(confPath.c_str());
+        const libconfig::Setting& root = confObj.getRoot();
+
         ctb::GetParam(confObj, systemStatus_->conf.simKcl, "simulate_kcl");
         ctb::GetParam(confObj, systemStatus_->conf.simPerception, "simulate_perception");
         ctb::GetParam(confObj, systemStatus_->conf.simBridge, "simulate_bridge");
@@ -543,17 +551,38 @@ void MissionController::LoadConfiguration()
         ctb::GetParam(confObj, systemStatus_->conf.inspectPipesStateTimeout, "inspect_pipe_state_timeout");
         ctb::GetParam(confObj, systemStatus_->conf.updateLocalizationStateTimeout, "update_localization_state_timeout");
 
-        ctb::GetParam(confObj, systemStatus_->conf.debugBuoys, "buoysDebug");
+        ctb::GetParam(confObj, systemStatus_->conf.use_debug_gate, "use_debug_gate");
+        if (systemStatus_->conf.use_debug_gate) {
+            const libconfig::Setting& debugGatePositionsSetting = root["debug_gate_position"];
+            for (int i = 0; i < debugGatePositionsSetting.getLength(); ++i) {
+                const libconfig::Setting& point = debugGatePositionsSetting[i];
+                Eigen::VectorXd localTmp;
+                ctb::GetParamVector(point, localTmp, "point");
+                ctb::LatLong wp(localTmp[0], localTmp[1]);
+                systemStatus_->conf.debugGatePositions.push_back(wp);
+            }
+        }
+        ctb::GetParam(confObj, systemStatus_->conf.use_debug_buoys, "use_debug_buoys");
+        if (systemStatus_->conf.use_debug_buoys) {
+            const libconfig::Setting& debugBuoysPositionsSetting = root["debug_buoys_position"];
+            for (int i = 0; i < debugBuoysPositionsSetting.getLength(); ++i) {
+                const libconfig::Setting& point = debugBuoysPositionsSetting[i];
+                Eigen::VectorXd localTmp;
+                ctb::GetParamVector(point, localTmp, "point");
+                ctb::LatLong wp(localTmp[0], localTmp[1]);
+                systemStatus_->conf.debugBuoysPositions.push_back(wp);
+            }
+        }
+
         ctb::GetParam(confObj, systemStatus_->conf.ignoreBuoyColor, "ignore_buoy_color");
         ctb::GetParam(confObj, systemStatus_->conf.gateWpsDistance, "gate_wps_distance");
         ctb::GetParam(confObj, systemStatus_->conf.inspectBuoyOrbitingRadius, "inspect_buoy_orbiting_radius");
         ctb::GetParam(confObj, systemStatus_->conf.inspectBuoyOrbitingTimeout, "inspect_buoy_orbiting_radius");
 
-        const libconfig::Setting& root = confObj.getRoot();
 
         // goal_positions
-        //ctb::GetParam(confObj, systemStatus_->conf.goalPositionSelection, "goal_position_selection");
-        std::cerr << "Goal positions: \n";// (selected " << systemStatus_->conf.goalPositionSelection << "):" << std::endl;
+        // ctb::GetParam(confObj, systemStatus_->conf.goalPositionSelection, "goal_position_selection");
+        // std::cerr << "Goal positions: \n"; // (selected " << systemStatus_->conf.goalPositionSelection << "):" << std::endl;
         const libconfig::Setting& goalPositionsSetting = root["goal_positions"];
         for (int i = 0; i < goalPositionsSetting.getLength(); ++i) {
             const libconfig::Setting& point = goalPositionsSetting[i];
@@ -563,13 +592,12 @@ void MissionController::LoadConfiguration()
             GoalWaypoint wp;
             wp.position = ctb::LatLong(localTmp[0], localTmp[1]);
             wp.depth = localTmp[2];
-            std::cerr << "  - goal position: " << localTmp[0] << ", " << localTmp[1] << ", " << localTmp[2] << std::endl;
+            // std::cerr << "  - goal position: " << localTmp[0] << ", " << localTmp[1] << ", " << localTmp[2] << std::endl;
             systemStatus_->conf.goalPositions.push_back(wp);
         }
 
         // debug_positions
-        ctb::GetParam(confObj, systemStatus_->conf.debugPositionSelection, "debugPositionSelection");
-        std::cerr << "Debug positions (selected " << systemStatus_->conf.debugPositionSelection << "):" << std::endl;
+        ctb::GetParam(confObj, systemStatus_->conf.debugPositionSelection, "debug_position_selection");
         const libconfig::Setting& debugPositionsSetting = root["debug_positions"];
         for (int i = 0; i < debugPositionsSetting.getLength(); ++i) {
             const libconfig::Setting& point = debugPositionsSetting[i];
@@ -588,49 +616,49 @@ void MissionController::LoadConfiguration()
         //     ctrlData_->inertialF_linearPosition = systemStatus_->conf.debugPosition;
         //}
 
-        if (systemStatus_->conf.debugBuoys) {
-            std::cerr << "Debug buoys positions:" << std::endl;
-            std::cerr << std::setprecision(15);
-            const libconfig::Setting& buoysSetting = root["buoysStonefishPositions"];
-            for (int i = 0; i < buoysSetting.getLength(); ++i) {
-                const libconfig::Setting& point = buoysSetting[i];
-                Eigen::VectorXd localTmp;
-                ctb::GetParamVector(point, localTmp, "point");
-                ctb::LatLong stonefishCentroid(44.095952330602564, 9.865115308770484); // from update pose stonefish in stonefish utils
-                ctb::LatLong latLongTmp;
-                double alt;
-                Eigen::Vector3d localTmp3d;
-                localTmp3d << localTmp[0], localTmp[1], 0.0; // Assuming the z-coordinate is 0 for the buoy positions
+        // if (systemStatus_->conf.debugBuoys) {
+        //     std::cerr << "Debug buoys positions:" << std::endl;
+        //     std::cerr << std::setprecision(15);
+        //     const libconfig::Setting& buoysSetting = root["buoysStonefishPositions"];
+        //     for (int i = 0; i < buoysSetting.getLength(); ++i) {
+        //         const libconfig::Setting& point = buoysSetting[i];
+        //         Eigen::VectorXd localTmp;
+        //         ctb::GetParamVector(point, localTmp, "point");
+        //         ctb::LatLong stonefishCentroid(44.095952330602564, 9.865115308770484); // from update pose stonefish in stonefish utils
+        //         ctb::LatLong latLongTmp;
+        //         double alt;
+        //         Eigen::Vector3d localTmp3d;
+        //         localTmp3d << localTmp[0], localTmp[1], 0.0; // Assuming the z-coordinate is 0 for the buoy positions
 
-                double theta = 1.85;
-                Eigen::Matrix3d R_offset;
-                R_offset << std::cos(theta), -std::sin(theta), 0.0,
-                    std::sin(theta), std::cos(theta), 0.0,
-                    0.0, 0.0, 1.0;
-                localTmp3d = R_offset.transpose() * localTmp3d;
+        //         double theta = 1.85;
+        //         Eigen::Matrix3d R_offset;
+        //         R_offset << std::cos(theta), -std::sin(theta), 0.0,
+        //             std::sin(theta), std::cos(theta), 0.0,
+        //             0.0, 0.0, 1.0;
+        //         localTmp3d = R_offset.transpose() * localTmp3d;
 
-                ctb::LocalNED2LatLong(localTmp3d, stonefishCentroid, latLongTmp, alt);
-                std::cerr << "  - stonefish position: " << localTmp[0] << ", " << localTmp[1] << std::endl;
-                std::cerr << "  - ned local: [" << localTmp3d[0] << ", " << localTmp3d[1] << ", " << localTmp3d[2] << "]" << std::endl;
-                std::cerr << "  - latlong: [" << latLongTmp.latitude << ", " << latLongTmp.longitude << "]" << std::endl;
-                std::cerr << " --  " << std::endl;
-                systemStatus_->conf.debugBuoysPositions.push_back(latLongTmp);
-            }
-        }
+        //         ctb::LocalNED2LatLong(localTmp3d, stonefishCentroid, latLongTmp, alt);
+        //         std::cerr << "  - stonefish position: " << localTmp[0] << ", " << localTmp[1] << std::endl;
+        //         std::cerr << "  - ned local: [" << localTmp3d[0] << ", " << localTmp3d[1] << ", " << localTmp3d[2] << "]" << std::endl;
+        //         std::cerr << "  - latlong: [" << latLongTmp.latitude << ", " << latLongTmp.longitude << "]" << std::endl;
+        //         std::cerr << " --  " << std::endl;
+        //         systemStatus_->conf.debugBuoysPositions.push_back(latLongTmp);
+        //     }
+        // }
 
+        RCLCPP_INFO(this->get_logger(), "ctrlRate: %i", systemStatus_->conf.ctrlRate);
         RCLCPP_INFO(this->get_logger(), "Configuration loaded from file: %s", confPath.c_str());
         RCLCPP_INFO(this->get_logger(), "simKcl: %d", systemStatus_->conf.simKcl);
         RCLCPP_INFO(this->get_logger(), "simPerception: %d", systemStatus_->conf.simPerception);
         RCLCPP_INFO(this->get_logger(), "simBridge: %d", systemStatus_->conf.simBridge);
         RCLCPP_INFO(this->get_logger(), "simCtrlStation: %d", systemStatus_->conf.simCtrlStation);
-        RCLCPP_INFO(this->get_logger(), "debugPrints: %d", systemStatus_->conf.debugPrints);
+        // RCLCPP_INFO(this->get_logger(), "debugPrints: %d", systemStatus_->conf.debugPrints);
         RCLCPP_INFO(this->get_logger(), "depthTolerance: %f", systemStatus_->conf.depthTolerance);
         RCLCPP_INFO(this->get_logger(), "latlongTolerance: %f", systemStatus_->conf.latlongTolerance);
-        RCLCPP_INFO(this->get_logger(), "ctrlRate: %i", systemStatus_->conf.ctrlRate);
         RCLCPP_INFO(this->get_logger(), "localizationTimeout: %f", systemStatus_->conf.localizationTimeout);
-        RCLCPP_INFO(this->get_logger(), "Safety boundary points:");
-        for (const auto& point : systemStatus_->conf.safetyBoundary) {
-            RCLCPP_INFO(this->get_logger(), "  - [%f, %f]", point.latitude, point.longitude);
+        RCLCPP_INFO(this->get_logger(), "Goal points:");
+        for (const auto& point : systemStatus_->conf.goalPositions) {
+            RCLCPP_INFO(this->get_logger(), "  - [%f, %f, %f]", point.position.latitude, point.position.longitude, point.depth);
         }
     } catch (const libconfig::FileIOException& fioex) {
         RCLCPP_ERROR(this->get_logger(), "I/O error while reading file: %s", fioex.what());

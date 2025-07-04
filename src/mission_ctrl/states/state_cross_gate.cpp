@@ -43,14 +43,23 @@ namespace states {
                       << gb2.position.longitude << "\n";
         }
 
-        //=====
+        if(systemStatus_->conf.use_debug_gate){
+            //=====
         Buoy gb1, gb2;
         Gate gt;
-        gb1.position = ctb::LatLong(44.0957630, 9.8644845);
-        gb2.position = ctb::LatLong(44.0957390, 9.8644840);
+        gb1.position = systemStatus_->conf.debugGatePositions[0];
+        gb2.position = systemStatus_->conf.debugGatePositions[1];
         gt.SetGateBuoys(gb1, gb2, true);
         ctrlData->missionData.gate = gt;
-        //=====
+        // //=====
+        }
+
+        std::cerr << "Crossing gate buoys at: "
+                  << ctrlData->missionData.gate.buoy1.position.latitude << ", "
+                  << ctrlData->missionData.gate.buoy1.position.longitude << " and "
+                  << ctrlData->missionData.gate.buoy2.position.latitude << ", "
+                  << ctrlData->missionData.gate.buoy2.position.longitude << "\n";
+        
 
         systemStatus_->conf.gateWpsDistance;
 

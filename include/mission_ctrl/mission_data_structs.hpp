@@ -84,8 +84,11 @@ namespace mission
         uint debugPositionSelection = 0;
         std::vector<ctb::LatLong> debugPositions;
 
-        bool debugBuoys = false;
-        std::vector<ctb::LatLong> debugBuoysPositions;
+        bool use_debug_gate = false; 
+        std::vector<ctb::LatLong> debugGatePositions; // positions of the buoys for the debug gate
+
+        bool use_debug_buoys = false; // if true, the buoys are simulated using the debug positions
+        std::vector<ctb::LatLong> debugBuoysPositions; // positions of
 
         int systemStatusTimeout = 2;
         int homingStateTimeout = 9999;
@@ -226,7 +229,7 @@ namespace mission
 
         friend std::ostream &operator<<(std::ostream &os, SearchArea const &area)
         {
-            os << "SearchArea {\n";
+            //os << "SearchArea {\n";
             for (const auto &point : area.points)
             {
                 os << "  Point: (" << point.latitude << ", " << point.longitude << ")\n";
@@ -485,11 +488,13 @@ namespace mission
 
         virtual void dump(std::ostream &os) const
         {
-            os << "PipelineStructures:\n";
-            for (auto const &ps : pipelineStructures)
-                os << ps;
-            os << "SelectedPipelineStructureId: " << selectedPipelineStructureId << "\n";
+            // os << "PipelineStructures:\n";
+            // for (auto const &ps : pipelineStructures)
+            //     os << ps;
+            // os << "SelectedPipelineStructureId: " << selectedPipelineStructureId << "\n";
+            os << "Buoys area:\n";
             os << buoysArea;
+            os << "Manipulation area:\n";
             os << manipulationArea;
         }
 
@@ -557,9 +562,9 @@ namespace mission
             os << "UavWaypoint: (" << uavWaypoint.latitude << ", " << uavWaypoint.longitude << ")\n";
             os << "NumberOfBuoys: " << numberOfBuoys << "\n";
             os << buoysActions;
-            os << "PipelinePipes:\n";
-            for (auto const &p : pipelinePipes)
-                os << p;
+            //os << "PipelinePipes:\n";
+            // for (auto const &p : pipelinePipes)
+            //     os << p;
             os << "===========================\n";
         }
     };
@@ -616,9 +621,9 @@ namespace mission
         {
             TaskBenchmarkSettings::dump(os);
             os << "\n";
-            os << "NumberOfMainPipeDamageMarkers: " << numberOfMainPipeDamageMarkers << "\n";
-            os << "DamagedPipeOnPipeline:\n"
-               << damagedPipeOnPipeline;
+            // os << "NumberOfMainPipeDamageMarkers: " << numberOfMainPipeDamageMarkers << "\n";
+            // os << "DamagedPipeOnPipeline:\n"
+            //    << damagedPipeOnPipeline;
             os << "=============================\n";
         }
     };
@@ -673,15 +678,15 @@ namespace mission
         void dump(std::ostream &os) const override
         {
             TaskBenchmarkSettings::dump(os);
-            os << "\n";
-            os << "NumberOfMainPipeDamageMarkers: " << numberOfMainPipeDamageMarkers << "\n";
+            //os << "\n";
+            //os << "NumberOfMainPipeDamageMarkers: " << numberOfMainPipeDamageMarkers << "\n";
             os << "NumberOfBuoys: " << numberOfBuoys << "\n";
             os << buoysActions;
-            os << "PipelinePipes:\n";
-            for (const auto &pipe : pipelinePipes)
-            {
-                os << pipe;
-            }
+            //os << "PipelinePipes:\n";
+            // for (const auto &pipe : pipelinePipes)
+            // {
+            //     os << pipe;
+            // }
             os << "==========================================\n";
         }
     };

@@ -108,46 +108,47 @@ namespace states {
                     std::cerr << "Unknown buoy color: " << buoyToInspect.color << ". Returning to searchBuoyArea state." << std::endl;
                     return fsm_->SetNextState(states::ID::searchBuoyArea);
                 }
+            }
 
-                // return fsm_->SetNextState(states::ID::searchBuoyArea);
+            
+        } else {
+            // check progress
+            auto elapsedTime = (std::chrono::steady_clock::now() - inspectionStartTime).count() / 1e9; // Convert to seconds
+            if (buoyToInspect.color == buoyActionColorMap.clockWiseRotationColor || buoyToInspect.color == buoyActionColorMap.counterClockWiseRotationColor) {
+                if (elapsedTime > systemStatus_->conf.inspectBuoyOrbitingTimeout) {
+                    ctrlData->missionData.inspectedBuoys.push_back(buoyToInspect);
+                    return fsm_->SetNextState(states::ID::searchBuoyArea);
+                }
+            } else if (!sentDepthCmd) {
+                if (elapsedTime < 30.0)
+                    return fsm::ok;
+
+                sentDepthCmd = true;
+                ctrlData->kclData.kclActionCmd = mission::kclCmd();
+
+                if (buoyToInspect.color == buoyActionColorMap.goUpColor) {
+                    ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+                    ctrlData->kclData.kclActionCmd.goal.position.latitude = ctrlData->inertialF_linearPosition.latitude;
+                    ctrlData->kclData.kclActionCmd.goal.position.longitude = ctrlData->inertialF_linearPosition.longitude;
+                    ctrlData->kclData.kclActionCmd.goal.depth = ctrlData->depth - 0.5;
+                } else if (buoyToInspect.color == buoyActionColorMap.goDownColor) {
+                    ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
+                    ctrlData->kclData.kclActionCmd.goal.position.latitude = ctrlData->inertialF_linearPosition.latitude;
+                    ctrlData->kclData.kclActionCmd.goal.position.longitude = ctrlData->inertialF_linearPosition.longitude;
+                    ctrlData->kclData.kclActionCmd.goal.depth = ctrlData->depth + 0.5;
+                }
+                goalDepth = ctrlData->kclData.kclActionCmd.goal.depth; // Store the goal depth
             } else {
-                // check progress
-                auto elapsedTime = (std::chrono::steady_clock::now() - inspectionStartTime).count() / 1e9; // Convert to seconds
-                if (buoyToInspect.color == buoyActionColorMap.clockWiseRotationColor || buoyToInspect.color == buoyActionColorMap.counterClockWiseRotationColor) {
-                    if (elapsedTime > systemStatus_->conf.inspectBuoyOrbitingTimeout) {
-                        ctrlData->missionData.inspectedBuoys.push_back(buoyToInspect);
-                        return fsm_->SetNextState(states::ID::searchBuoyArea);
-                    }
-                } else if (!sentDepthCmd) {
-                    if (elapsedTime < 30.0)
-                        return fsm::ok;
-
-                    sentDepthCmd = true;
-                    ctrlData->kclData.kclActionCmd = mission::kclCmd();
-
-                    if (buoyToInspect.color == buoyActionColorMap.goUpColor) {
-                        ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
-                        ctrlData->kclData.kclActionCmd.goal.position.latitude = ctrlData->inertialF_linearPosition.latitude;
-                        ctrlData->kclData.kclActionCmd.goal.position.longitude = ctrlData->inertialF_linearPosition.longitude;
-                        ctrlData->kclData.kclActionCmd.goal.depth = ctrlData->depth - 0.5;
-                    } else if (buoyToInspect.color == buoyActionColorMap.goDownColor) {
-                        ctrlData->kclData.kclActionCmd.goal.desired_state = "WAYPOINT_NAVIGATION";
-                        ctrlData->kclData.kclActionCmd.goal.position.latitude = ctrlData->inertialF_linearPosition.latitude;
-                        ctrlData->kclData.kclActionCmd.goal.position.longitude = ctrlData->inertialF_linearPosition.longitude;
-                        ctrlData->kclData.kclActionCmd.goal.depth = ctrlData->depth + 0.5;
-                    }
-                    goalDepth = ctrlData->kclData.kclActionCmd.goal.depth; // Store the goal depth
-                } else {
-                    // check depth
-                    double depthDifference = std::abs(ctrlData->depth - goalDepth);
-                    if (depthDifference < systemStatus_->conf.depthTolerance) {
-                        ctrlData->missionData.inspectedBuoys.push_back(buoyToInspect);
-                        std::cerr << "Reached goal depth of " << goalDepth << "m. Buoy inspection completed." << std::endl;
-                        return fsm_->SetNextState(states::ID::searchBuoyArea);
-                    }
+                // check depth
+                double depthDifference = std::abs(ctrlData->depth - goalDepth);
+                if (depthDifference < systemStatus_->conf.depthTolerance) {
+                    ctrlData->missionData.inspectedBuoys.push_back(buoyToInspect);
+                    std::cerr << "Reached goal depth of " << goalDepth << "m. Buoy inspection completed." << std::endl;
+                    return fsm_->SetNextState(states::ID::searchBuoyArea);
                 }
             }
         }
+
         return fsm::ok;
     }
 

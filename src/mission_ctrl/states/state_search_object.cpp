@@ -19,7 +19,7 @@ namespace states {
 
     fsm::retval StateSearchObject::Execute()
     {
-        if (taskData_->taskPhases.front().second == opis::gate && ctrlData->kclData.kclActionCmd.feedback.action_progress >= 50.0)
+        if (taskData_->taskPhases.front().second == opis::gate && systemStatus_->conf.use_debug_gate  && ctrlData->kclData.kclActionCmd.feedback.action_progress >= 50.0)
             SetNextMissionState();
 
         // if (!systemStatus_->conf.simPerception && ctrlData->perceptionData.newDtcFromPerception) {
