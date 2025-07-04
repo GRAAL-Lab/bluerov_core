@@ -1,1 +1,0 @@
-/home/jetson/ros2_ws/src/mission_ctrl/build/mission_ctrl/ament_cmake_environment_hooks/local_setup.bash
