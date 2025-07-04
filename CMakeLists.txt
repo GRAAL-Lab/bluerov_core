@@ -40,7 +40,7 @@ find_package(rclcpp_action REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(auv_core_helper REQUIRED)
 find_package(ament_index_cpp REQUIRED)
-find_package(mission_ctrl REQUIRED)
+#find_package(mission_ctrl REQUIRED)
 find_package(ctrl_toolbox REQUIRED)
 find_package(std_srvs REQUIRED)
 
