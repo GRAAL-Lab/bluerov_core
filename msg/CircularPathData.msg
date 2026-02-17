@@ -1,0 +1,3 @@
+float64 circular_diameter
+LatLong center_point
+bool clockwise
