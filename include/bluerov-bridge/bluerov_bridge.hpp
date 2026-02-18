@@ -6,6 +6,9 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/point.hpp"
+#include "sensor_msgs/msg/imu.hpp"
+#include "sensor_msgs/msg/joint_state.hpp"
+#include "sensor_msgs/msg/fluid_pressure.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "auv_core_helper/msg/pose_stamped.hpp"
 #include "auv_core_helper/msg/heart_beat.hpp"                           
@@ -41,6 +44,7 @@ extern "C" {
 
 #include <rmw/rmw.h>
 #include <optional>
+#include <limits>
 
 using SetBoolSrv = std_srvs::srv::SetBool;
 using SetModeSrv = auv_core_helper::srv::SetFlightMode;
@@ -67,6 +71,9 @@ private:
     rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr dvlDistancePublisher_;
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr ekfStatusPublisher_;
     rclcpp::Publisher<auv_core_helper::msg::GimbalStatus>::SharedPtr gimbalStatusPublisher_;
+    rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imuPublisher_;
+    rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr forcesDesiredPublisher_;
+    rclcpp::Publisher<sensor_msgs::msg::FluidPressure>::SharedPtr pressureScaled2Publisher_;
     
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr safetySwitchSubscription_;
     rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseDesiredSubscription_;
@@ -112,6 +119,18 @@ private:
     //Declarations
     //--------------------------------------------------------------------------
     bool simulation_mode_;
+    std::string imu_topic_{auv_core_helper::topicnames::imu_data_raw};
+    std::string imu_frame_id_{"base_link"};
+    float imu_rate_hz_{100.0f};
+    float servo_output_rate_hz_{50.0f};
+    std::string forces_desired_topic_{"/auv/forces_desired"};
+    std::string pressure_topic_{auv_core_helper::topicnames::pressure_scaled_2};
+    std::string pressure_frame_id_{"base_link"};
+    float pressure_rate_hz_{20.0f};
+        Eigen::Matrix3d imu_rotation_matrix_ = (Eigen::Matrix3d() <<
+            0.0, 1.0, 0.0,
+            1.0, 0.0, 0.0,
+            0.0, 0.0, -1.0).finished();
 
     bool failsafe_active_{false};
     
@@ -123,6 +142,7 @@ private:
     
     std::unique_ptr<auv_core_helper::msg::PoseStamped> global_pose_msg = std::make_unique<auv_core_helper::msg::PoseStamped>();
     std::unique_ptr<geometry_msgs::msg::Twist> global_velocity_msg = std::make_unique<geometry_msgs::msg::Twist>();
+    double latest_battery_voltage_v_{std::numeric_limits<double>::quiet_NaN()};
 
     Eigen::VectorXd poseGoalGlobal = Eigen::VectorXd(6); ///< Desired pose goal in global coordinates.
     Eigen::VectorXd poseGoalGlobalLast = Eigen::VectorXd(6); ///< Last desired pose goal in global coordinates.
@@ -199,6 +219,10 @@ private:
 
     void handleAttitude(const mavlink_message_t& msg);
 
+    void handleRawImu(const mavlink_message_t& msg);
+
+    void handleScaledPressure2(const mavlink_message_t& msg);
+
     void handleDvlDistance(const mavlink_message_t& msg);
      
     void handleCommandAck(const mavlink_message_t& msg);
@@ -234,8 +258,6 @@ private:
     void setGimbalAttitude(float gimbal_pitch, float gimbal_yaw); 
     
     void rcChannelsOverride(uint16_t rc[]); 
-
-    void setLights(const mavlink_message_t& msg);
 
     void setServo(uint8_t servoID,uint16_t pwm);
 

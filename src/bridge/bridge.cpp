@@ -5,9 +5,37 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <algorithm>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <thread>
+
+namespace {
+
+constexpr double kGravityMps2 = 9.80550;
+constexpr double kMilligToMps2 = kGravityMps2 / 1000.0;
+constexpr double kMradpsToRadps = 1.0 / 1000.0;
+constexpr uint64_t kEpochUsecThreshold = 1000000000000ULL;
+
+double extractBatteryVoltageV(const mavlink_battery_status_t& battery_status) {
+  double voltage_sum_v = 0.0;
+  size_t valid_cells = 0;
+  for (size_t i = 0; i < 10; ++i) {
+    const uint16_t mv = battery_status.voltages[i];
+    if (mv == UINT16_MAX || mv == 0) {
+      continue;
+    }
+    voltage_sum_v += static_cast<double>(mv) / 1000.0;
+    ++valid_cells;
+  }
+
+  if (valid_cells == 0) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return voltage_sum_v;
+}
+
+}  // namespace
 
 const rclcpp::Duration BlueROVBridge::kSrvTimeout =rclcpp::Duration::from_seconds(3.0);
 const rclcpp::Duration BlueROVBridge::HeartbeatTimeout = rclcpp::Duration::from_seconds(4.0);
@@ -20,8 +48,18 @@ const rclcpp::Duration BlueROVBridge::HeartbeatTimeout = rclcpp::Duration::from_
 BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_bridge", options){
   // Declare and get config_name parameter
   this->declare_parameter<std::string>("config_name", "bridge");
+  this->declare_parameter<std::string>("imu_topic", imu_topic_);
+  this->declare_parameter<std::string>("imu_frame_id", imu_frame_id_);
+  this->declare_parameter<std::string>("forces_desired_topic", forces_desired_topic_);
+  this->declare_parameter<std::string>("pressure_topic", pressure_topic_);
+  this->declare_parameter<std::string>("pressure_frame_id", pressure_frame_id_);
   std::string configNameParam;
   this->get_parameter("config_name", configNameParam);
+  this->get_parameter("imu_topic", imu_topic_);
+  this->get_parameter("imu_frame_id", imu_frame_id_);
+  this->get_parameter("forces_desired_topic", forces_desired_topic_);
+  this->get_parameter("pressure_topic", pressure_topic_);
+  this->get_parameter("pressure_frame_id", pressure_frame_id_);
 
   LoadBridgeParamsFromConf(
       configNameParam,
@@ -47,6 +85,9 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   dvlDistancePublisher_ = this->create_publisher<std_msgs::msg::Float64>(auv_core_helper::topicnames::dvl_distance_actual,1);
   ekfStatusPublisher_ = this->create_publisher<std_msgs::msg::Int32>(auv_core_helper::topicnames::ekf_status,1);
   gimbalStatusPublisher_ = this->create_publisher<auv_core_helper::msg::GimbalStatus>(auv_core_helper::topicnames::gimbal_attitude_status,1);
+  imuPublisher_ = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic_, 20);
+  forcesDesiredPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(forces_desired_topic_, 10);
+  pressureScaled2Publisher_ = this->create_publisher<sensor_msgs::msg::FluidPressure>(pressure_topic_, 20);
 
   safetySwitchSubscription_ = this->create_subscription<std_msgs::msg::Bool>(auv_core_helper::topicnames::safety_switch,10,std::bind(&BlueROVBridge::safetySwitchCallback, this, std::placeholders::_1));
   globalPoseDesiredSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_desired_global,10,std::bind(&BlueROVBridge::globalPoseDesiredCallback, this, std::placeholders::_1));
@@ -167,6 +208,14 @@ void BlueROVBridge::receiveData(){
           case MAVLINK_MSG_ID_ATTITUDE:
             handleAttitude(msg);
             break;
+
+          case MAVLINK_MSG_ID_RAW_IMU:
+            handleRawImu(msg);
+            break;
+
+          case MAVLINK_MSG_ID_SCALED_PRESSURE2:
+            handleScaledPressure2(msg);
+            break;
             
           case MAVLINK_MSG_ID_GLOBAL_POSITION_INT:
             handleGlobalPositionInt(msg);
@@ -195,10 +244,6 @@ void BlueROVBridge::receiveData(){
           case MAVLINK_MSG_ID_GIMBAL_DEVICE_ATTITUDE_STATUS:  
             handleGimbalStatus(msg);
             break;
-
-          case MAVLINK_MSG_ID_SERVO_OUTPUT_RAW:
-            setLights(msg);
-          break;  
 
           default:
             break;
@@ -292,6 +337,10 @@ const char* BlueROVBridge::get_message_name(uint16_t message_id) {
       return "ATTITUDE";
     case MAVLINK_MSG_ID_BATTERY_STATUS:
       return "BATTERY_STATUS";
+    case MAVLINK_MSG_ID_RAW_IMU:
+      return "RAW_IMU";
+    case MAVLINK_MSG_ID_SCALED_PRESSURE2:
+      return "SCALED_PRESSURE2";
     case MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN:
       return "GPS_GLOBAL_ORIGIN";
     case MAVLINK_MSG_ID_DISTANCE_SENSOR:
@@ -347,7 +396,8 @@ void BlueROVBridge::handleArduSubHeartbeat(const mavlink_message_t& msg, const s
 
     // Configure data streams directly 
     setMessageInterval(MAVLINK_MSG_ID_HEARTBEAT, 1.0f);              // #0
-    setMessageInterval(MAVLINK_MSG_ID_ATTITUDE,  10.0f);             // #30
+    setMessageInterval(MAVLINK_MSG_ID_RAW_IMU, 100.0f); // #27
+    setMessageInterval(MAVLINK_MSG_ID_SCALED_PRESSURE2, 100.0f); // #137
     setMessageInterval(MAVLINK_MSG_ID_GLOBAL_POSITION_INT, 10.0f);   // #33
     setMessageInterval(MAVLINK_MSG_ID_DISTANCE_SENSOR, 5.0f);        // #34
     setMessageInterval(MAVLINK_MSG_ID_COMMAND_ACK, 8.0f);            // #35
@@ -461,6 +511,8 @@ void BlueROVBridge::handleBatteryStatus(const mavlink_message_t& msg){
    mavlink_battery_status_t battery_status;
    mavlink_msg_battery_status_decode(&msg, &battery_status);
 
+  latest_battery_voltage_v_ = extractBatteryVoltageV(battery_status);
+
    auto battery_status_ = std::make_unique<auv_core_helper::msg::BatteryStatus>();
    battery_status_->temperature = battery_status.temperature;
    for (size_t i = 0; i < 10; i++) {
@@ -501,6 +553,73 @@ void BlueROVBridge::handleAttitude(const mavlink_message_t& msg){
   global_velocity_msg->angular.y = attitude.pitchspeed;        //Pitch rate in rad/s
   global_velocity_msg->angular.z = attitude.yawspeed;           //Yaw rate in rad/s
   
+}
+
+void BlueROVBridge::handleRawImu(const mavlink_message_t& msg){
+  mavlink_raw_imu_t raw_imu;
+  mavlink_msg_raw_imu_decode(&msg, &raw_imu);
+
+  sensor_msgs::msg::Imu imu_msg;
+  imu_msg.header.frame_id = imu_frame_id_;
+
+  // Keep existing behavior: use epoch-like time_usec when available, otherwise ROS now().
+  if (raw_imu.time_usec > kEpochUsecThreshold) {
+    imu_msg.header.stamp = rclcpp::Time(static_cast<int64_t>(raw_imu.time_usec) * 1000LL, RCL_SYSTEM_TIME);
+  } else {
+    imu_msg.header.stamp = this->now();
+  }
+
+    // ArduSub RAW_IMU is body-frame FRD (x-forward, y-right, z-down).
+    // ROS IMU is body-frame FLU (x-forward, y-left, z-up).
+    // Apply a fixed FRD -> FLU frame rotation using matrix form.
+    const Eigen::Matrix3d R = (Eigen::Matrix3d() <<
+      -1.0,  0.0,  0.0,
+      0.0, 1.0,  0.0,
+      0.0,  0.0, -1.0).finished();
+
+    const Eigen::Vector3d acc_frd(
+      static_cast<double>(raw_imu.xacc) * kMilligToMps2,
+      static_cast<double>(raw_imu.yacc) * kMilligToMps2,
+      static_cast<double>(raw_imu.zacc) * kMilligToMps2);
+    const Eigen::Vector3d acc_flu = R * acc_frd;
+    imu_msg.linear_acceleration.x = acc_flu.x();
+    imu_msg.linear_acceleration.y = acc_flu.y();
+    imu_msg.linear_acceleration.z = acc_flu.z();
+
+    const Eigen::Vector3d gyro_frd(
+      static_cast<double>(raw_imu.xgyro) * kMradpsToRadps,
+      static_cast<double>(raw_imu.ygyro) * kMradpsToRadps,
+      static_cast<double>(raw_imu.zgyro) * kMradpsToRadps);
+    const Eigen::Vector3d gyro_flu =   R * gyro_frd;
+    imu_msg.angular_velocity.x = gyro_flu.x();
+    imu_msg.angular_velocity.y = gyro_flu.y();
+    imu_msg.angular_velocity.z = gyro_flu.z();
+
+  // Orientation is unknown for RAW_IMU: publish a valid identity quaternion and mark unknown.
+  imu_msg.orientation.x = 0.0;
+  imu_msg.orientation.y = 0.0;
+  imu_msg.orientation.z = 0.0;
+  imu_msg.orientation.w = 1.0;
+  imu_msg.orientation_covariance[0] = -1.0;
+
+  // Unknown covariance; do not use these covariance fields yet.
+  imu_msg.angular_velocity_covariance.fill(-1.0);
+  imu_msg.linear_acceleration_covariance.fill(-1.0);
+
+  imuPublisher_->publish(imu_msg);
+}
+
+void BlueROVBridge::handleScaledPressure2(const mavlink_message_t& msg){
+  mavlink_scaled_pressure2_t pressure2;
+  mavlink_msg_scaled_pressure2_decode(&msg, &pressure2);
+
+  sensor_msgs::msg::FluidPressure pressure_msg;
+  pressure_msg.header.stamp = this->now();
+  pressure_msg.header.frame_id = pressure_frame_id_;
+  pressure_msg.fluid_pressure = static_cast<double>(pressure2.press_abs) * 100.0;  // hPa -> Pa
+  pressure_msg.variance = 0.0;
+
+  pressureScaled2Publisher_->publish(pressure_msg);
 }
 
 void BlueROVBridge::handleGimbalStatus(const mavlink_message_t& msg){
@@ -675,27 +794,6 @@ void BlueROVBridge::rcChannelsOverride(uint16_t rc[]){
   sendMavlinkMessage(msg);
 }
 
-void BlueROVBridge::setLights(const mavlink_message_t& msg)
-{
-  mavlink_servo_output_raw_t servo_output_raw;
-  mavlink_msg_servo_output_raw_decode(&msg, &servo_output_raw);
-
-  if (!failsafe_active_ && (hb.base_mode & MAV_MODE_FLAG_SAFETY_ARMED) && (hb.base_mode & MAV_MODE_FLAG_GUIDED_ENABLED))
-  {
-    if (servo_output_raw.servo14_raw != 1900)
-    {
-      setServo(14,1900);
-    }
-  }
-  else if (!failsafe_active_ && (!(hb.base_mode & MAV_MODE_FLAG_SAFETY_ARMED) || !(hb.base_mode & MAV_MODE_FLAG_GUIDED_ENABLED)))
-  {
-    if (servo_output_raw.servo14_raw != 1100)
-    {
-      setServo(14,1100);
-    }
-  }
-}
-
 void BlueROVBridge::setServo(uint8_t servoID,uint16_t pwm){
 
   mavlink_message_t msg;
@@ -712,7 +810,7 @@ void BlueROVBridge::setServo(uint8_t servoID,uint16_t pwm){
     0,0,0,0,0  //param3-7 unused
   );
   sendMavlinkMessage(msg);
-  RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Setting servo "<< static_cast<int>(servoID) <<" to "<< pwm);
+  // RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(),*get_clock(),1000, "Setting servo "<< static_cast<int>(servoID) <<" to "<< pwm);
 }
 
 void BlueROVBridge::cycleServo(uint8_t servoID,uint16_t pwm,uint16_t cycleCount,uint16_t cycleTime){
@@ -953,9 +1051,6 @@ void BlueROVBridge::Execute(){
         velGoalGlobalChanged = false; // Reset the flag
       }
     }
-    else {
-        RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Waiting for MAVLink global position/velocity data...");
-      }
 }
 
 void BlueROVBridge::SetPositionTargetGlobalInt(const mavlink_set_position_target_global_int_t& position_target_global_)
