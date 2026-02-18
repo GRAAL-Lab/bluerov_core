@@ -45,6 +45,8 @@ extern "C" {
 #include <rmw/rmw.h>
 #include <optional>
 #include <limits>
+#include <array>
+#include <vector>
 
 using SetBoolSrv = std_srvs::srv::SetBool;
 using SetModeSrv = auv_core_helper::srv::SetFlightMode;
@@ -73,6 +75,7 @@ private:
     rclcpp::Publisher<auv_core_helper::msg::GimbalStatus>::SharedPtr gimbalStatusPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imuPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr forcesDesiredPublisher_;
+    rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr forcesActualPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::FluidPressure>::SharedPtr pressureScaled2Publisher_;
     
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr safetySwitchSubscription_;
@@ -124,8 +127,10 @@ private:
     float imu_rate_hz_{100.0f};
     float servo_output_rate_hz_{50.0f};
     std::string forces_desired_topic_{"/auv/forces_desired"};
+    std::string forces_actual_topic_{auv_core_helper::topicnames::forces_actual};
     std::string pressure_topic_{auv_core_helper::topicnames::pressure_scaled_2};
     std::string pressure_frame_id_{"base_link"};
+    std::string thrust_table_csv_path_;
     float pressure_rate_hz_{20.0f};
         Eigen::Matrix3d imu_rotation_matrix_ = (Eigen::Matrix3d() <<
             0.0, 1.0, 0.0,
@@ -143,6 +148,13 @@ private:
     std::unique_ptr<auv_core_helper::msg::PoseStamped> global_pose_msg = std::make_unique<auv_core_helper::msg::PoseStamped>();
     std::unique_ptr<geometry_msgs::msg::Twist> global_velocity_msg = std::make_unique<geometry_msgs::msg::Twist>();
     double latest_battery_voltage_v_{std::numeric_limits<double>::quiet_NaN()};
+    static constexpr size_t kThrusterCount{8};
+    static constexpr size_t kVoltageBinCount{3};
+    std::array<double, kVoltageBinCount> thrust_voltage_bins_v_{{14.0, 16.0, 18.0}};
+    std::vector<double> thrust_pwm_values_;
+    std::vector<std::vector<double>> thrust_table_newtons_;
+    bool thrust_table_loaded_{false};
+    sensor_msgs::msg::JointState forces_actual_msg_;
 
     Eigen::VectorXd poseGoalGlobal = Eigen::VectorXd(6); ///< Desired pose goal in global coordinates.
     Eigen::VectorXd poseGoalGlobalLast = Eigen::VectorXd(6); ///< Last desired pose goal in global coordinates.
@@ -224,6 +236,8 @@ private:
     void handleScaledPressure2(const mavlink_message_t& msg);
 
     void handleDvlDistance(const mavlink_message_t& msg);
+
+    void handleServoOutputRaw(const mavlink_message_t& msg);
      
     void handleCommandAck(const mavlink_message_t& msg);
 
@@ -268,6 +282,10 @@ private:
     void globalPoseDesiredCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
 
     void globalVelocityDesiredCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
+
+    bool loadThrustTableFromCsv(const std::string& csv_path);
+
+    double getThrust(double pwm, double voltage) const;
 
     void Execute();
     

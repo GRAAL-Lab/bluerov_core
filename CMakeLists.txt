@@ -99,6 +99,7 @@ ament_target_dependencies(bridge_node
   nav_msgs
   mavlink
   std_srvs
+  ament_index_cpp
 )
 
 target_link_libraries(bridge_node
@@ -124,6 +125,7 @@ install(DIRECTORY
   config
   models
   param
+  docs
   DESTINATION share/${PROJECT_NAME}
   OPTIONAL
 )

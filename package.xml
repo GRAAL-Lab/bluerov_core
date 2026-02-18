@@ -19,6 +19,7 @@
   <depend>sensor_msgs</depend> 
   <depend>tf2_geometry_msgs</depend>
   <depend>auv_core_helper</depend>
+  <depend>ament_index_cpp</depend>
   <depend>mavlink</depend>
   <depend>std_srvs</depend>
 

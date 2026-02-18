@@ -1,11 +1,18 @@
 #include "bluerov-bridge/bluerov_bridge.hpp"
 #include "auv_core_helper/helper_lib.hpp"
+#include <ament_index_cpp/get_package_share_directory.hpp>
 
 // C / C++ Includes
 #include <chrono>
 #include <cmath>
 #include <cstring>
 #include <algorithm>
+#include <array>
+#include <exception>
+#include <filesystem>
+#include <fstream>
+#include <stdexcept>
+#include <sstream>
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <thread>
@@ -16,6 +23,57 @@ constexpr double kGravityMps2 = 9.80550;
 constexpr double kMilligToMps2 = kGravityMps2 / 1000.0;
 constexpr double kMradpsToRadps = 1.0 / 1000.0;
 constexpr uint64_t kEpochUsecThreshold = 1000000000000ULL;
+constexpr double kNominalFallbackVoltageV = 16.0;
+
+std::string trim(const std::string& input) {
+  const auto first = input.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos) {
+    return "";
+  }
+  const auto last = input.find_last_not_of(" \t\r\n");
+  return input.substr(first, last - first + 1);
+}
+
+bool parseDoubleField(const std::string& token, double* value) {
+  const std::string trimmed = trim(token);
+  if (trimmed.empty()) {
+    return false;
+  }
+
+  size_t parsed_chars = 0;
+  try {
+    *value = std::stod(trimmed, &parsed_chars);
+  } catch (const std::exception&) {
+    return false;
+  }
+
+  return parsed_chars == trimmed.size();
+}
+
+std::string getDefaultThrustCsvPath() {
+  static const std::array<std::string, 3> kCandidatePaths = {{
+      "/home/attia/bluerov_ws/src/bluerov-bridge/docs/T200_PWM_N.csv",
+      "/home/attia/bluerov_ws/src/bridge/docs/T200_PWM_N.csv",
+      "src/bridge/docs/T200_PWM_N.csv"}};
+
+  try {
+    const std::string package_share = ament_index_cpp::get_package_share_directory("bridge");
+    const std::string packaged_path = package_share + "/docs/T200_PWM_N.csv";
+    if (std::filesystem::exists(packaged_path)) {
+      return packaged_path;
+    }
+  } catch (const std::exception&) {
+    // Fall back to workspace paths below.
+  }
+
+  for (const auto& candidate_path : kCandidatePaths) {
+    if (std::filesystem::exists(candidate_path)) {
+      return candidate_path;
+    }
+  }
+
+  return kCandidatePaths[1];
+}
 
 double extractBatteryVoltageV(const mavlink_battery_status_t& battery_status) {
   double voltage_sum_v = 0.0;
@@ -51,15 +109,19 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   this->declare_parameter<std::string>("imu_topic", imu_topic_);
   this->declare_parameter<std::string>("imu_frame_id", imu_frame_id_);
   this->declare_parameter<std::string>("forces_desired_topic", forces_desired_topic_);
+  this->declare_parameter<std::string>("forces_actual_topic", forces_actual_topic_);
   this->declare_parameter<std::string>("pressure_topic", pressure_topic_);
   this->declare_parameter<std::string>("pressure_frame_id", pressure_frame_id_);
+  this->declare_parameter<std::string>("thrust_table_csv_path", getDefaultThrustCsvPath());
   std::string configNameParam;
   this->get_parameter("config_name", configNameParam);
   this->get_parameter("imu_topic", imu_topic_);
   this->get_parameter("imu_frame_id", imu_frame_id_);
   this->get_parameter("forces_desired_topic", forces_desired_topic_);
+  this->get_parameter("forces_actual_topic", forces_actual_topic_);
   this->get_parameter("pressure_topic", pressure_topic_);
   this->get_parameter("pressure_frame_id", pressure_frame_id_);
+  this->get_parameter("thrust_table_csv_path", thrust_table_csv_path_);
 
   LoadBridgeParamsFromConf(
       configNameParam,
@@ -71,6 +133,10 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
 
   RCLCPP_INFO(this->get_logger(), "Starting BlueROVBridge node (UDP port %d, remote_addr: %s, sysid: %d, compid: %d)",
               port_, remote_addr_str_.c_str(), system_id_, component_id_);
+
+  if (!loadThrustTableFromCsv(thrust_table_csv_path_)) {
+    throw std::runtime_error("Failed loading thrust table CSV from: " + thrust_table_csv_path_);
+  }
 
   // Initialize the MAVLink UDP connection on local port
   initMavlinkConnection();
@@ -87,7 +153,19 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   gimbalStatusPublisher_ = this->create_publisher<auv_core_helper::msg::GimbalStatus>(auv_core_helper::topicnames::gimbal_attitude_status,1);
   imuPublisher_ = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic_, 20);
   forcesDesiredPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(forces_desired_topic_, 10);
+  forcesActualPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(forces_actual_topic_, 10);
   pressureScaled2Publisher_ = this->create_publisher<sensor_msgs::msg::FluidPressure>(pressure_topic_, 20);
+
+  forces_actual_msg_.name = {
+      "thruster_1",
+      "thruster_2",
+      "thruster_3",
+      "thruster_4",
+      "thruster_5",
+      "thruster_6",
+      "thruster_7",
+      "thruster_8"};
+  forces_actual_msg_.effort.assign(kThrusterCount, 0.0);
 
   safetySwitchSubscription_ = this->create_subscription<std_msgs::msg::Bool>(auv_core_helper::topicnames::safety_switch,10,std::bind(&BlueROVBridge::safetySwitchCallback, this, std::placeholders::_1));
   globalPoseDesiredSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_desired_global,10,std::bind(&BlueROVBridge::globalPoseDesiredCallback, this, std::placeholders::_1));
@@ -233,6 +311,10 @@ void BlueROVBridge::receiveData(){
             handleBatteryStatus(msg);
             break;
 
+          case MAVLINK_MSG_ID_SERVO_OUTPUT_RAW:
+            handleServoOutputRaw(msg);
+            break;
+
           case MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN:
             handleGlobalOrigin(msg);
             break;
@@ -337,6 +419,8 @@ const char* BlueROVBridge::get_message_name(uint16_t message_id) {
       return "ATTITUDE";
     case MAVLINK_MSG_ID_BATTERY_STATUS:
       return "BATTERY_STATUS";
+    case MAVLINK_MSG_ID_SERVO_OUTPUT_RAW:
+      return "SERVO_OUTPUT_RAW";
     case MAVLINK_MSG_ID_RAW_IMU:
       return "RAW_IMU";
     case MAVLINK_MSG_ID_SCALED_PRESSURE2:
@@ -402,6 +486,7 @@ void BlueROVBridge::handleArduSubHeartbeat(const mavlink_message_t& msg, const s
     setMessageInterval(MAVLINK_MSG_ID_DISTANCE_SENSOR, 5.0f);        // #34
     setMessageInterval(MAVLINK_MSG_ID_COMMAND_ACK, 8.0f);            // #35
     setMessageInterval(MAVLINK_MSG_ID_BATTERY_STATUS, 2.0f);         // #147
+    setMessageInterval(MAVLINK_MSG_ID_SERVO_OUTPUT_RAW, 20.0f);      // #36
     setMessageInterval(MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN, 1.0f);      // #32
     setMessageInterval(MAVLINK_MSG_ID_ESTIMATOR_STATUS, 5.0f);       // #278
     setMessageInterval(MAVLINK_MSG_ID_GIMBAL_DEVICE_ATTITUDE_STATUS, 5.0f); // #285
@@ -525,6 +610,186 @@ void BlueROVBridge::handleBatteryStatus(const mavlink_message_t& msg){
 
    batteryStatusPublisher_->publish(*battery_status_);
  }
+
+bool BlueROVBridge::loadThrustTableFromCsv(const std::string& csv_path) {
+  thrust_pwm_values_.clear();
+  thrust_table_newtons_.clear();
+  thrust_table_loaded_ = false;
+
+  std::ifstream csv_file(csv_path);
+  if (!csv_file.is_open()) {
+    RCLCPP_ERROR(this->get_logger(), "Unable to open thrust table CSV: %s", csv_path.c_str());
+    return false;
+  }
+
+  std::string line;
+  size_t line_number = 0;
+  while (std::getline(csv_file, line)) {
+    ++line_number;
+    if (trim(line).empty()) {
+      continue;
+    }
+
+    std::stringstream line_stream(line);
+    std::array<std::string, 4> tokens{};
+    size_t token_count = 0;
+    while (token_count < tokens.size() && std::getline(line_stream, tokens[token_count], ',')) {
+      ++token_count;
+    }
+
+    if (token_count < 4) {
+      if (line_number == 1) {
+        continue;
+      }
+      RCLCPP_WARN(this->get_logger(), "Skipping malformed thrust CSV line %zu: '%s'", line_number, line.c_str());
+      continue;
+    }
+
+    double pwm_us = 0.0;
+    double force_14v_n = 0.0;
+    double force_16v_n = 0.0;
+    double force_18v_n = 0.0;
+
+    const bool valid_row =
+        parseDoubleField(tokens[0], &pwm_us) &&
+        parseDoubleField(tokens[1], &force_14v_n) &&
+        parseDoubleField(tokens[2], &force_16v_n) &&
+        parseDoubleField(tokens[3], &force_18v_n);
+
+    if (!valid_row) {
+      if (line_number == 1) {
+        continue;
+      }
+      RCLCPP_WARN(this->get_logger(), "Skipping non-numeric thrust CSV line %zu: '%s'", line_number, line.c_str());
+      continue;
+    }
+
+    if (!thrust_pwm_values_.empty() && pwm_us <= thrust_pwm_values_.back()) {
+      RCLCPP_WARN(
+          this->get_logger(),
+          "Skipping non-increasing PWM row at line %zu (%.3f <= %.3f)",
+          line_number,
+          pwm_us,
+          thrust_pwm_values_.back());
+      continue;
+    }
+
+    thrust_pwm_values_.push_back(pwm_us);
+    thrust_table_newtons_.push_back({force_14v_n, force_16v_n, force_18v_n});
+  }
+
+  if (thrust_pwm_values_.size() < 2 || thrust_table_newtons_.size() != thrust_pwm_values_.size()) {
+    RCLCPP_ERROR(
+        this->get_logger(),
+        "Invalid thrust table in '%s': need at least 2 valid rows, got %zu",
+        csv_path.c_str(),
+        thrust_pwm_values_.size());
+    return false;
+  }
+
+  thrust_table_loaded_ = true;
+  RCLCPP_INFO(
+      this->get_logger(),
+      "Loaded thrust table (%zu rows) from %s, PWM range [%.1f, %.1f]",
+      thrust_pwm_values_.size(),
+      csv_path.c_str(),
+      thrust_pwm_values_.front(),
+      thrust_pwm_values_.back());
+  return true;
+}
+
+double BlueROVBridge::getThrust(double pwm, double voltage) const {
+  if (!thrust_table_loaded_ || thrust_pwm_values_.empty()) {
+    return 0.0;
+  }
+
+  const double clamped_pwm = std::clamp(pwm, thrust_pwm_values_.front(), thrust_pwm_values_.back());
+  const double clamped_voltage =
+      std::clamp(voltage, thrust_voltage_bins_v_.front(), thrust_voltage_bins_v_.back());
+
+  auto pwm_upper_it = std::lower_bound(thrust_pwm_values_.begin(), thrust_pwm_values_.end(), clamped_pwm);
+  size_t pwm_upper_idx = static_cast<size_t>(std::distance(thrust_pwm_values_.begin(), pwm_upper_it));
+  if (pwm_upper_idx >= thrust_pwm_values_.size()) {
+    pwm_upper_idx = thrust_pwm_values_.size() - 1;
+  }
+  const size_t pwm_lower_idx = (pwm_upper_idx == 0) ? 0 : pwm_upper_idx - 1;
+
+  const double pwm_low = thrust_pwm_values_[pwm_lower_idx];
+  const double pwm_high = thrust_pwm_values_[pwm_upper_idx];
+  const double pwm_alpha =
+      (pwm_upper_idx == pwm_lower_idx || std::abs(pwm_high - pwm_low) < std::numeric_limits<double>::epsilon())
+          ? 0.0
+          : (clamped_pwm - pwm_low) / (pwm_high - pwm_low);
+
+  auto voltage_upper_it =
+      std::lower_bound(thrust_voltage_bins_v_.begin(), thrust_voltage_bins_v_.end(), clamped_voltage);
+  size_t voltage_upper_idx =
+      static_cast<size_t>(std::distance(thrust_voltage_bins_v_.begin(), voltage_upper_it));
+  if (voltage_upper_idx >= thrust_voltage_bins_v_.size()) {
+    voltage_upper_idx = thrust_voltage_bins_v_.size() - 1;
+  }
+  const size_t voltage_lower_idx = (voltage_upper_idx == 0) ? 0 : voltage_upper_idx - 1;
+
+  const double voltage_low = thrust_voltage_bins_v_[voltage_lower_idx];
+  const double voltage_high = thrust_voltage_bins_v_[voltage_upper_idx];
+  const double voltage_alpha =
+      (voltage_upper_idx == voltage_lower_idx ||
+       std::abs(voltage_high - voltage_low) < std::numeric_limits<double>::epsilon())
+          ? 0.0
+          : (clamped_voltage - voltage_low) / (voltage_high - voltage_low);
+
+  const auto& low_pwm_row = thrust_table_newtons_[pwm_lower_idx];
+  const auto& high_pwm_row = thrust_table_newtons_[pwm_upper_idx];
+  if (low_pwm_row.size() < kVoltageBinCount || high_pwm_row.size() < kVoltageBinCount) {
+    return 0.0;
+  }
+
+  const double f00 = low_pwm_row[voltage_lower_idx];
+  const double f01 = low_pwm_row[voltage_upper_idx];
+  const double f10 = high_pwm_row[voltage_lower_idx];
+  const double f11 = high_pwm_row[voltage_upper_idx];
+
+  const double thrust_low_pwm = f00 + voltage_alpha * (f01 - f00);
+  const double thrust_high_pwm = f10 + voltage_alpha * (f11 - f10);
+  return thrust_low_pwm + pwm_alpha * (thrust_high_pwm - thrust_low_pwm);
+}
+
+void BlueROVBridge::handleServoOutputRaw(const mavlink_message_t& msg) {
+  if (!thrust_table_loaded_) {
+    return;
+  }
+
+  mavlink_servo_output_raw_t servo_output_raw;
+  mavlink_msg_servo_output_raw_decode(&msg, &servo_output_raw);
+
+  const std::array<uint16_t, kThrusterCount> thruster_pwm = {{
+      servo_output_raw.servo1_raw,
+      servo_output_raw.servo2_raw,
+      servo_output_raw.servo3_raw,
+      servo_output_raw.servo4_raw,
+      servo_output_raw.servo5_raw,
+      servo_output_raw.servo6_raw,
+      servo_output_raw.servo7_raw,
+      servo_output_raw.servo8_raw}};
+
+  double interpolation_voltage_v = latest_battery_voltage_v_;
+  if (!std::isfinite(interpolation_voltage_v)) {
+    interpolation_voltage_v = kNominalFallbackVoltageV;
+    RCLCPP_WARN_STREAM_THROTTLE(
+        this->get_logger(),
+        *this->get_clock(),
+        2000,
+        "Battery voltage unavailable. Using " << kNominalFallbackVoltageV << " V for thrust interpolation.");
+  }
+
+  forces_actual_msg_.header.stamp = this->now();
+  forces_actual_msg_.header.frame_id = "base_link";
+  for (size_t i = 0; i < kThrusterCount; ++i) {
+    forces_actual_msg_.effort[i] =
+        getThrust(static_cast<double>(thruster_pwm[i]), interpolation_voltage_v);
+  }
+  forcesActualPublisher_->publish(forces_actual_msg_);
+}
 
 void BlueROVBridge::handleGlobalPositionInt(const mavlink_message_t& msg){
   mavlink_global_position_int_t pos_int;
