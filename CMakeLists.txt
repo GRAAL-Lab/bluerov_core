@@ -49,6 +49,7 @@ ament_target_dependencies(${PROJECT_NAME}_lib
   Eigen3
   rclcpp
   geometry_msgs
+  ament_index_cpp
   PkgConfig
   rosidl_default_runtime
   action_msgs
@@ -78,6 +79,7 @@ ament_export_dependencies(
   PkgConfig
   rclcpp
   Eigen3
+  ament_index_cpp
 )
 ament_export_include_directories(include)
 ament_export_libraries(${PROJECT_NAME}_lib)

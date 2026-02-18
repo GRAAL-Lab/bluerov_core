@@ -34,11 +34,9 @@ const std::string ekf_status = "/auv/ekf_status";
 const std::string pose_actual_global_ = "/auv/global/pose_actual";
 const std::string velocity_actual_global = "/auv/global/velocity_actual";
 const std::string dvl_distance_actual = "/auv/dvl/distance";
-<<<<<<< HEAD
+const std::string forces_actual = "/auv/forces_actual";
 const std::string imu_data_raw = "/auv/imu/data_raw";
 const std::string pressure_scaled_2 = "/auv/pressure/scaled2";
-=======
->>>>>>> 25fc5a9c23ae743c5d4fda9408a67ea02b260074
 
 const std::string kcl_state = "/auv/kcl_state";
 
