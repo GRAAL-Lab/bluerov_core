@@ -833,10 +833,6 @@ void BlueROVBridge::handleRawImu(const mavlink_message_t& msg){
   } else {
     imu_msg.header.stamp = this->now();
   }
-
-    // ArduSub RAW_IMU is body-frame FRD (x-forward, y-right, z-down).
-    // ROS IMU is body-frame FLU (x-forward, y-left, z-up).
-    // Apply a fixed FRD -> FLU frame rotation using matrix form.
     const Eigen::Matrix3d R = (Eigen::Matrix3d() <<
       -1.0,  0.0,  0.0,
       0.0, 1.0,  0.0,
