@@ -7,6 +7,7 @@
 #include "geometry_msgs/msg/pose_stamped.hpp"
 #include "geometry_msgs/msg/point.hpp"
 #include "sensor_msgs/msg/imu.hpp"
+#include "sensor_msgs/msg/magnetic_field.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "sensor_msgs/msg/fluid_pressure.hpp"
 #include "std_msgs/msg/string.hpp"
@@ -74,6 +75,7 @@ private:
     rclcpp::Publisher<std_msgs::msg::Int32>::SharedPtr ekfStatusPublisher_;
     rclcpp::Publisher<auv_core_helper::msg::GimbalStatus>::SharedPtr gimbalStatusPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imuPublisher_;
+    rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr magneticFieldPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr forcesDesiredPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr forcesActualPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::FluidPressure>::SharedPtr pressureScaled2Publisher_;
@@ -123,6 +125,7 @@ private:
     //--------------------------------------------------------------------------
     bool simulation_mode_;
     std::string imu_topic_{auv_core_helper::topicnames::imu_data_raw};
+    std::string magnetic_field_topic_{auv_core_helper::topicnames::imu_magnetic_field};
     std::string imu_frame_id_{"base_link"};
     float imu_rate_hz_{100.0f};
     float servo_output_rate_hz_{50.0f};

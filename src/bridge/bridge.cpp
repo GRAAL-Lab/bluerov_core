@@ -152,6 +152,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   ekfStatusPublisher_ = this->create_publisher<std_msgs::msg::Int32>(auv_core_helper::topicnames::ekf_status,1);
   gimbalStatusPublisher_ = this->create_publisher<auv_core_helper::msg::GimbalStatus>(auv_core_helper::topicnames::gimbal_attitude_status,1);
   imuPublisher_ = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic_, 20);
+  magneticFieldPublisher_ = this->create_publisher<sensor_msgs::msg::MagneticField>(magnetic_field_topic_, 20);
   forcesDesiredPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(forces_desired_topic_, 10);
   forcesActualPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(forces_actual_topic_, 10);
   pressureScaled2Publisher_ = this->create_publisher<sensor_msgs::msg::FluidPressure>(pressure_topic_, 20);
@@ -825,6 +826,7 @@ void BlueROVBridge::handleRawImu(const mavlink_message_t& msg){
   mavlink_msg_raw_imu_decode(&msg, &raw_imu);
 
   sensor_msgs::msg::Imu imu_msg;
+  sensor_msgs::msg::MagneticField magnetic_field_msg;
   imu_msg.header.frame_id = imu_frame_id_;
 
   // Keep existing behavior: use epoch-like time_usec when available, otherwise ROS now().
@@ -833,28 +835,41 @@ void BlueROVBridge::handleRawImu(const mavlink_message_t& msg){
   } else {
     imu_msg.header.stamp = this->now();
   }
-    const Eigen::Matrix3d R = (Eigen::Matrix3d() <<
-      -1.0,  0.0,  0.0,
-      0.0, 1.0,  0.0,
-      0.0,  0.0, -1.0).finished();
+  magnetic_field_msg.header = imu_msg.header;
+  const Eigen::Matrix3d R = (Eigen::Matrix3d() <<
+    -1.0,  0.0,  0.0,
+    0.0, 1.0,  0.0,
+    0.0,  0.0, -1.0).finished();
 
-    const Eigen::Vector3d acc_frd(
-      static_cast<double>(raw_imu.xacc) * kMilligToMps2,
-      static_cast<double>(raw_imu.yacc) * kMilligToMps2,
-      static_cast<double>(raw_imu.zacc) * kMilligToMps2);
-    const Eigen::Vector3d acc_flu = R * acc_frd;
-    imu_msg.linear_acceleration.x = acc_flu.x();
-    imu_msg.linear_acceleration.y = acc_flu.y();
-    imu_msg.linear_acceleration.z = acc_flu.z();
+  const Eigen::Vector3d acc_frd(
+    static_cast<double>(raw_imu.xacc) * kMilligToMps2,
+    static_cast<double>(raw_imu.yacc) * kMilligToMps2,
+    static_cast<double>(raw_imu.zacc) * kMilligToMps2);
+  const Eigen::Vector3d acc_flu = R * acc_frd;
+  imu_msg.linear_acceleration.x = acc_flu.x();
+  imu_msg.linear_acceleration.y = acc_flu.y();
+  imu_msg.linear_acceleration.z = acc_flu.z();
 
-    const Eigen::Vector3d gyro_frd(
-      static_cast<double>(raw_imu.xgyro) * kMradpsToRadps,
-      static_cast<double>(raw_imu.ygyro) * kMradpsToRadps,
-      static_cast<double>(raw_imu.zgyro) * kMradpsToRadps);
-    const Eigen::Vector3d gyro_flu =   R * gyro_frd;
-    imu_msg.angular_velocity.x = gyro_flu.x();
-    imu_msg.angular_velocity.y = gyro_flu.y();
-    imu_msg.angular_velocity.z = gyro_flu.z();
+  const Eigen::Vector3d gyro_frd(
+    static_cast<double>(raw_imu.xgyro) * kMradpsToRadps,
+    static_cast<double>(raw_imu.ygyro) * kMradpsToRadps,
+    static_cast<double>(raw_imu.zgyro) * kMradpsToRadps);
+  const Eigen::Vector3d gyro_flu = R * gyro_frd;
+  imu_msg.angular_velocity.x = gyro_flu.x();
+  imu_msg.angular_velocity.y = gyro_flu.y();
+  imu_msg.angular_velocity.z = gyro_flu.z();
+
+  // MAVLink RAW_IMU magnetometer values are raw device counts. Preserve the
+  // raw values and rotate them into the same frame as the IMU output.
+  const Eigen::Vector3d mag_raw(
+    static_cast<double>(raw_imu.xmag),
+    static_cast<double>(raw_imu.ymag),
+    static_cast<double>(raw_imu.zmag));
+  const Eigen::Vector3d mag_bridge_frame = R * mag_raw;
+  magnetic_field_msg.magnetic_field.x = mag_bridge_frame.x();
+  magnetic_field_msg.magnetic_field.y = mag_bridge_frame.y();
+  magnetic_field_msg.magnetic_field.z = mag_bridge_frame.z();
+  magnetic_field_msg.magnetic_field_covariance[0] = -1.0;
 
   // Orientation is unknown for RAW_IMU: publish a valid identity quaternion and mark unknown.
   imu_msg.orientation.x = 0.0;
@@ -868,6 +883,7 @@ void BlueROVBridge::handleRawImu(const mavlink_message_t& msg){
   imu_msg.linear_acceleration_covariance.fill(-1.0);
 
   imuPublisher_->publish(imu_msg);
+  magneticFieldPublisher_->publish(magnetic_field_msg);
 }
 
 void BlueROVBridge::handleScaledPressure2(const mavlink_message_t& msg){
