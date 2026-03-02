@@ -33,6 +33,7 @@ const std::string ekf_status = "/auv/ekf_status";
 
 const std::string pose_actual_global_ = "/auv/global/pose_actual";
 const std::string velocity_actual_global = "/auv/global/velocity_actual";
+const std::string position_actual = "/auv/position_actual";
 const std::string dvl_distance_actual = "/auv/dvl/distance";
 const std::string forces_actual = "/auv/forces_actual";
 const std::string imu_data_raw = "/auv/imu/data_raw";

@@ -4,6 +4,7 @@ string desired_state
 ## Move 2 point params
 LatLong position
 float64 depth
+float64 trajectory_time
 
 ## Path following params
 string path_mode
