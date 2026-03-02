@@ -36,9 +36,11 @@ const std::string velocity_actual_global = "/auv/global/velocity_actual";
 const std::string dvl_distance_actual = "/auv/dvl/distance";
 const std::string forces_actual = "/auv/forces_actual";
 const std::string imu_data_raw = "/auv/imu/data_raw";
+const std::string imu_magnetic_field = "/auv/imu/magnetic_field";
 const std::string pressure_scaled_2 = "/auv/pressure/scaled2";
 
 const std::string kcl_state = "/auv/kcl_state";
+const std::string path_status = "/auv/path_status";
 
 const std::string desired_ctrl_mode = "/auv/desired_ctrl_mode";
 
