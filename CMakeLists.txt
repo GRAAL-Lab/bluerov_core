@@ -166,6 +166,7 @@ install(DIRECTORY
 
 install(PROGRAMS
   scripts/kcl_client.py
+  scripts/kcl_client_gui.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

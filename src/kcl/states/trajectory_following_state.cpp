@@ -9,9 +9,16 @@ TrajectoryFollowingState::TrajectoryFollowingState(fsm::FSM* fsm)
       t_current_start_(0.0) {}
 
 fsm::retval TrajectoryFollowingState::OnEntry() {
+    RCLCPP_INFO(rclcpp::get_logger("TrajectoryFollowingState"), "Entering TRAJECTORY_FOLLOWING state");
+
+    ctrlData->armed_desired = true;
+    ctrlData->flightMode_desired = auv_core_helper::FlightMode::GUIDED;
+    ctrlData->deisiredCtrlMode = auv_core_helper::BrigdeMode::VelCtrl;
+
     t_total_ = ctrlData->tpGoalTime;
     t_current_start_ = ctrlData->timeActual.seconds();
     pose_initial_ = ctrlData->poseActualLocal;
+
     pose_goal_ = ctrlData->poseGoalLocal;
     return fsm::ok;
 }
@@ -19,19 +26,31 @@ fsm::retval TrajectoryFollowingState::OnEntry() {
 fsm::retval TrajectoryFollowingState::Execute() {
     double t_current = ctrlData->timeActual.seconds() - t_current_start_;
 
+    if (t_total_ > 0.0) {
+        ctrlData->actionProgress = std::min(100.0, (t_current / t_total_) * 100.0);
+    }
+
     if (t_total_ <= 0.0) {
         ctrlData->velocityDesiredNED.setZero();
+        ctrlData->actionProgress = 0.0;
+        ctrlData->actionFailed = true;
+        ctrlData->actionMessage = "Trajectory time must be > 0";
         fsm_->SetNextState(States::HOLD);
         return fsm::ok;
     }
 
     if (t_current >= t_total_) {
         ctrlData->velocityDesiredNED.setZero();
+        ctrlData->actionProgress = 100.0;
 
         if ((ctrlData->poseActualLocal - pose_goal_).norm() < 0.5) {
             std::cout << "Time elapsed, goal reached." << std::endl;
+            ctrlData->actionSuccess = true;
+            ctrlData->actionMessage = "Trajectory goal reached.";
         } else {
             std::cout << "Time elapsed, goal not reached." << std::endl;
+            ctrlData->actionFailed = true;
+            ctrlData->actionMessage = "Trajectory time elapsed before reaching goal.";
         }
         fsm_->SetNextState(States::HOLD);
         return fsm::ok;

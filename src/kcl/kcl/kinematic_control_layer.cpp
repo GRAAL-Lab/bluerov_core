@@ -116,6 +116,17 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
     ctrlData_->pathPlanningMode  = goal->path_mode;
     ctrlData_->resumePath     = goal->resume_path;
 
+    RCLCPP_INFO(
+        this->get_logger(),
+        "SetKCL goal: state=%s pos=(%.6f, %.6f) depth=%.3f traj_time=%.2f path_mode=%s resume=%s",
+        desiredState_.c_str(),
+        goal->position.latitude,
+        goal->position.longitude,
+        goal->depth,
+        goal->trajectory_time,
+        goal->path_mode.c_str(),
+        goal->resume_path ? "true" : "false");
+
     // Sprial data
     ctrlData_->spiralDiameter    = goal->spiral_data.spiral_diameter;
     ctrlData_->spiralIncrement   = goal->spiral_data.spiral_increment;
@@ -146,10 +157,9 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
     ctrlData_->circularCenterLocal = tmpCircularCenterLocal - ctrlData_->homeLocal.head<3>();
 
     if (desiredState_ == States::TRAJECTORY_FOLLOWING) {
-        ctb::LatLong goal_ll(goal->position.latitude, goal->position.longitude);
-        Eigen::Vector3d goal_local;
-        ctb::LatLong2LocalNED(goal_ll, -std::abs(goal->depth), ctrlData_->homeLL, goal_local);
-        ctrlData_->poseGoalLocal.head<3>() = goal_local - ctrlData_->homeLocal.head<3>();
+        ctrlData_->poseGoalLocal.head<3>() << goal->position.latitude,
+                                             goal->position.longitude,
+                                             goal->depth;
         ctrlData_->poseGoalLocal.tail<3>() = ctrlData_->poseActualLocal.tail<3>();
     }
 
