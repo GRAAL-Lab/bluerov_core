@@ -28,7 +28,14 @@ KCL::KCL()
         std::bind(&KCL::ExecuteFSM, this));
 
     // Create subscriptions
-    poseActualGlobalSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_global_, 1,std::bind(&KCL::PoseActualGlobalCallback, this, std::placeholders::_1));
+    poseActualGlobalSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(
+        auv_core_helper::topicnames::pose_actual_global_,
+        1,
+        std::bind(&KCL::PoseActualGlobalCallback, this, std::placeholders::_1));
+    positionActualLocalSubscription_ = this->create_subscription<geometry_msgs::msg::Vector3Stamped>(
+        auv_core_helper::topicnames::position_actual,
+        1,
+        std::bind(&KCL::PositionActualLocalCallback, this, std::placeholders::_1));
 
     // Create publishers
     statePublisher_ = this->create_publisher<auv_core_helper::msg::KclStatus>(auv_core_helper::topicnames::kcl_state, 1);
@@ -65,13 +72,9 @@ void KCL::PoseActualGlobalCallback(const auv_core_helper::msg::PoseStamped::Shar
     // RCLCPP_INFO(this->get_logger(), "Pose Actual: %f, %f, %f, %f, %f, %f", msg->x, msg->y, msg->z, msg->roll, msg->pitch, msg->yaw);
 }
 
-void KCL::VelocityActualCallback(const geometry_msgs::msg::Twist::SharedPtr msg) {
-    // Update actual velocity in control data
-    ctrlData_->velocityActual << msg->linear.x, msg->linear.y, msg->linear.z,
-                                   msg->angular.x, msg->angular.y, msg->angular.z;
+void KCL::PositionActualLocalCallback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg) {
+    ctrlData_->poseActualLocal.head<3>() << msg->vector.x, msg->vector.y, msg->vector.z;
 }
-
-
 
 rclcpp_action::GoalResponse KCL::HandleGoal(const rclcpp_action::GoalUUID &, std::shared_ptr<const auv_core_helper::action::SetKCL::Goal> goal)
 {
@@ -109,6 +112,7 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
     ctrlData_->poseGoalGlobal(0) = goal->position.latitude;
     ctrlData_->poseGoalGlobal(1) = goal->position.longitude;
     ctrlData_->poseGoalGlobal(2) = -std::abs(goal->depth);
+    ctrlData_->tpGoalTime = goal->trajectory_time;
     ctrlData_->pathPlanningMode  = goal->path_mode;
     ctrlData_->resumePath     = goal->resume_path;
 
@@ -140,6 +144,14 @@ void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv
     Eigen::Vector3d tmpCircularCenterLocal;
     ctb::LatLong2LocalNED(ctrlData_->circularCenterLL, -std::abs(1.0), ctrlData_->homeLL, tmpCircularCenterLocal);
     ctrlData_->circularCenterLocal = tmpCircularCenterLocal - ctrlData_->homeLocal.head<3>();
+
+    if (desiredState_ == States::TRAJECTORY_FOLLOWING) {
+        ctb::LatLong goal_ll(goal->position.latitude, goal->position.longitude);
+        Eigen::Vector3d goal_local;
+        ctb::LatLong2LocalNED(goal_ll, -std::abs(goal->depth), ctrlData_->homeLL, goal_local);
+        ctrlData_->poseGoalLocal.head<3>() = goal_local - ctrlData_->homeLocal.head<3>();
+        ctrlData_->poseGoalLocal.tail<3>() = ctrlData_->poseActualLocal.tail<3>();
+    }
 
 
 
@@ -208,6 +220,7 @@ void KCL::SetupTransitions() {
     lockDvlState_ = std::make_unique<LockDvlState>(&fsm_);
     wayPointNavigationState_ = std::make_unique<WayPointNavigationState>(&fsm_);
     pathFollowingState_ = std::make_unique<PathFollowingState>(&fsm_);
+    trajectoryFollowingState_ = std::make_unique<TrajectoryFollowingState>(&fsm_);
 
     
 
@@ -217,6 +230,7 @@ void KCL::SetupTransitions() {
     holdState_->ctrlData = ctrlData_;
     wayPointNavigationState_->ctrlData = ctrlData_;
     pathFollowingState_->ctrlData = ctrlData_;
+    trajectoryFollowingState_->ctrlData = ctrlData_;
 
     // Add states and enable transitions
     fsm_.AddState(States::IDLE, idleState_.get());
@@ -224,21 +238,25 @@ void KCL::SetupTransitions() {
     fsm_.AddState(States::HOLD, holdState_.get());
     fsm_.AddState(States::WAYPOINT_NAVIGATION, wayPointNavigationState_.get());
     fsm_.AddState(States::PATH_FOLLOWING, pathFollowingState_.get());
+    fsm_.AddState(States::TRAJECTORY_FOLLOWING, trajectoryFollowingState_.get());
 
 
     // Enable transitions
     fsm_.EnableTransition(States::IDLE, States::HOLD, true);
     fsm_.EnableTransition(States::IDLE, States::WAYPOINT_NAVIGATION, true);
     fsm_.EnableTransition(States::IDLE, States::PATH_FOLLOWING, true);
+    fsm_.EnableTransition(States::IDLE, States::TRAJECTORY_FOLLOWING, true);
 
     fsm_.EnableTransition(States::HOLD, States::IDLE, true);
     fsm_.EnableTransition(States::HOLD, States::WAYPOINT_NAVIGATION, true);
     fsm_.EnableTransition(States::HOLD, States::PATH_FOLLOWING, true);
+    fsm_.EnableTransition(States::HOLD, States::TRAJECTORY_FOLLOWING, true);
     fsm_.EnableTransition(States::HOLD, States::LOCK_DVL, true);
 
     fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::IDLE, true);
     fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::HOLD, true);
     fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::PATH_FOLLOWING, true);
+    fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::TRAJECTORY_FOLLOWING, true);
     fsm_.EnableTransition(States::WAYPOINT_NAVIGATION, States::LOCK_DVL, true);
 
 
@@ -246,6 +264,11 @@ void KCL::SetupTransitions() {
     fsm_.EnableTransition(States::PATH_FOLLOWING, States::HOLD, true);
     fsm_.EnableTransition(States::PATH_FOLLOWING, States::WAYPOINT_NAVIGATION, true);
     fsm_.EnableTransition(States::PATH_FOLLOWING, States::LOCK_DVL, true);
+    fsm_.EnableTransition(States::TRAJECTORY_FOLLOWING, States::IDLE, true);
+    fsm_.EnableTransition(States::TRAJECTORY_FOLLOWING, States::HOLD, true);
+    fsm_.EnableTransition(States::TRAJECTORY_FOLLOWING, States::WAYPOINT_NAVIGATION, true);
+    fsm_.EnableTransition(States::TRAJECTORY_FOLLOWING, States::PATH_FOLLOWING, true);
+    fsm_.EnableTransition(States::TRAJECTORY_FOLLOWING, States::LOCK_DVL, true);
 
 
     fsm_.SetInitState(States::IDLE);
@@ -295,17 +318,14 @@ void KCL::CallFlightModeService(const std::string &mode)
 void KCL::ExecuteFSM() {
     // Temporary variables to hold local NED (North-East-Down) coordinates
     Eigen::Vector3d tmpHomeLocal;
-    Eigen::Vector3d tmpPoseLocal;
 
     ctrlData_->poseActualLL = ctb::LatLong(ctrlData_->poseActualGlobal(0), ctrlData_->poseActualGlobal(1));
     ctb::LatLong2LocalNED(ctrlData_->homeLL, -std::abs(ctrlData_->homeGlobal(2)), ctrlData_->homeLL, tmpHomeLocal);
-    ctb::LatLong2LocalNED(ctrlData_->poseActualLL, -std::abs(ctrlData_->poseActualGlobal(2)), ctrlData_->homeLL, tmpPoseLocal);
 
 
 
 
     ctrlData_->homeLocal.head<3>() = tmpHomeLocal;
-    ctrlData_->poseActualLocal.head<3>() = tmpPoseLocal - tmpHomeLocal;
     ctrlData_->poseActualLocal.tail<3>() = ctrlData_->poseActualGlobal.tail<3>();
     
     //publish desiredctrlmode

@@ -26,6 +26,7 @@
 #include "states/hold_state.hpp"
 #include "states/waypoint_navigation_state.hpp"
 #include "states/path_following_state.hpp"
+#include "states/trajectory_following_state.hpp"
 #include "states/commands.hpp"
 
 // AUV-specific topic names
@@ -73,6 +74,7 @@ private:
     std::unique_ptr<HoldState> holdState_;
     std::unique_ptr<WayPointNavigationState> wayPointNavigationState_;
     std::unique_ptr<PathFollowingState> pathFollowingState_;
+    std::unique_ptr<TrajectoryFollowingState> trajectoryFollowingState_;
 
     // --------------------
     // ROS 2 Publishers
@@ -95,7 +97,7 @@ private:
     // ROS 2 Subscriptions
     // --------------------
     rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr poseActualGlobalSubscription_;
-    rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr velocityActualSubscription_;
+    rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr positionActualLocalSubscription_;
 
     // --------------------
     // ROS 2 Services
@@ -131,9 +133,9 @@ private:
 
     /// Callback for actual pose data.
     void PoseActualGlobalCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
-    
-    /// Callback for actual velocity data.
-    void VelocityActualCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
+
+    /// Callback for actual local position data.
+    void PositionActualLocalCallback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
     
     /// Callback for actual acceleration data.
     void AccelerationActualCallback(const geometry_msgs::msg::Twist::SharedPtr msg);

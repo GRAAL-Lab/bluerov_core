@@ -70,6 +70,7 @@ add_library(states_lib STATIC
   src/kcl/states/base_auv_state.cpp
   src/kcl/states/idle_state.cpp
   src/kcl/states/lock_dvl_state.cpp
+  src/kcl/states/trajectory_following_state.cpp
   src/kcl/states/waypoint_navigation_state.cpp
   src/kcl/states/path_following_state.cpp
   src/kcl/states/hold_state.cpp
@@ -109,6 +110,7 @@ add_executable(kinematic_control_layer_node
     src/kcl/states/base_auv_state.cpp
     src/kcl/states/idle_state.cpp
     src/kcl/states/lock_dvl_state.cpp
+  src/kcl/states/trajectory_following_state.cpp
     src/kcl/states/waypoint_navigation_state.cpp
     src/kcl/states/path_following_state.cpp
     src/kcl/states/hold_state.cpp
@@ -160,6 +162,11 @@ install(DIRECTORY
   param
   DESTINATION share/${PROJECT_NAME}
   OPTIONAL
+)
+
+install(PROGRAMS
+  scripts/kcl_client.py
+  DESTINATION lib/${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)

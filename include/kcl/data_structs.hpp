@@ -66,6 +66,11 @@ struct ControlData {
     double actionProgress = 0.0; ///< Progress of the current action, from 0.0 to 100.0 %.
 
     // ------------------------------
+    // Trajectory Following Parameters
+    // ------------------------------
+    double tpGoalTime = 0.0; ///< Time to reach the trajectory goal in seconds.
+
+    // ------------------------------
     // Path Following Metrics
     // ------------------------------
     double path_delta = std::numeric_limits<double>::quiet_NaN();

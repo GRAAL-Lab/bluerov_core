@@ -12,6 +12,7 @@ namespace States {
     constexpr char SURFACE[] = "SURFACE"; ///< AUV is surfacing.
     constexpr char DIVE[] = "DIVE"; ///< AUV is diving.
     constexpr char PATH_FOLLOWING[] = "PATH_FOLLOWING"; ///< AUV is following a planned path.
+    constexpr char TRAJECTORY_FOLLOWING[] = "TRAJECTORY_FOLLOWING"; ///< AUV is following a time-parameterized trajectory.
 }
 
 #endif // AUV_STATES_COMMANDS_HPP
