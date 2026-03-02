@@ -10,6 +10,7 @@
 #include <std_msgs/msg/string.hpp>
 #include <nav_msgs/msg/path.hpp>
 #include "auv_core_helper/msg/kcl_status.hpp"
+#include "geometry_msgs/msg/vector3_stamped.hpp"
 
 // AUV-specific headers
 #include "kcl/data_structs.hpp"
@@ -85,6 +86,7 @@ private:
     rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr poseGoalGlobalPublisher_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocityDesiredGlobalPublisher_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pathPublisher_;
+    rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr pathFollowingStatusPublisher_;
 
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr deisiredCtrlModePublisher_;
 

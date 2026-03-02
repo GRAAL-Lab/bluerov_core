@@ -29,6 +29,7 @@ find_library(FSM_LIBRARY NAMES fsm)
 find_library(CTRL_LIBRARY NAMES ctrl_toolbox)
 find_library(DYNAMIC_GOAL_ALOS_LIBRARY NAMES dynamic_goal_ALOS REQUIRED)
 find_package(PkgConfig REQUIRED)
+pkg_check_modules(GEOGRAPHICLIB REQUIRED geographiclib)
 find_library(SISL_LIBRARY NAMES sisl_toolbox)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(nav_msgs REQUIRED)
@@ -77,6 +78,7 @@ target_include_directories(states_lib PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:include>
   ${QP_OASES_INCLUDE_DIR}
+  ${GEOGRAPHICLIB_INCLUDE_DIRS}
 )
 ament_target_dependencies(states_lib
   Eigen3
@@ -96,7 +98,7 @@ target_link_libraries(states_lib
   ${RML_LIBRARY}
   ${SISL_LIBRARY}
   ${CTRL_LIBRARY}
-  Geographic
+  ${GEOGRAPHICLIB_LIBRARIES}
   ${auv_core_helper_LIBRARIES}
   ${DYNAMIC_GOAL_ALOS_LIBRARY}
 )
@@ -133,7 +135,7 @@ foreach(target kinematic_control_layer_node)
     ${RML_LIBRARY}
     ${SISL_LIBRARY}
     ${CTRL_LIBRARY}
-    Geographic
+    ${GEOGRAPHICLIB_LIBRARIES}
     ${DYNAMIC_GOAL_ALOS_LIBRARY}
     ${auv_core_helper_LIBRARIES}
   )

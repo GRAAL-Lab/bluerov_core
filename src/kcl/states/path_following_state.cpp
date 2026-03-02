@@ -13,6 +13,7 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
     ctrlData->actionProgress = 0.0;
     ctrlData->actionSuccess  = false;
     ctrlData->actionFailed   = false;
+    ctrlData->path_metrics_valid = false;
 
     //update home
     ctrlData->homeGlobal.head<3>() = ctrlData->poseActualGlobal.head<3>();
@@ -327,12 +328,16 @@ fsm::retval PathFollowingState::Execute() noexcept {
         delta_ = alosController_->UpdateLookAheadDistance(crossTrackError_, verticalTrackError_, tangentsDifferenceNorm);
         double path_completed = (closestPointAbscissa_ / path->EndParameter()) * 100.0;
         ctrlData->actionProgress = path_completed;
-        //print cte, vte, delta, time, path_completed in diffrent lines
+        ctrlData->path_delta = delta_;
+        ctrlData->path_cross_track_error = crossTrackError_;
+        ctrlData->path_vertical_track_error = verticalTrackError_;
+        ctrlData->path_metrics_valid = true;
         RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Cross-track error: %f", crossTrackError_);
         RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Vertical-track error: %f", verticalTrackError_);
         RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Delta: %f", delta_);
         RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Time: %f", ctrlData->timeActual.seconds());
         RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path completed: %f", path_completed);
+
 
         currentAbscissa_ = closestPointAbscissa_;
         if (path_completed >= 99.95) {
@@ -350,5 +355,6 @@ fsm::retval PathFollowingState::Execute() noexcept {
 
 fsm::retval PathFollowingState::OnExit() noexcept {
     ctrlData->velocityDesiredNED.setZero();
+    ctrlData->path_metrics_valid = false;
     return fsm::ok;
 }

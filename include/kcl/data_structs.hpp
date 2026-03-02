@@ -8,6 +8,7 @@
 #include <vector>
 #include <ctrl_toolbox/DataStructs.h>
 #include "auv_core_helper/bridgemode.hpp"
+#include <limits>
 
 
 namespace auv {
@@ -63,6 +64,14 @@ struct ControlData {
     std::string actionMessage = ""; ///< Message describing the result of the last action.
     std::string actualState = "IDLE"; ///< Current state of the AUV control system.
     double actionProgress = 0.0; ///< Progress of the current action, from 0.0 to 100.0 %.
+
+    // ------------------------------
+    // Path Following Metrics
+    // ------------------------------
+    double path_delta = std::numeric_limits<double>::quiet_NaN();
+    double path_cross_track_error = std::numeric_limits<double>::quiet_NaN();
+    double path_vertical_track_error = std::numeric_limits<double>::quiet_NaN();
+    bool path_metrics_valid = false;
 
     // ------------------------------ 
     // Path Planning Parameters

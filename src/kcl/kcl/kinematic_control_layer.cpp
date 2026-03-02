@@ -36,6 +36,10 @@ KCL::KCL()
     velocityDesiredGlobalPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired_global, 1);
     pathPublisher_ = this->create_publisher<nav_msgs::msg::Path>("planned_path", 1);
     deisiredCtrlModePublisher_ = this->create_publisher<std_msgs::msg::String>(auv_core_helper::topicnames::desired_ctrl_mode, 1);
+    pathFollowingStatusPublisher_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>(
+        auv_core_helper::topicnames::path_status,
+        1);
+
 
     // Create action server for KCL
     KCLSetter_ = rclcpp_action::create_server<auv_core_helper::action::SetKCL>(
@@ -326,6 +330,15 @@ void KCL::ExecuteFSM() {
     else if (ctrlData_->deisiredCtrlMode == auv_core_helper::BrigdeMode::VelCtrl) {
         PublishEigenPose(poseGoalGlobalPublisher_, ctrlData_->poseGoalGlobal, this->get_clock()->now());
         PublishEigenVelocity(velocityDesiredGlobalPublisher_, ctrlData_->velocityDesiredNED);
+    }
+
+    if (fsm_.GetCurrentStateName() == States::PATH_FOLLOWING && ctrlData_->path_metrics_valid) {
+        geometry_msgs::msg::Vector3Stamped status_msg;
+        status_msg.header.stamp = ctrlData_->timeActual;
+        status_msg.vector.x = ctrlData_->path_delta;
+        status_msg.vector.y = ctrlData_->path_cross_track_error;
+        status_msg.vector.z = ctrlData_->path_vertical_track_error;
+        pathFollowingStatusPublisher_->publish(status_msg);
     }
 
     // Scale desired velocity within limits

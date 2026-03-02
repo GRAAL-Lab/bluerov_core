@@ -55,6 +55,7 @@ private:
     std::unique_ptr<dynamic_goal_alos::DynamicGoalBasedALOS> alosController_;
     double delta_;
 
+
 public:
     /// Constructor
     explicit PathFollowingState(fsm::FSM* fsm);
@@ -67,4 +68,5 @@ public:
 
     /// Called when exiting the path following state.
     fsm::retval OnExit() noexcept override;
+
 };
