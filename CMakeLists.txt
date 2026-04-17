@@ -7,8 +7,9 @@ project(bridge)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# set(CMAKE_BUILD_TYPE RelWithDebInfo)
-set(CMAKE_BUILD_TYPE Debug)
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+  set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
+endif()
 
 add_compile_options(-Wall -Wextra -Wpedantic -Wno-pedantic -Wno-address-of-packed-member)
 
@@ -36,6 +37,7 @@ find_package(mavlink REQUIRED)
 find_package(std_srvs REQUIRED)
 
 pkg_check_modules(LIBCONFIGPP REQUIRED libconfig++)
+pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0)
 
 # Prefer shared libraries over static ones
 set(CMAKE_FIND_LIBRARY_SUFFIXES .so .a)
@@ -48,22 +50,9 @@ include_directories(
   ${auv_core_helper_INCLUDE_DIRS}
   ${LIBCONFIGPP_INCLUDE_DIRS}
   ${mavlink_INCLUDE_DIRS}
+  ${GSTREAMER_INCLUDE_DIRS}
 )
 
-
-################################################################################
-# Link directories (if needed)
-################################################################################
-link_directories(${CMAKE_INSTALL_PREFIX}/auv_core_helper/lib)
-
-################################################################################
-# RPATH settings
-################################################################################
-set(CMAKE_SKIP_BUILD_RPATH FALSE)
-set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
-set(CMAKE_BUILD_RPATH "$ORIGIN/../lib")
-set(CMAKE_INSTALL_RPATH "$ORIGIN/../lib")
-set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 ################################################################################
 # Source / Executable definitions
@@ -81,6 +70,19 @@ add_custom_target(.Files. SOURCES ${SOURCE_FILES})
 add_executable(bridge_node
     src/bridge_node.cpp
     src/bridge/bridge.cpp
+)
+
+find_program(LD_GOLD_EXECUTABLE ld.gold)
+if(LD_GOLD_EXECUTABLE)
+  target_link_options(bridge_node PRIVATE -fuse-ld=gold)
+endif()
+
+target_include_directories(bridge_node PRIVATE
+  include
+  ${auv_core_helper_INCLUDE_DIRS}
+  ${LIBCONFIGPP_INCLUDE_DIRS}
+  ${mavlink_INCLUDE_DIRS}
+  ${GSTREAMER_INCLUDE_DIRS}
 )
 
 ################################################################################
@@ -105,7 +107,7 @@ ament_target_dependencies(bridge_node
 target_link_libraries(bridge_node
   ${auv_core_helper_LIBRARIES}
   ${LIBCONFIGPP_LIBRARIES}
-  ${mavlink_LIBRARIES}
+  ${GSTREAMER_LIBRARIES}
 )
 
 ################################################################################

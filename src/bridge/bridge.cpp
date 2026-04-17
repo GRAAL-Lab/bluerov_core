@@ -1,9 +1,14 @@
 #include "bluerov-bridge/bluerov_bridge.hpp"
 #include "auv_core_helper/helper_lib.hpp"
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <gst/app/gstappsink.h>
+#include <gst/gst.h>
+#include <gst/video/video.h>
+#include <sensor_msgs/image_encodings.hpp>
 
 // C / C++ Includes
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstring>
 #include <algorithm>
@@ -24,6 +29,39 @@ constexpr double kMilligToMps2 = kGravityMps2 / 1000.0;
 constexpr double kMradpsToRadps = 1.0 / 1000.0;
 constexpr uint64_t kEpochUsecThreshold = 1000000000000ULL;
 constexpr double kNominalFallbackVoltageV = 16.0;
+constexpr char kCameraAppsinkName[] = "bridge_camera_sink";
+const auto kCameraSampleTimeout = std::chrono::milliseconds(100);
+const auto kCameraRestartDelay = std::chrono::seconds(2);
+std::once_flag kGStreamerInitOnce;
+
+void ensureGStreamerInitialized() {
+  std::call_once(kGStreamerInitOnce, []() {
+    gst_init(nullptr, nullptr);
+  });
+}
+
+std::string escapeGStreamerString(const std::string& value) {
+  std::string escaped;
+  escaped.reserve(value.size());
+  for (const char character : value) {
+    if (character == '\\' || character == '"') {
+      escaped.push_back('\\');
+    }
+    escaped.push_back(character);
+  }
+  return escaped;
+}
+
+const char* toGstBoolean(const bool value) {
+  return value ? "true" : "false";
+}
+
+std::string toLowerCopy(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(), [](const unsigned char character) {
+    return static_cast<char>(std::tolower(character));
+  });
+  return value;
+}
 
 std::string trim(const std::string& input) {
   const auto first = input.find_first_not_of(" \t\r\n");
@@ -32,6 +70,21 @@ std::string trim(const std::string& input) {
   }
   const auto last = input.find_last_not_of(" \t\r\n");
   return input.substr(first, last - first + 1);
+}
+
+std::string normalizeCameraOutputEncoding(const std::string& encoding) {
+  const std::string normalized = toLowerCopy(trim(encoding));
+  if (normalized == sensor_msgs::image_encodings::RGB8 ||
+      normalized == sensor_msgs::image_encodings::BGR8 ||
+      normalized == sensor_msgs::image_encodings::RGBA8) {
+    return normalized;
+  }
+  return sensor_msgs::image_encodings::RGBA8;
+}
+
+bool isRtspUri(const std::string& uri) {
+  const std::string normalized = toLowerCopy(trim(uri));
+  return normalized.rfind("rtsp://", 0) == 0;
 }
 
 bool parseDoubleField(const std::string& token, double* value) {
@@ -104,8 +157,37 @@ const rclcpp::Duration BlueROVBridge::HeartbeatTimeout = rclcpp::Duration::from_
  * Communication is via MAVLink over UDP, using the standard ArduSub protocol.
  */
 BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_bridge", options){
-  // Declare and get config_name parameter
   this->declare_parameter<std::string>("config_name", "bridge");
+  std::string configNameParam;
+  this->get_parameter("config_name", configNameParam);
+
+  int configured_system_id = static_cast<int>(system_id_);
+  int configured_component_id = static_cast<int>(component_id_);
+  LoadBridgeParamsFromConf(
+      configNameParam,
+      &simulation_mode_,
+      &remote_addr_str_,
+      &configured_system_id,
+      &configured_component_id,
+      &port_,
+      &camera_config_.enabled,
+      &camera_config_.source_uri,
+      &camera_config_.topic,
+      &camera_config_.info_topic,
+      &camera_config_.frame_id,
+      &camera_config_.use_hw_decoder,
+      &camera_config_.qos_reliable,
+      &camera_config_.preview_width,
+      &camera_config_.preview_height,
+      &camera_config_.preview_max_fps,
+      &camera_config_.output_encoding,
+      &camera_config_.camera_info_publish_rate_hz,
+      &camera_config_.rtp_latency_ms,
+      &camera_config_.rtp_caps,
+      &camera_config_.enable_max_performance);
+  system_id_ = static_cast<uint8_t>(configured_system_id);
+  component_id_ = static_cast<uint8_t>(configured_component_id);
+
   this->declare_parameter<std::string>("imu_topic", imu_topic_);
   this->declare_parameter<std::string>("imu_frame_id", imu_frame_id_);
   this->declare_parameter<std::string>("forces_desired_topic", forces_desired_topic_);
@@ -113,8 +195,25 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   this->declare_parameter<std::string>("pressure_topic", pressure_topic_);
   this->declare_parameter<std::string>("pressure_frame_id", pressure_frame_id_);
   this->declare_parameter<std::string>("thrust_table_csv_path", getDefaultThrustCsvPath());
-  std::string configNameParam;
-  this->get_parameter("config_name", configNameParam);
+  this->declare_parameter<bool>("camera_enabled", camera_config_.enabled);
+  this->declare_parameter<std::string>("camera_source_uri", camera_config_.source_uri);
+  this->declare_parameter<std::string>("camera_rtp_caps", camera_config_.rtp_caps);
+  this->declare_parameter<std::string>("camera_topic", camera_config_.topic);
+  this->declare_parameter<std::string>("camera_info_topic", camera_config_.info_topic);
+  this->declare_parameter<std::string>("camera_frame_id", camera_config_.frame_id);
+  this->declare_parameter<bool>("camera_use_hw_decoder", camera_config_.use_hw_decoder);
+  this->declare_parameter<bool>("camera_qos_reliable", camera_config_.qos_reliable);
+  this->declare_parameter<bool>("camera_enable_max_performance", camera_config_.enable_max_performance);
+  this->declare_parameter<int>("camera_preview_width", camera_config_.preview_width);
+  this->declare_parameter<int>("camera_preview_height", camera_config_.preview_height);
+  this->declare_parameter<double>("camera_preview_max_fps", camera_config_.preview_max_fps);
+  this->declare_parameter<std::string>("camera_output_encoding", camera_config_.output_encoding);
+  this->declare_parameter<double>("camera_info_publish_rate_hz", camera_config_.camera_info_publish_rate_hz);
+  this->declare_parameter<int>("camera_rtp_latency_ms", camera_config_.rtp_latency_ms);
+  this->declare_parameter<int>("camera_udp_buffer_size_bytes", camera_config_.udp_buffer_size_bytes);
+  this->declare_parameter<int>("camera_appsink_max_buffers", camera_config_.appsink_max_buffers);
+  this->declare_parameter<bool>("camera_appsink_drop", camera_config_.appsink_drop);
+  this->declare_parameter<std::string>("camera_pipeline_override", camera_config_.pipeline_override);
   this->get_parameter("imu_topic", imu_topic_);
   this->get_parameter("imu_frame_id", imu_frame_id_);
   this->get_parameter("forces_desired_topic", forces_desired_topic_);
@@ -122,14 +221,33 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   this->get_parameter("pressure_topic", pressure_topic_);
   this->get_parameter("pressure_frame_id", pressure_frame_id_);
   this->get_parameter("thrust_table_csv_path", thrust_table_csv_path_);
-
-  LoadBridgeParamsFromConf(
-      configNameParam,
-      &simulation_mode_,
-      &remote_addr_str_,
-      reinterpret_cast<int*>(&system_id_),
-      reinterpret_cast<int*>(&component_id_),
-      &port_);
+  this->get_parameter("camera_enabled", camera_config_.enabled);
+  this->get_parameter("camera_source_uri", camera_config_.source_uri);
+  this->get_parameter("camera_rtp_caps", camera_config_.rtp_caps);
+  this->get_parameter("camera_topic", camera_config_.topic);
+  this->get_parameter("camera_info_topic", camera_config_.info_topic);
+  this->get_parameter("camera_frame_id", camera_config_.frame_id);
+  this->get_parameter("camera_use_hw_decoder", camera_config_.use_hw_decoder);
+  this->get_parameter("camera_qos_reliable", camera_config_.qos_reliable);
+  this->get_parameter("camera_enable_max_performance", camera_config_.enable_max_performance);
+  this->get_parameter("camera_preview_width", camera_config_.preview_width);
+  this->get_parameter("camera_preview_height", camera_config_.preview_height);
+  this->get_parameter("camera_preview_max_fps", camera_config_.preview_max_fps);
+  this->get_parameter("camera_output_encoding", camera_config_.output_encoding);
+  this->get_parameter("camera_info_publish_rate_hz", camera_config_.camera_info_publish_rate_hz);
+  this->get_parameter("camera_rtp_latency_ms", camera_config_.rtp_latency_ms);
+  this->get_parameter("camera_udp_buffer_size_bytes", camera_config_.udp_buffer_size_bytes);
+  this->get_parameter("camera_appsink_max_buffers", camera_config_.appsink_max_buffers);
+  this->get_parameter("camera_appsink_drop", camera_config_.appsink_drop);
+  this->get_parameter("camera_pipeline_override", camera_config_.pipeline_override);
+  camera_config_.preview_width = std::max(camera_config_.preview_width, 0);
+  camera_config_.preview_height = std::max(camera_config_.preview_height, 0);
+  camera_config_.preview_max_fps = std::max(camera_config_.preview_max_fps, 0.0);
+  camera_config_.output_encoding = normalizeCameraOutputEncoding(camera_config_.output_encoding);
+  camera_config_.camera_info_publish_rate_hz = std::max(camera_config_.camera_info_publish_rate_hz, 0.0);
+  camera_config_.rtp_latency_ms = std::max(camera_config_.rtp_latency_ms, 0);
+  camera_config_.udp_buffer_size_bytes = std::max(camera_config_.udp_buffer_size_bytes, 0);
+  camera_config_.appsink_max_buffers = std::max(camera_config_.appsink_max_buffers, 1);
 
   RCLCPP_INFO(this->get_logger(), "Starting BlueROVBridge node (UDP port %d, remote_addr: %s, sysid: %d, compid: %d)",
               port_, remote_addr_str_.c_str(), system_id_, component_id_);
@@ -156,6 +274,15 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   forcesDesiredPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(forces_desired_topic_, 10);
   forcesActualPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(forces_actual_topic_, 10);
   pressureScaled2Publisher_ = this->create_publisher<sensor_msgs::msg::FluidPressure>(pressure_topic_, 20);
+  if (camera_config_.enabled) {
+    auto camera_qos = rclcpp::SensorDataQoS().keep_last(1);
+    camera_qos = camera_config_.qos_reliable ? camera_qos.reliable() : camera_qos.best_effort();
+    cameraImagePublisher_ = this->create_publisher<sensor_msgs::msg::Image>(camera_config_.topic, camera_qos);
+    cameraInfoPublisher_ = this->create_publisher<sensor_msgs::msg::CameraInfo>(
+        camera_config_.info_topic,
+        camera_config_.qos_reliable ? rclcpp::QoS(rclcpp::KeepLast(1)).reliable().durability_volatile()
+                                    : rclcpp::QoS(rclcpp::KeepLast(1)).best_effort().durability_volatile());
+  }
 
   forces_actual_msg_.name = {
       "thruster_1",
@@ -191,13 +318,468 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   velocityGoalGlobal.setZero();
 
   last_heartbeat_time_ = this->now();
+
+  if (camera_config_.enabled) {
+    if (camera_config_.topic.empty() || camera_config_.info_topic.empty()) {
+      RCLCPP_WARN(this->get_logger(), "Camera stream requested but a camera topic is empty. Disabling camera publisher.");
+      camera_config_.enabled = false;
+      cameraImagePublisher_.reset();
+      cameraInfoPublisher_.reset();
+    } else {
+      RCLCPP_INFO(
+          this->get_logger(),
+          "Camera stream enabled (%s decoder, %s QoS, %s output) %s -> %s",
+          camera_config_.use_hw_decoder ? "Jetson HW" : "CPU",
+          camera_config_.qos_reliable ? "reliable" : "best-effort",
+          camera_config_.output_encoding.c_str(),
+          camera_config_.source_uri.c_str(),
+          camera_config_.topic.c_str());
+      RCLCPP_INFO(
+          this->get_logger(),
+          "Camera preview configured at %dx%d <= %.1f fps, camera info %.1f Hz, RTP latency %d ms",
+          camera_config_.preview_width,
+          camera_config_.preview_height,
+          camera_config_.preview_max_fps,
+          camera_config_.camera_info_publish_rate_hz,
+          camera_config_.rtp_latency_ms);
+      startCameraStream();
+    }
+  }
 }
 
 BlueROVBridge::~BlueROVBridge(){
+  stopCameraStream();
   if (sock_fd_ != -1) {
     close(sock_fd_);
   }
   RCLCPP_INFO(this->get_logger(), "BlueROVBridge node shutting down.");
+}
+
+void BlueROVBridge::startCameraStream() {
+  if (!camera_config_.enabled || camera_thread_.joinable()) {
+    return;
+  }
+
+  ensureGStreamerInitialized();
+  camera_stop_requested_.store(false);
+  camera_thread_ = std::thread(&BlueROVBridge::cameraStreamLoop, this);
+}
+
+void BlueROVBridge::stopCameraStream() {
+  camera_stop_requested_.store(true);
+  if (camera_thread_.joinable()) {
+    camera_thread_.join();
+  }
+  destroyCameraPipeline();
+}
+
+bool BlueROVBridge::createCameraPipeline(const bool use_hw_decoder) {
+  const std::string pipeline_description = buildCameraPipelineDescription(use_hw_decoder);
+  GError* error = nullptr;
+  GstElement* pipeline = gst_parse_launch(pipeline_description.c_str(), &error);
+  if (pipeline == nullptr) {
+    const std::string error_message = error != nullptr ? error->message : "unknown parse error";
+    RCLCPP_ERROR(this->get_logger(), "Failed to create camera pipeline: %s", error_message.c_str());
+    if (error != nullptr) {
+      g_error_free(error);
+    }
+    return false;
+  }
+
+  GstElement* appsink = gst_bin_get_by_name(GST_BIN(pipeline), kCameraAppsinkName);
+  if (appsink == nullptr) {
+    RCLCPP_ERROR(this->get_logger(), "Camera pipeline is missing the appsink named '%s'.", kCameraAppsinkName);
+    gst_element_set_state(pipeline, GST_STATE_NULL);
+    gst_object_unref(pipeline);
+    return false;
+  }
+
+  gst_app_sink_set_emit_signals(GST_APP_SINK(appsink), FALSE);
+  gst_app_sink_set_drop(GST_APP_SINK(appsink), camera_config_.appsink_drop);
+  gst_app_sink_set_max_buffers(GST_APP_SINK(appsink), static_cast<guint>(camera_config_.appsink_max_buffers));
+  gst_app_sink_set_wait_on_eos(GST_APP_SINK(appsink), FALSE);
+
+  if (gst_element_set_state(pipeline, GST_STATE_PLAYING) == GST_STATE_CHANGE_FAILURE) {
+    RCLCPP_ERROR(this->get_logger(), "Camera pipeline failed to enter the PLAYING state.");
+    gst_object_unref(appsink);
+    gst_element_set_state(pipeline, GST_STATE_NULL);
+    gst_object_unref(pipeline);
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lock(camera_pipeline_mutex_);
+  camera_pipeline_ = pipeline;
+  camera_appsink_ = appsink;
+  return true;
+}
+
+void BlueROVBridge::destroyCameraPipeline() {
+  GstElement* pipeline = nullptr;
+  GstElement* appsink = nullptr;
+  {
+    std::lock_guard<std::mutex> lock(camera_pipeline_mutex_);
+    pipeline = camera_pipeline_;
+    appsink = camera_appsink_;
+    camera_pipeline_ = nullptr;
+    camera_appsink_ = nullptr;
+  }
+
+  if (pipeline != nullptr) {
+    gst_element_set_state(pipeline, GST_STATE_NULL);
+  }
+  if (appsink != nullptr) {
+    gst_object_unref(appsink);
+  }
+  if (pipeline != nullptr) {
+    gst_object_unref(pipeline);
+  }
+}
+
+std::string BlueROVBridge::buildCameraPipelineDescription(const bool use_hw_decoder) const {
+  if (!camera_config_.pipeline_override.empty()) {
+    return camera_config_.pipeline_override;
+  }
+
+  const std::string output_encoding = normalizeCameraOutputEncoding(camera_config_.output_encoding);
+  const std::string cpu_output_format =
+      output_encoding == sensor_msgs::image_encodings::RGB8
+          ? "RGB"
+          : (output_encoding == sensor_msgs::image_encodings::BGR8 ? "BGR" : "RGBA");
+  const std::string hw_output_format =
+      output_encoding == sensor_msgs::image_encodings::BGR8 ? "BGRx" : "RGBA";
+
+  std::ostringstream pipeline;
+  if (isRtspUri(camera_config_.source_uri)) {
+    pipeline << "rtspsrc location=\"" << escapeGStreamerString(camera_config_.source_uri) << "\""
+             << " latency=" << camera_config_.rtp_latency_ms
+             << " drop-on-latency=true protocols=tcp ntp-sync=false"
+             << " ! rtph264depay"
+             << " ! h264parse config-interval=-1";
+  } else {
+    pipeline << "udpsrc uri=\"" << escapeGStreamerString(camera_config_.source_uri) << "\""
+             << " buffer-size=" << camera_config_.udp_buffer_size_bytes
+             << " do-timestamp=true"
+             << " retrieve-sender-address=false"
+             << " caps=\"" << escapeGStreamerString(camera_config_.rtp_caps) << "\""
+             << " ! rtpjitterbuffer latency=" << camera_config_.rtp_latency_ms
+             << " drop-on-latency=true faststart-min-packets=1"
+             << " ! queue leaky=downstream max-size-buffers=2 max-size-bytes=0 max-size-time=0"
+             << " ! rtph264depay"
+             << " ! h264parse config-interval=-1";
+  }
+
+  if (use_hw_decoder) {
+    pipeline << " ! nvv4l2decoder disable-dpb=true enable-max-performance="
+             << toGstBoolean(camera_config_.enable_max_performance)
+             << " ! nvvidconv";
+    if (camera_config_.preview_width > 0 && camera_config_.preview_height > 0) {
+      pipeline << " ! video/x-raw,format=" << hw_output_format
+               << ",width=" << camera_config_.preview_width
+               << ",height=" << camera_config_.preview_height;
+    } else {
+      pipeline << " ! video/x-raw,format=" << hw_output_format;
+    }
+  } else {
+    pipeline << " ! avdec_h264 max-threads=2"
+             << " ! videoconvert"
+             << " ! videoscale";
+    if (camera_config_.preview_width > 0 && camera_config_.preview_height > 0) {
+      pipeline << " ! video/x-raw,format=" << cpu_output_format
+               << ",width=" << camera_config_.preview_width
+               << ",height=" << camera_config_.preview_height;
+    } else {
+      pipeline << " ! video/x-raw,format=" << cpu_output_format;
+    }
+  }
+
+  pipeline << " ! appsink name=" << kCameraAppsinkName
+           << " sync=false"
+           << " max-buffers=" << camera_config_.appsink_max_buffers
+           << " drop=" << toGstBoolean(camera_config_.appsink_drop);
+  return pipeline.str();
+}
+
+bool BlueROVBridge::publishCameraSample(GstSample* sample) {
+  if (sample == nullptr || cameraImagePublisher_ == nullptr) {
+    return false;
+  }
+
+  const bool has_image_subscribers =
+      cameraImagePublisher_->get_subscription_count() > 0 ||
+      cameraImagePublisher_->get_intra_process_subscription_count() > 0;
+  const bool has_info_subscribers =
+      cameraInfoPublisher_ != nullptr &&
+      (cameraInfoPublisher_->get_subscription_count() > 0 ||
+       cameraInfoPublisher_->get_intra_process_subscription_count() > 0);
+  if (!has_image_subscribers && !has_info_subscribers) {
+    return false;
+  }
+
+  if (camera_config_.preview_max_fps > 0.0) {
+    const auto now_steady = std::chrono::steady_clock::now();
+    const auto min_period = std::chrono::duration<double>(1.0 / camera_config_.preview_max_fps);
+    if (last_camera_publish_time_.time_since_epoch().count() != 0 &&
+        now_steady - last_camera_publish_time_ < min_period) {
+      return false;
+    }
+  }
+
+  GstCaps* caps = gst_sample_get_caps(sample);
+  GstBuffer* buffer = gst_sample_get_buffer(sample);
+  if (caps == nullptr || buffer == nullptr) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Camera sample arrived without caps or payload.");
+    return false;
+  }
+
+  GstVideoInfo video_info;
+  if (!gst_video_info_from_caps(&video_info, caps)) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Failed to read camera caps into a video frame description.");
+    return false;
+  }
+
+  GstVideoFrame frame;
+  if (!gst_video_frame_map(&frame, &video_info, buffer, GST_MAP_READ)) {
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Failed to map the decoded camera frame.");
+    return false;
+  }
+
+  size_t input_channel_count = 0;
+  size_t output_channel_count = 0;
+  std::string encoding;
+  bool drop_alpha_channel = false;
+  switch (GST_VIDEO_INFO_FORMAT(&video_info)) {
+    case GST_VIDEO_FORMAT_RGB:
+      input_channel_count = 3;
+      output_channel_count = 3;
+      encoding = sensor_msgs::image_encodings::RGB8;
+      break;
+    case GST_VIDEO_FORMAT_BGR:
+      input_channel_count = 3;
+      output_channel_count = 3;
+      encoding = sensor_msgs::image_encodings::BGR8;
+      break;
+    case GST_VIDEO_FORMAT_RGBA:
+      input_channel_count = 4;
+      output_channel_count = 4;
+      encoding = sensor_msgs::image_encodings::RGBA8;
+      break;
+    case GST_VIDEO_FORMAT_RGBx:
+      input_channel_count = 4;
+      output_channel_count = 3;
+      drop_alpha_channel = true;
+      encoding = sensor_msgs::image_encodings::RGB8;
+      break;
+    case GST_VIDEO_FORMAT_BGRA:
+      input_channel_count = 4;
+      output_channel_count = 4;
+      encoding = sensor_msgs::image_encodings::BGRA8;
+      break;
+    case GST_VIDEO_FORMAT_BGRx:
+      input_channel_count = 4;
+      output_channel_count = 3;
+      drop_alpha_channel = true;
+      encoding = sensor_msgs::image_encodings::BGR8;
+      break;
+    default:
+      gst_video_frame_unmap(&frame);
+      RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Unsupported decoded camera pixel format.");
+      return false;
+  }
+
+  const int stride = GST_VIDEO_FRAME_PLANE_STRIDE(&frame, 0);
+  if (stride <= 0) {
+    gst_video_frame_unmap(&frame);
+    RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Camera frame stride is invalid.");
+    return false;
+  }
+
+  const auto width = static_cast<uint32_t>(GST_VIDEO_INFO_WIDTH(&video_info));
+  const auto height = static_cast<uint32_t>(GST_VIDEO_INFO_HEIGHT(&video_info));
+  const auto stamp = this->now();
+  auto image_msg = std::make_unique<sensor_msgs::msg::Image>();
+  image_msg->header.stamp = stamp;
+  image_msg->header.frame_id = camera_config_.frame_id;
+  image_msg->width = width;
+  image_msg->height = height;
+  image_msg->encoding = encoding;
+  image_msg->is_bigendian = false;
+  image_msg->step = width * output_channel_count;
+  image_msg->data.resize(image_msg->step * height);
+
+  const auto* plane_data = reinterpret_cast<const uint8_t*>(GST_VIDEO_FRAME_PLANE_DATA(&frame, 0));
+  for (uint32_t row = 0; row < height; ++row) {
+    const auto* src_row = plane_data + row * stride;
+    auto* dst_row = image_msg->data.data() + row * image_msg->step;
+    if (!drop_alpha_channel) {
+      std::memcpy(dst_row, src_row, image_msg->step);
+      continue;
+    }
+
+    for (uint32_t column = 0; column < width; ++column) {
+      const auto src_index = column * input_channel_count;
+      const auto dst_index = column * output_channel_count;
+      dst_row[dst_index + 0] = src_row[src_index + 0];
+      dst_row[dst_index + 1] = src_row[src_index + 1];
+      dst_row[dst_index + 2] = src_row[src_index + 2];
+    }
+  }
+
+  gst_video_frame_unmap(&frame);
+  last_camera_publish_time_ = std::chrono::steady_clock::now();
+  publishCameraInfo(width, height, stamp);
+  if (has_image_subscribers) {
+    cameraImagePublisher_->publish(std::move(image_msg));
+  }
+  return true;
+}
+
+void BlueROVBridge::publishCameraInfo(const uint32_t width, const uint32_t height, const rclcpp::Time& stamp) {
+  if (cameraInfoPublisher_ == nullptr) {
+    return;
+  }
+
+  if (cameraInfoPublisher_->get_subscription_count() == 0 &&
+      cameraInfoPublisher_->get_intra_process_subscription_count() == 0) {
+    return;
+  }
+
+  if (camera_config_.camera_info_publish_rate_hz > 0.0) {
+    const auto now_steady = std::chrono::steady_clock::now();
+    const auto min_period = std::chrono::duration<double>(1.0 / camera_config_.camera_info_publish_rate_hz);
+    if (last_camera_info_publish_time_.time_since_epoch().count() != 0 &&
+        now_steady - last_camera_info_publish_time_ < min_period) {
+      return;
+    }
+    last_camera_info_publish_time_ = now_steady;
+  }
+
+  sensor_msgs::msg::CameraInfo info_msg;
+  info_msg.header.stamp = stamp;
+  info_msg.header.frame_id = camera_config_.frame_id;
+  info_msg.width = width;
+  info_msg.height = height;
+  info_msg.distortion_model = "plumb_bob";
+  info_msg.k = {1.0, 0.0, static_cast<double>(width) / 2.0,
+                0.0, 1.0, static_cast<double>(height) / 2.0,
+                0.0, 0.0, 1.0};
+  info_msg.r = {1.0, 0.0, 0.0,
+                0.0, 1.0, 0.0,
+                0.0, 0.0, 1.0};
+  info_msg.p = {1.0, 0.0, static_cast<double>(width) / 2.0, 0.0,
+                0.0, 1.0, static_cast<double>(height) / 2.0, 0.0,
+                0.0, 0.0, 1.0, 0.0};
+  cameraInfoPublisher_->publish(info_msg);
+}
+
+void BlueROVBridge::cameraStreamLoop() {
+  bool use_hw_decoder = camera_config_.use_hw_decoder;
+
+  while (!camera_stop_requested_.load()) {
+    if (!createCameraPipeline(use_hw_decoder)) {
+      if (use_hw_decoder) {
+        RCLCPP_WARN(this->get_logger(), "Falling back to CPU H.264 decoding because the Jetson pipeline did not start.");
+        use_hw_decoder = false;
+        continue;
+      }
+
+      std::this_thread::sleep_for(kCameraRestartDelay);
+      continue;
+    }
+
+    GstBus* bus = nullptr;
+    GstAppSink* appsink = nullptr;
+    {
+      std::lock_guard<std::mutex> lock(camera_pipeline_mutex_);
+      if (camera_pipeline_ != nullptr) {
+        bus = gst_element_get_bus(camera_pipeline_);
+      }
+      if (camera_appsink_ != nullptr) {
+        appsink = GST_APP_SINK(camera_appsink_);
+      }
+    }
+
+    if (bus == nullptr || appsink == nullptr) {
+      if (bus != nullptr) {
+        gst_object_unref(bus);
+      }
+      destroyCameraPipeline();
+      std::this_thread::sleep_for(kCameraRestartDelay);
+      continue;
+    }
+
+    bool restart_pipeline = false;
+    while (!camera_stop_requested_.load()) {
+      GstMessage* message = gst_bus_timed_pop_filtered(
+          bus,
+          0,
+          static_cast<GstMessageType>(GST_MESSAGE_ERROR | GST_MESSAGE_EOS | GST_MESSAGE_WARNING));
+      if (message != nullptr) {
+        switch (GST_MESSAGE_TYPE(message)) {
+          case GST_MESSAGE_ERROR: {
+            GError* error = nullptr;
+            gchar* debug = nullptr;
+            gst_message_parse_error(message, &error, &debug);
+            RCLCPP_ERROR(
+                this->get_logger(),
+                "Camera pipeline error from %s: %s",
+                GST_OBJECT_NAME(message->src),
+                error != nullptr ? error->message : "unknown error");
+            if (error != nullptr) {
+              g_error_free(error);
+            }
+            if (debug != nullptr) {
+              g_free(debug);
+            }
+            restart_pipeline = true;
+            break;
+          }
+          case GST_MESSAGE_EOS:
+            RCLCPP_WARN(this->get_logger(), "Camera pipeline reached EOS. Restarting stream.");
+            restart_pipeline = true;
+            break;
+          case GST_MESSAGE_WARNING: {
+            GError* error = nullptr;
+            gchar* debug = nullptr;
+            gst_message_parse_warning(message, &error, &debug);
+            RCLCPP_WARN(
+                this->get_logger(),
+                "Camera pipeline warning from %s: %s",
+                GST_OBJECT_NAME(message->src),
+                error != nullptr ? error->message : "unknown warning");
+            if (error != nullptr) {
+              g_error_free(error);
+            }
+            if (debug != nullptr) {
+              g_free(debug);
+            }
+            break;
+          }
+          default:
+            break;
+        }
+        gst_message_unref(message);
+      }
+
+      if (restart_pipeline) {
+        break;
+      }
+
+      GstSample* sample = gst_app_sink_try_pull_sample(appsink, kCameraSampleTimeout.count() * GST_MSECOND);
+      if (sample == nullptr) {
+        continue;
+      }
+
+      publishCameraSample(sample);
+      gst_sample_unref(sample);
+    }
+
+    gst_object_unref(bus);
+    destroyCameraPipeline();
+
+    if (!camera_stop_requested_.load() && restart_pipeline) {
+      std::this_thread::sleep_for(kCameraRestartDelay);
+    }
+  }
 }
 
 /**

@@ -10,6 +10,8 @@
 #include "sensor_msgs/msg/magnetic_field.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "sensor_msgs/msg/fluid_pressure.hpp"
+#include "sensor_msgs/msg/image.hpp"
+#include "sensor_msgs/msg/camera_info.hpp"
 #include "std_msgs/msg/string.hpp"
 #include "auv_core_helper/msg/pose_stamped.hpp"
 #include "auv_core_helper/msg/heart_beat.hpp"                           
@@ -47,11 +49,17 @@ extern "C" {
 #include <optional>
 #include <limits>
 #include <array>
+#include <atomic>
+#include <mutex>
+#include <thread>
 #include <vector>
 
 using SetBoolSrv = std_srvs::srv::SetBool;
 using SetModeSrv = auv_core_helper::srv::SetFlightMode;
 using SetGimbalAttitudeSrv = auv_core_helper::srv::SetGimbalAttitude;
+
+typedef struct _GstElement GstElement;
+typedef struct _GstSample GstSample;
 
 class BlueROVBridge : public rclcpp::Node
 {
@@ -79,6 +87,8 @@ private:
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr forcesDesiredPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr forcesActualPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::FluidPressure>::SharedPtr pressureScaled2Publisher_;
+    rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr cameraImagePublisher_;
+    rclcpp::Publisher<sensor_msgs::msg::CameraInfo>::SharedPtr cameraInfoPublisher_;
     
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr safetySwitchSubscription_;
     rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr globalPoseDesiredSubscription_;
@@ -106,12 +116,12 @@ private:
     //--------------------------------------------------------------------------
     int sock_fd_{-1};                   // UDP socket file descriptor
     struct sockaddr_in remote_addr_{};  // Remote address for sending MAVLink
-    int port_{} ;
-    std::string remote_addr_str_ = "";
+    int port_{14558};
+    std::string remote_addr_str_{"192.168.2.2"};
 
     // Our GCS system ID
-    uint8_t system_id_{0};            // MAVLink system ID (255 = ground station)
-    uint8_t component_id_{0};         // MAVLink component ID
+    uint8_t system_id_{42};            // MAVLink system ID (255 = ground station)
+    uint8_t component_id_{190};         // MAVLink component ID
 
     // Autopilot IDs (discovered from heartbeat)
     uint8_t target_system_{0};          // Target system ID (from heartbeat)
@@ -123,7 +133,7 @@ private:
     //--------------------------------------------------------------------------
     //Declarations
     //--------------------------------------------------------------------------
-    bool simulation_mode_;
+    bool simulation_mode_{false};
     std::string imu_topic_{auv_core_helper::topicnames::imu_data_raw};
     std::string magnetic_field_topic_{auv_core_helper::topicnames::imu_magnetic_field};
     std::string imu_frame_id_{"base_link"};
@@ -135,10 +145,38 @@ private:
     std::string pressure_frame_id_{"base_link"};
     std::string thrust_table_csv_path_;
     float pressure_rate_hz_{20.0f};
-        Eigen::Matrix3d imu_rotation_matrix_ = (Eigen::Matrix3d() <<
-            0.0, 1.0, 0.0,
-            1.0, 0.0, 0.0,
-            0.0, 0.0, -1.0).finished();
+    struct CameraStreamConfig {
+        bool enabled{true};
+        std::string source_uri{"udp://192.168.2.3:5600"};
+        std::string rtp_caps{"application/x-rtp, media=video, encoding-name=H264, payload=96, clock-rate=90000"};
+        std::string topic{auv_core_helper::topicnames::camera_image_raw};
+        std::string info_topic{auv_core_helper::topicnames::camera_info};
+        std::string frame_id{"camera_optical_frame"};
+        bool use_hw_decoder{true};
+        bool qos_reliable{false};
+        bool enable_max_performance{true};
+        int preview_width{960};
+        int preview_height{540};
+        double preview_max_fps{15.0};
+        std::string output_encoding{"rgba8"};
+        double camera_info_publish_rate_hz{2.0};
+        int rtp_latency_ms{75};
+        int udp_buffer_size_bytes{2097152};
+        int appsink_max_buffers{1};
+        bool appsink_drop{true};
+        std::string pipeline_override{};
+    } camera_config_;
+    std::thread camera_thread_;
+    std::atomic<bool> camera_stop_requested_{false};
+    std::mutex camera_pipeline_mutex_;
+    GstElement* camera_pipeline_{nullptr};
+    GstElement* camera_appsink_{nullptr};
+    std::chrono::steady_clock::time_point last_camera_publish_time_{};
+    std::chrono::steady_clock::time_point last_camera_info_publish_time_{};
+    Eigen::Matrix3d imu_rotation_matrix_ = (Eigen::Matrix3d() <<
+        0.0, 1.0, 0.0,
+        1.0, 0.0, 0.0,
+        0.0, 0.0, -1.0).finished();
 
     bool failsafe_active_{false};
     
@@ -289,6 +327,22 @@ private:
     bool loadThrustTableFromCsv(const std::string& csv_path);
 
     double getThrust(double pwm, double voltage) const;
+
+    void startCameraStream();
+
+    void stopCameraStream();
+
+    void cameraStreamLoop();
+
+    bool createCameraPipeline(bool use_hw_decoder);
+
+    void destroyCameraPipeline();
+
+    std::string buildCameraPipelineDescription(bool use_hw_decoder) const;
+
+    bool publishCameraSample(GstSample* sample);
+
+    void publishCameraInfo(uint32_t width, uint32_t height, const rclcpp::Time& stamp);
 
     void Execute();
     
