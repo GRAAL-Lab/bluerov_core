@@ -149,7 +149,27 @@ void LoadParamsFromConf(const std::string& config_name, Eigen::VectorXd* thruste
     }
 }
 
-void LoadBridgeParamsFromConf(const std::string& config_name, bool* simulation_mode, std::string* remote_addr, int* system_id, int* component_id, int* port)
+void LoadBridgeParamsFromConf(const std::string& config_name, bool* simulation_mode, std::string* remote_addr, int* system_id, int* component_id, int* port,
+                              bool* camera_enabled, std::string* camera_source_uri, std::string* camera_topic,
+                              std::string* camera_info_topic, std::string* camera_frame_id, bool* camera_use_hw_decoder,
+                              bool* camera_qos_reliable, int* camera_preview_width, int* camera_preview_height,
+                              double* camera_preview_max_fps, int* camera_rtp_latency_ms,
+                              std::string* camera_rtp_caps, bool* camera_enable_max_performance)
+{
+    LoadBridgeParamsFromConf(config_name, simulation_mode, remote_addr, system_id, component_id, port,
+                             camera_enabled, camera_source_uri, camera_topic, camera_info_topic, camera_frame_id,
+                             camera_use_hw_decoder, camera_qos_reliable, camera_preview_width, camera_preview_height,
+                             camera_preview_max_fps, nullptr, nullptr, camera_rtp_latency_ms, camera_rtp_caps,
+                             camera_enable_max_performance);
+}
+
+void LoadBridgeParamsFromConf(const std::string& config_name, bool* simulation_mode, std::string* remote_addr, int* system_id, int* component_id, int* port,
+                              bool* camera_enabled, std::string* camera_source_uri, std::string* camera_topic,
+                              std::string* camera_info_topic, std::string* camera_frame_id, bool* camera_use_hw_decoder,
+                              bool* camera_qos_reliable, int* camera_preview_width, int* camera_preview_height,
+                              double* camera_preview_max_fps, std::string* camera_output_encoding,
+                              double* camera_info_publish_rate_hz, int* camera_rtp_latency_ms,
+                              std::string* camera_rtp_caps, bool* camera_enable_max_performance)
  {
     libconfig::Config cfg;
     try {
@@ -169,6 +189,81 @@ void LoadBridgeParamsFromConf(const std::string& config_name, bool* simulation_m
         if (system_id)        *system_id        = bridge["system_id"];
         if (component_id)     *component_id     = bridge["component_id"];
         if (port)             *port             = bridge["port"];
+
+        bool camera_enabled_value = false;
+        if (camera_enabled && bridge.lookupValue("camera_enabled", camera_enabled_value)) {
+            *camera_enabled = camera_enabled_value;
+        }
+
+        std::string camera_source_uri_value;
+        if (camera_source_uri && bridge.lookupValue("camera_source_uri", camera_source_uri_value)) {
+            *camera_source_uri = camera_source_uri_value;
+        }
+
+        std::string camera_topic_value;
+        if (camera_topic && bridge.lookupValue("camera_topic", camera_topic_value)) {
+            *camera_topic = camera_topic_value;
+        }
+
+        std::string camera_info_topic_value;
+        if (camera_info_topic && bridge.lookupValue("camera_info_topic", camera_info_topic_value)) {
+            *camera_info_topic = camera_info_topic_value;
+        }
+
+        std::string camera_frame_id_value;
+        if (camera_frame_id && bridge.lookupValue("camera_frame_id", camera_frame_id_value)) {
+            *camera_frame_id = camera_frame_id_value;
+        }
+
+        bool camera_use_hw_decoder_value = false;
+        if (camera_use_hw_decoder && bridge.lookupValue("camera_use_hw_decoder", camera_use_hw_decoder_value)) {
+            *camera_use_hw_decoder = camera_use_hw_decoder_value;
+        }
+
+        bool camera_qos_reliable_value = true;
+        if (camera_qos_reliable && bridge.lookupValue("camera_qos_reliable", camera_qos_reliable_value)) {
+            *camera_qos_reliable = camera_qos_reliable_value;
+        }
+
+        int camera_preview_width_value = 0;
+        if (camera_preview_width && bridge.lookupValue("camera_preview_width", camera_preview_width_value)) {
+            *camera_preview_width = camera_preview_width_value;
+        }
+
+        int camera_preview_height_value = 0;
+        if (camera_preview_height && bridge.lookupValue("camera_preview_height", camera_preview_height_value)) {
+            *camera_preview_height = camera_preview_height_value;
+        }
+
+        double camera_preview_max_fps_value = 0.0;
+        if (camera_preview_max_fps && bridge.lookupValue("camera_preview_max_fps", camera_preview_max_fps_value)) {
+            *camera_preview_max_fps = camera_preview_max_fps_value;
+        }
+
+        std::string camera_output_encoding_value;
+        if (camera_output_encoding && bridge.lookupValue("camera_output_encoding", camera_output_encoding_value)) {
+            *camera_output_encoding = camera_output_encoding_value;
+        }
+
+        double camera_info_publish_rate_hz_value = 0.0;
+        if (camera_info_publish_rate_hz && bridge.lookupValue("camera_info_publish_rate_hz", camera_info_publish_rate_hz_value)) {
+            *camera_info_publish_rate_hz = camera_info_publish_rate_hz_value;
+        }
+
+        int camera_rtp_latency_ms_value = 0;
+        if (camera_rtp_latency_ms && bridge.lookupValue("camera_rtp_latency_ms", camera_rtp_latency_ms_value)) {
+            *camera_rtp_latency_ms = camera_rtp_latency_ms_value;
+        }
+
+        std::string camera_rtp_caps_value;
+        if (camera_rtp_caps && bridge.lookupValue("camera_rtp_caps", camera_rtp_caps_value)) {
+            *camera_rtp_caps = camera_rtp_caps_value;
+        }
+
+        bool camera_enable_max_performance_value = false;
+        if (camera_enable_max_performance && bridge.lookupValue("camera_enable_max_performance", camera_enable_max_performance_value)) {
+            *camera_enable_max_performance = camera_enable_max_performance_value;
+        }
 
     } catch (const libconfig::FileIOException &fioex) {
         std::cerr << "I/O error while reading bridge config file: " << fioex.what() << std::endl;
