@@ -1,0 +1,38 @@
+kcl_client:
+  ros__parameters:
+    interactive: false
+    desired_state: "PATH_FOLLOWING"
+    trajectory_time: 0.0
+
+    position:
+      latitude: 0.0
+      longitude: 0.0
+    depth: 0.0
+
+    path_mode: "Serpentine2D"
+    resume_path: false
+
+    spiral:
+      spiral_diameter: 0.0
+      spiral_increment: 0.0
+
+    serpentine:
+      origin:
+        latitude: 0.0
+        longitude: 0.0
+      front_left:
+        latitude: 0.0
+        longitude: 0.0
+      front_right:
+        latitude: 0.0
+        longitude: 0.0
+      right:
+        latitude: 0.0
+        longitude: 0.0
+
+    circular:
+      circular_diameter: 0.0
+      center_point:
+        latitude: 0.0
+        longitude: 0.0
+      clockwise: true
