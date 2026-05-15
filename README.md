@@ -16,9 +16,9 @@ Top-level packages in this workspace:
 | `logger` | Mission/navigation logging utilities | [`logger/README.md`](./logger/README.md) |
 | `mission_ctrl` | Mission controller state-machine logic | [`mission_ctrl/README.md`](./mission_ctrl/README.md) |
 | `perception` | Perception and obstacle tracking pipeline | [`perception/README.md`](./perception/README.md) |
-| `kcl` | Vehicle control/action layer package | Package folder |
-| `jetson_utils` | Jetson-side utility nodes/modules | Package folder |
-| `udp_camera` | UDP camera package/integration | Package folder |
+| `kcl` | Vehicle control/action layer package | [`kcl/`](./kcl/) |
+| `jetson_utils` | Jetson-side utility nodes/modules | [`jetson_utils/`](./jetson_utils/) |
+| `udp_camera` | UDP camera package/integration | [`udp_camera/`](./udp_camera/) |
 
 ## Quick usage
 
