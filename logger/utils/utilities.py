@@ -1,0 +1,25 @@
+# Utility functions and constants for the logger module
+
+STATE_NAME_MAP = {
+    "Init": "Initialization",
+    "MoveToWp": "Navigating to Waypoint",
+    "SearchForObject": "Searching for Object",
+    "CrossGate": "Crossing Gate",
+    "SearchBuoyArea": "Searching Buoy Area",
+    "InspectBuoy": "Inspecting Buoy",
+    "InspectPipes": "Inspecting Pipes",
+    "FollowMainPipe": "Following Main Pipe",
+    "InterventionOnConsole": "Performing Intervention on Console",
+    "UpdateLocalization": "Updating Localization",
+    "Homing": "Returning to Home",
+    "Halt": "Mission Halted",
+    "moveToDepth": "Moving to Depth",
+}
+
+TOPICS_NAMES = {
+    "Pose": "/auv/global/pose_actual",
+    "MissionStatus": "/auv/mission/status",
+    "Camera": "/camera/image_raw",
+    "Detections": "/detections",
+    "CameraLowRes": "camera/image_low_res",
+}
