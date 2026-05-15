@@ -1,0 +1,98 @@
+### ROS NODE
+spinRate: 10.0
+maxMsgLag: 5
+
+### OUTPUT FRAME
+outputFrame: "World"
+
+### ANNOTATIONS
+enableRTAnnot: 1
+
+### CLUSTERING PARAMETERS
+cloudWindow: 1                  # num of clouds in history
+clusterTolerance: 3.0           # max distance for 2 points to be in same cluster
+clusterMinSize: 2               # min n points in a cluster
+clusterMaxSize: 1000000         # max n points in a cluster
+clusterMinSizeCuda: 20          # min point cloud size for CUDA usage
+masatoQuality: 0.9              # quality index for Masato algorithm
+enableStandaloneLidar: 1        # enable lidar-based clustering in areas not covered by camera FOV
+enableCamera: 0                 # enable camera-based clustering
+minObjectIntensity: 15.0  	# a cluster composed of points with this mean value is classified as water return
+minLowIntensity: 25.0  	        # a cluster composed of only points with this value is classified as water return
+minLIObjectNPoints: 15  	# a cluster composed of only points with this value is classified as water return
+
+### CLOUD BASED DILATION PARAMETERS
+enableCloudBasedDilation: 0     # 0 or 1
+dLength: 1.5 #40.0              # dilation length [m]
+dWidth: 1.0 #0.0                # dilation length [m]
+dilationTol: 0.01               # dilation tolerance
+
+### PYRAMID BASED DILATION PARAMETERS
+enablePyramidBasedDilation: 0   # 0 or 1
+
+### POINT CLOUD FILTERING
+minAccumDistancePcl: 40.0         # min dist for point accumulation [m]
+minDistance: 2.0                # min cluster admissible point dist from lidar [m]
+maxDistance: 1000.0             # max cluster admissible point dist from lidar [m]
+cloudAccumulationPolicy: "fixed_obstacles"
+
+### POINT CLOUD VOXEL-BASED REDUCTION
+enableCloudReduction: 1         # 0 or 1
+cloudReductionLeaf_x: 0.1       # [m]
+cloudReductionLeaf_y: 0.1       # [m]
+cloudReductionLeaf_z: 0.1       # [m]
+
+### CAMERAS
+minImgDetectionConfidence: 0.4   # confidence
+
+### DATA ASSOCIATION
+weightIoU: 0.0
+weightCentroidDist: 1.0
+weightSize: 0.0
+weightSimilarity: 0.0
+
+### TRACKING
+#trackDistThreshold: 2.0
+trackingDt: 0.1                # tracking timestep [s]
+#Qdiag: [0.0001, 0.0001, 0.001, 0.001, 0.5, 0.1, 0.1]
+Qdiag: [0.0001, 0.0001, 0.001, 0.001, 0.01, 0.001, 0.001] # low Qv
+#Rdiag: [0.05, 0.05, 10.0, 10.0, 0.05]
+Rdiag: [0.05, 0.05, 0.1, 0.1, 0.5]
+enableAdaptiveR: 0
+filterHistoryLen: 100
+lengthOutlierHistoryLen: 100
+widthOutlierHistoryLen: 100
+enableDetectionRevision: 0
+
+R0Diag_dist: [0.05,0.05,0.5,0.5,0.5]
+enableYDist: 1
+R0Diag_frag: [1.0 ,1.0 ,10.0 ,10.0 ,1.0]
+enableYFrag: 0
+enableYRot: 0
+maxNumOcclusions: 300
+enableRAEKF: 0
+
+### IMAGE PLANE TRACKING
+enableImgPlaneTracking: 1
+imgQdiag: [0.001, 0.001, 0.1, 0.1, 10.0, 0.001, 0.001]
+imgRdiag: [0.0001, 0.0001, 0.01, 0.01, 0.000001]
+imgMaxNumOcclusions: 2
+imgWeightIoU: 0.6
+imgWeightCentroidDist: 0.001
+imgWeightSize: 0.0
+imgWeightSimilarity: 0.0
+
+### GRAPHICS
+enableLidarWindows: 1           # 0 or 1
+
+### LOGS
+enableMainLog: 0                # 0 or 1
+enableEssentialLog: 1           # 0 or 1
+
+### MULTITHREADING
+numThreadsForParallelClustering: 5
+
+### OTHER ENABLE/DISABLE
+enableRemoveWaterReturns: 0
+saveClusters: 0
+enableTrackingGt: 0
