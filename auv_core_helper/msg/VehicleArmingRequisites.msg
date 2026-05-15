@@ -1,0 +1,4 @@
+bool vehicle_in_safety_area
+bool vehicle_reached_safety_area
+bool safety_switch_is_off
+bool vehicle_free_to_move

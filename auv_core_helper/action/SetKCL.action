@@ -1,0 +1,24 @@
+# Goal
+string desired_state
+
+## Move 2 point params
+LatLong position
+float64 depth
+float64 trajectory_time
+
+## Path following params
+string path_mode
+bool resume_path
+
+SpiralPathData spiral_data
+SerpentinePathData serpentine_data
+CircularPathData circular_data
+---
+# Result
+bool success
+string message
+
+---
+# Feedback
+string actual_state
+float64 action_progress
