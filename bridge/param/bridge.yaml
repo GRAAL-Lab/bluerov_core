@@ -1,8 +1,23 @@
 mavlink_bridge:
   ros__parameters:
-    config_name: bridge
-    camera_enabled: true
-    camera_source_uri: udp://192.168.2.3:5600
+    simulation_mode: false
+    remote_address: 192.168.2.2
+    system_id: 42
+    component_id: 190
+    port: 14550
+    velocity_actual_topic: /auv/global/velocity_actual
+    dvl_distance_topic: /auv/dvl/distance
+    imu_topic: /auv/imu/data_raw
+    magnetic_field_topic: /auv/imu/magnetic_field
+    imu_frame_id: base_link
+    imu_rate_hz: 100.0
+    pressure_rate_hz: 100.0
+    servo_output_rate_hz: 20.0
+    forces_actual_topic: /auv/forces_actual
+    pressure_topic: /auv/pressure/scaled2
+    pressure_frame_id: base_link
+    camera_enabled: false
+    camera_source_uri: udp://192.168.2.2:5600
     camera_rtp_caps: application/x-rtp, media=video, encoding-name=H264, payload=96, clock-rate=90000
     camera_topic: /auv/camera/image_raw
     camera_info_topic: /auv/camera/camera_info

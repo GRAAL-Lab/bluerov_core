@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+
+"""Record the fixed BlueROV sensor topic set with rosbag2."""
+
+import os
+import sys
+
+
+TOPICS = [
+    "/auv/dvl",
+    "/auv/dvl/distance",
+    "/auv/forces_actual",
+    "/auv/global/velocity_actual",
+    "/auv/imu/data_raw",
+    "/auv/imu/magnetic_field",
+    "/auv/pressure/scaled2",
+    "/dvl/command/response",
+    "/dvl/config/command",
+    "/dvl/config/status",
+    "/dvl/data",
+    "/dvl/position",
+    "/parameter_events",
+    "/rosout",
+    "/sonar_imu",
+    "/sonar_point_cloud",
+]
+
+
+def main() -> None:
+    command = ["ros2", "bag", "record", *sys.argv[1:], "--topics", *TOPICS]
+    os.execvp(command[0], command)
+
+
+if __name__ == "__main__":
+    main()

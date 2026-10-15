@@ -1,10 +1,14 @@
 # bridge
 
-BlueROV2 MAVLink bridge with Jetson-optimized camera ingest.
+BlueROV2 MAVLink bridge with optional Jetson-optimized camera ingest.
 
 ## Camera stream
 
-The bridge can publish the BlueROV camera stream from `udp://192.168.2.3:5600` as
+Camera support is excluded from the default build, so the bridge does not create or
+publish `/auv/camera/image_raw` or `/auv/camera/camera_info` during normal
+startup and does not require GStreamer development packages. The bridge can
+optionally publish the BlueROV camera stream from
+`udp://192.168.2.3:5600` as
 `sensor_msgs/msg/Image` on `/auv/camera/image_raw`.
 
 `camera_source_uri` can also point at an `rtsp://...` source if you want to test
@@ -20,8 +24,8 @@ If the Jetson pipeline cannot start, the bridge falls back to a CPU decode path.
 
 ## Configuration
 
-System defaults live in
-`src/auv_core_helper/param/ctrl/bridge.conf`.
+Bridge connection settings and every ROS topic/service name live in
+`bridge/param/bridge.yaml` as ordinary ROS parameters.
 
 The bridge also publishes `sensor_msgs/msg/CameraInfo` on
 `/auv/camera/camera_info` so RViz camera displays can subscribe cleanly.
@@ -60,5 +64,22 @@ Available camera parameters:
 ## Build
 
 ```bash
-colcon build --packages-select auv_core_helper bridge
+colcon build --packages-select bridge
 ```
+
+To explicitly compile camera support, pass
+`--cmake-args -DBRIDGE_ENABLE_CAMERA=ON`; it remains disabled at runtime unless
+`camera_enabled` is also set to `true`.
+
+## Launch bridge and sensors
+
+The combined launch starts the MAVLink bridge, Sonar 3D-15 driver, and A50 DVL
+driver:
+
+```bash
+ros2 launch bridge bluerov_sensors.launch.py
+```
+
+It uses the existing driver defaults: host Ethernet `192.168.2.3`, BlueOS
+`192.168.2.2`, sonar `192.168.2.196`, and DVL `192.168.2.125`. Override the DVL
+address with `dvl_ip:=<address>`.
