@@ -19,12 +19,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'sonar_ip',
-            default_value='192.168.2.196',
+            default_value='192.168.2.197',
             description='Water Linked Sonar 3D-15 IP address',
         ),
         DeclareLaunchArgument(
             'host_ip',
-            default_value='192.168.2.3',
+            default_value='192.168.2.1',
             description="This computer's sensor-network IPv4 address",
         ),
         Node(

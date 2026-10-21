@@ -80,6 +80,6 @@ driver:
 ros2 launch bridge bluerov_sensors.launch.py
 ```
 
-It uses the existing driver defaults: host Ethernet `192.168.2.3`, BlueOS
-`192.168.2.2`, sonar `192.168.2.196`, and DVL `192.168.2.125`. Override the DVL
+It uses the existing driver defaults: host Ethernet `192.168.2.1`, BlueOS
+`192.168.2.2`, sonar `192.168.2.197`, and DVL `192.168.2.125`. Override the DVL
 address with `dvl_ip:=<address>`.

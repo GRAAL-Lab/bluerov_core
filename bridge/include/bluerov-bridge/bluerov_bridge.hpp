@@ -99,7 +99,7 @@ private:
     std::string imu_topic_{"/auv/imu/data_raw"};
     std::string magnetic_field_topic_{"/auv/imu/magnetic_field"};
     std::string imu_frame_id_{"base_link"};
-    float imu_rate_hz_{100.0f};
+    float imu_rate_hz_{200.0f};
     float servo_output_rate_hz_{50.0f};
     std::string forces_actual_topic_{"/auv/forces_actual"};
     std::string pressure_topic_{"/auv/pressure/scaled2"};

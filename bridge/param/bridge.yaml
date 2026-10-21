@@ -4,13 +4,13 @@ mavlink_bridge:
     remote_address: 192.168.2.2
     system_id: 42
     component_id: 190
-    port: 14550
+    port: 14551
     velocity_actual_topic: /auv/global/velocity_actual
     dvl_distance_topic: /auv/dvl/distance
     imu_topic: /auv/imu/data_raw
     magnetic_field_topic: /auv/imu/magnetic_field
     imu_frame_id: base_link
-    imu_rate_hz: 100.0
+    imu_rate_hz: 200.0
     pressure_rate_hz: 100.0
     servo_output_rate_hz: 20.0
     forces_actual_topic: /auv/forces_actual

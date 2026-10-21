@@ -304,7 +304,11 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   // Timers
   mavlink_heartbeat_timer_ = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&BlueROVBridge::sendMavlinkHeartbeat, this));
   ardusub_heartbeat_watchdog_timer_ = this->create_wall_timer(std::chrono::milliseconds(1000), std::bind(&BlueROVBridge::ardusubHeartbeatWatchdog, this)); // ~1Hz
-  data_timer_ = this->create_wall_timer(std::chrono::milliseconds(10), std::bind(&BlueROVBridge::receiveData, this)); // ~100Hz
+  // Poll faster than the highest configured sensor stream. The callback drains
+  // the non-blocking UDP socket, so this keeps 200 Hz IMU samples from being
+  // forwarded to ROS in 10 ms batches.
+  data_timer_ = this->create_wall_timer(
+      std::chrono::milliseconds(1), std::bind(&BlueROVBridge::receiveData, this));
 
   last_heartbeat_time_ = this->now();
 
@@ -996,6 +1000,8 @@ const char* BlueROVBridge::get_message_name(uint16_t message_id) {
       return "SERVO_OUTPUT_RAW";
     case MAVLINK_MSG_ID_RAW_IMU:
       return "RAW_IMU";
+    case MAVLINK_MSG_ID_SCALED_IMU:
+      return "SCALED_IMU";
     case MAVLINK_MSG_ID_SCALED_PRESSURE2:
       return "SCALED_PRESSURE2";
     case MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN:
