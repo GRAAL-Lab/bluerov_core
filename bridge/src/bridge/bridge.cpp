@@ -30,6 +30,7 @@ constexpr double kMilligToMps2 = kGravityMps2 / 1000.0;
 constexpr double kMradpsToRadps = 1.0 / 1000.0;
 constexpr double kMilligaussToTesla = 1.0e-7;
 constexpr double kNominalFallbackVoltageV = 16.0;
+constexpr auto kBatteryVoltageWarningDelay = std::chrono::seconds(5);
 // MAVLink/ArduPilot aircraft body axes are forward-right-down (FRD), while
 // ROS REP-103 base_link axes are forward-left-up (FLU). This is a pi rotation
 // about the shared forward X axis: v_flu = R_flu_frd * v_frd.
@@ -1093,7 +1094,11 @@ void BlueROVBridge::handleBatteryStatus(const mavlink_message_t& msg){
    mavlink_battery_status_t battery_status;
    mavlink_msg_battery_status_decode(&msg, &battery_status);
 
-  latest_battery_voltage_v_ = extractBatteryVoltageV(battery_status);
+  const double voltage_v = extractBatteryVoltageV(battery_status);
+  if (std::isfinite(voltage_v)) {
+    latest_battery_voltage_v_ = voltage_v;
+    battery_voltage_wait_start_.reset();
+  }
 
  }
 
@@ -1261,11 +1266,17 @@ void BlueROVBridge::handleServoOutputRaw(const mavlink_message_t& msg) {
   double interpolation_voltage_v = latest_battery_voltage_v_;
   if (!std::isfinite(interpolation_voltage_v)) {
     interpolation_voltage_v = kNominalFallbackVoltageV;
-    RCLCPP_WARN_STREAM_THROTTLE(
-        this->get_logger(),
-        *this->get_clock(),
-        2000,
-        "Battery voltage unavailable. Using " << kNominalFallbackVoltageV << " V for thrust interpolation.");
+    const auto now = std::chrono::steady_clock::now();
+    if (!battery_voltage_wait_start_) {
+      battery_voltage_wait_start_ = now;
+    } else if (now - *battery_voltage_wait_start_ >= kBatteryVoltageWarningDelay) {
+      RCLCPP_WARN_STREAM_THROTTLE(
+          this->get_logger(),
+          *this->get_clock(),
+          2000,
+          "Battery voltage unavailable for at least 5 seconds. Using "
+              << kNominalFallbackVoltageV << " V for thrust interpolation.");
+    }
   }
 
   forces_actual_msg_.header.stamp = this->now();

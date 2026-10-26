@@ -73,13 +73,29 @@ To explicitly compile camera support, pass
 
 ## Launch bridge and sensors
 
-The combined launch starts the MAVLink bridge, Sonar 3D-15 driver, and A50 DVL
-driver:
+The combined launch starts the MAVLink bridge, Sonar 3D-15 driver, A50 DVL
+driver, and UDP camera driver:
 
 ```bash
 ros2 launch bridge bluerov_sensors.launch.py
 ```
 
 It uses the existing driver defaults: host Ethernet `192.168.2.1`, BlueOS
-`192.168.2.2`, sonar `192.168.2.197`, and DVL `192.168.2.125`. Override the DVL
-address with `dvl_ip:=<address>`.
+`192.168.2.2`, sonar `192.168.2.197`, and DVL `192.168.2.125`. The sonar is
+also reachable at its fallback address `192.168.194.96`. Override the sensor addresses with
+`sonar_ip:=<address>` and `dvl_ip:=<address>`.
+
+The ROS camera listens on UDP port `5601` by default, leaving `5600` available
+for QGroundControl. Override it with `camera_port:=<port>` when launching.
+
+The UDP camera driver publishes `sensor_msgs/msg/Image` on
+`/camera/image_raw`. The `bag_recored` executable records that stream together
+with the sonar point cloud and the sonar driver's IMU topic,
+`/sonar/imu/data_raw`.
+
+Camera recording is enabled by default. Disable or explicitly enable it with:
+
+```bash
+ros2 run bridge bag_recored --no-camera -o bag_without_camera
+ros2 run bridge bag_recored --camera -o bag_with_camera
+```

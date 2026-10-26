@@ -2,9 +2,12 @@
 
 """Record the fixed BlueROV sensor topic set with rosbag2."""
 
+import argparse
 import os
 import sys
 
+
+CAMERA_TOPIC = "/camera/image_raw"
 
 TOPICS = [
     "/auv/dvl",
@@ -21,13 +24,26 @@ TOPICS = [
     "/dvl/position",
     "/parameter_events",
     "/rosout",
-    "/sonar_imu",
+    "/sonar/imu/data_raw",
     "/sonar_point_cloud",
 ]
 
 
 def main() -> None:
-    command = ["ros2", "bag", "record", *sys.argv[1:], "--topics", *TOPICS]
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument(
+        "--camera",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="record the camera image topic (default: enabled)",
+    )
+    options, rosbag_args = parser.parse_known_args()
+
+    topics = [*TOPICS]
+    if options.camera:
+        topics.append(CAMERA_TOPIC)
+
+    command = ["ros2", "bag", "record", *rosbag_args, "--topics", *topics]
     os.execvp(command[0], command)
 
 

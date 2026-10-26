@@ -29,6 +29,7 @@ extern "C" {
 #include <limits>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <mutex>
 #include <thread>
 #include <vector>
@@ -144,6 +145,7 @@ private:
     mavlink_heartbeat_t hb;
     std::unique_ptr<geometry_msgs::msg::Twist> global_velocity_msg = std::make_unique<geometry_msgs::msg::Twist>();
     double latest_battery_voltage_v_{std::numeric_limits<double>::quiet_NaN()};
+    std::optional<std::chrono::steady_clock::time_point> battery_voltage_wait_start_;
     static constexpr size_t kThrusterCount{8};
     static constexpr size_t kVoltageBinCount{3};
     std::array<double, kVoltageBinCount> thrust_voltage_bins_v_{{14.0, 16.0, 18.0}};

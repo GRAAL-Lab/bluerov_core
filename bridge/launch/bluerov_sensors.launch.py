@@ -3,6 +3,7 @@ from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 
@@ -10,6 +11,7 @@ def generate_launch_description():
     dvl_ip = LaunchConfiguration('dvl_ip')
     sonar_ip = LaunchConfiguration('sonar_ip')
     host_ip = LaunchConfiguration('host_ip')
+    camera_port = LaunchConfiguration('camera_port')
 
     return LaunchDescription([
         DeclareLaunchArgument(
@@ -27,6 +29,11 @@ def generate_launch_description():
             default_value='192.168.2.1',
             description="This computer's sensor-network IPv4 address",
         ),
+        DeclareLaunchArgument(
+            'camera_port',
+            default_value='5601',
+            description='UDP port for the ROS H.264 RTP camera stream',
+        ),
         Node(
             package='bridge',
             executable='bridge_node',
@@ -39,6 +46,15 @@ def generate_launch_description():
                     'bridge.yaml',
                 ])
             ],
+        ),
+        Node(
+            package='udp_camera',
+            executable='camera_node.py',
+            name='udp_camera_node',
+            output='screen',
+            parameters=[{
+                'udp_port': ParameterValue(camera_port, value_type=int),
+            }],
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(

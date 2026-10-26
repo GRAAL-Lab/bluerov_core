@@ -8,16 +8,22 @@ import cv2
 class UdpCameraNode(Node):
     def __init__(self):
         super().__init__('udp_camera_node')
+        self.declare_parameter('udp_port', 5601)
+        udp_port = self.get_parameter('udp_port').value
+
         self.publisher_ = self.create_publisher(Image, 'camera/image_raw', 10)
         self.bridge = CvBridge()
 
         gst_str = (
-            "udpsrc port=5600 caps=application/x-rtp,media=video,encoding-name=H264,payload=96 ! "
-            "rtph264depay ! h264parse ! nvv4l2decoder ! nvvidconv ! video/x-raw, format=BGRx ! "
-            "videoconvert ! appsink"
+            f"udpsrc port={udp_port} buffer-size=2097152 "
+            "caps=application/x-rtp,media=video,encoding-name=H264,payload=96 ! "
+            "rtph264depay ! avdec_h264 ! videoconvert ! video/x-raw,format=BGR ! "
+            "appsink max-buffers=1 drop=true sync=false"
         )
         self.cap = cv2.VideoCapture(gst_str, cv2.CAP_GSTREAMER)
-        print("setup!")
+        self.get_logger().info(
+            f"Listening for the H.264 RTP camera stream on UDP port {udp_port}"
+        )
 
         if not self.cap.isOpened():
             self.get_logger().error("Failed to open video stream")
@@ -40,7 +46,6 @@ class UdpCameraNode(Node):
         super().destroy_node()
 
 def main(args=None):
-    print("!!!!!!")
     rclpy.init(args=args)
     node = UdpCameraNode()
     try:

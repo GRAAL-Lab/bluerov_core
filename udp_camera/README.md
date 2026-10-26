@@ -7,7 +7,7 @@ ROS 2 package that receives an H.264 UDP stream and republishes frames as ROS im
 - Node: `udp_camera_node` (script: `camera_node.py`)
 - Publishes `sensor_msgs/msg/Image` on:
   - `camera/image_raw`
-- Current stream pipeline uses GStreamer with a Jetson hardware decoder (`nvv4l2decoder`).
+- The stream uses GStreamer with the CPU H.264 decoder (`avdec_h264`).
 
 ## Build
 
@@ -26,7 +26,13 @@ Run the node:
 ros2 run udp_camera camera_node.py
 ```
 
+The default UDP port is `5601`. Override it with:
+
+```bash
+ros2 run udp_camera camera_node.py --ros-args -p udp_port:=5600
+```
+
 ## Notes
 
-- The UDP pipeline is currently configured in code for port `5600` and H.264 RTP input.
+- The UDP pipeline expects H.264 RTP input.
 - Runtime dependencies include OpenCV, `cv_bridge`, and GStreamer support.
