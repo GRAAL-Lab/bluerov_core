@@ -10,10 +10,10 @@
 #include "mission_ctrl/mission_ctrl_defines.hpp"
 #include "rclcpp/rclcpp.hpp"
 
-#include "auv_core_helper/action/set_kcl.hpp"
-#include "auv_core_helper/msg/dtc_list.hpp"
-#include "auv_core_helper/msg/dtc_pipeline_pipe.hpp"
-#include "auv_core_helper/srv/mission_command.hpp"
+#include "bleurov_core_helper/action/set_kcl.hpp"
+#include "bleurov_core_helper/msg/dtc_list.hpp"
+#include "bleurov_core_helper/msg/dtc_pipeline_pipe.hpp"
+#include "bleurov_core_helper/srv/mission_command.hpp"
 
 namespace mission
 {
@@ -176,7 +176,7 @@ namespace mission
     struct PerceptionData
     {
         bool newDtcFromPerception;
-        auv_core_helper::msg::DtcList dtcList;
+        bleurov_core_helper::msg::DtcList dtcList;
 
         double desiredGimbalAttitude = 0.0;
 
@@ -186,7 +186,7 @@ namespace mission
         bool enableDtcManipulationConsole;
 
         bool enableDtcPipes;
-        auv_core_helper::msg::DtcPipelinePipe currentPipeDtc;
+        bleurov_core_helper::msg::DtcPipelinePipe currentPipeDtc;
 
         std::map<std::string, Buoy> detectedBuoys;
     };
@@ -196,9 +196,9 @@ namespace mission
         bool newCmd = true;          // true first time the command is sent to KCL
         bool underExecution = false; // true if the command is currently being executed by KCL
 
-        auv_core_helper::action::SetKCL::Goal goal;
-        auv_core_helper::action::SetKCL::Result result;
-        auv_core_helper::action::SetKCL::Feedback feedback;
+        bleurov_core_helper::action::SetKCL::Goal goal;
+        bleurov_core_helper::action::SetKCL::Result result;
+        bleurov_core_helper::action::SetKCL::Feedback feedback;
 
         kclCmd()
         {
@@ -295,7 +295,7 @@ namespace mission
 
         TaskBenchmarkSettings() = default;
 
-        virtual bool ConfigureFromSrv(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request)
+        virtual bool ConfigureFromSrv(const std::shared_ptr<bleurov_core_helper::srv::MissionCommand::Request> request)
         {
             try
             {
@@ -405,7 +405,7 @@ namespace mission
             return true;
         }
 
-        bool GetPipelinePipesFromSrv(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request, std::vector<PipelinePipe> &pPipes)
+        bool GetPipelinePipesFromSrv(const std::shared_ptr<bleurov_core_helper::srv::MissionCommand::Request> request, std::vector<PipelinePipe> &pPipes)
         {
             try
             {
@@ -446,7 +446,7 @@ namespace mission
             return true;
         }
 
-        bool GetBuoysActionsFromSrv(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request, BuoyActionColorMap &buoysActionsMap)
+        bool GetBuoysActionsFromSrv(const std::shared_ptr<bleurov_core_helper::srv::MissionCommand::Request> request, BuoyActionColorMap &buoysActionsMap)
         {
             try
             {
@@ -518,7 +518,7 @@ namespace mission
             taskType = taskBenchmarks::INSPECTION;
         }
 
-        bool ConfigureFromSrv(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request) override
+        bool ConfigureFromSrv(const std::shared_ptr<bleurov_core_helper::srv::MissionCommand::Request> request) override
         {
             if (!TaskBenchmarkSettings::ConfigureFromSrv(request))
                 return false;
@@ -598,7 +598,7 @@ namespace mission
             return true;
         }
 
-        bool ConfigureFromSrv(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request) override
+        bool ConfigureFromSrv(const std::shared_ptr<bleurov_core_helper::srv::MissionCommand::Request> request) override
         {
             if (!TaskBenchmarkSettings::ConfigureFromSrv(request))
                 return false;
@@ -655,7 +655,7 @@ namespace mission
             return true;
         }
 
-        bool ConfigureFromSrv(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request) override
+        bool ConfigureFromSrv(const std::shared_ptr<bleurov_core_helper::srv::MissionCommand::Request> request) override
         {
             if (!TaskBenchmarkSettings::ConfigureFromSrv(request))
                 return false;

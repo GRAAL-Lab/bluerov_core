@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <package format="3">
-  <name>auv_core_helper</name>
+  <name>bleurov_core_helper</name>
   <version>0.1.0</version>
   <description>Combined package for AUV core messages and helper functionalities in ROS2.</description>
   <maintainer email="youssef.attia@edu.unige.it">Youssef Attia</maintainer>

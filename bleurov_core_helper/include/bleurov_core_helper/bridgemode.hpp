@@ -3,7 +3,7 @@
 
 #include <string>
 
-namespace auv_core_helper {
+namespace bleurov_core_helper {
 
     namespace BrigdeMode {
         const std::string PoseCtrl = "PoseCtrl";

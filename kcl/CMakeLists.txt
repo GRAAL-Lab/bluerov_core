@@ -20,7 +20,7 @@ find_package(geometry_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(auv_core_helper REQUIRED)
+find_package(bleurov_core_helper REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(ament_index_cpp REQUIRED)
@@ -48,11 +48,11 @@ add_custom_target(.Files. SOURCES ${SOURCE_FILES})
 
 include_directories(
   include
-  ${auv_core_helper_INCLUDE_DIRS}
+  ${bleurov_core_helper_INCLUDE_DIRS}
 )
 
 # Add the library directory to the linker search paths (if necessary)
-link_directories(${CMAKE_INSTALL_PREFIX}/auv_core_helper/lib)
+link_directories(${CMAKE_INSTALL_PREFIX}/bleurov_core_helper/lib)
 
 # Set RPATH for both build and install phases
 set(CMAKE_SKIP_BUILD_RPATH FALSE)
@@ -83,7 +83,7 @@ target_include_directories(states_lib PUBLIC
 )
 ament_target_dependencies(states_lib
   Eigen3
-  auv_core_helper
+  bleurov_core_helper
   ament_index_cpp
   rclcpp
   geometry_msgs
@@ -100,7 +100,7 @@ target_link_libraries(states_lib
   ${SISL_LIBRARY}
   ${CTRL_LIBRARY}
   ${GEOGRAPHICLIB_LIBRARIES}
-  ${auv_core_helper_LIBRARIES}
+  ${bleurov_core_helper_LIBRARIES}
   ${DYNAMIC_GOAL_ALOS_LIBRARY}
 )
 
@@ -127,7 +127,7 @@ foreach(target kinematic_control_layer_node)
     Eigen3
     sensor_msgs
     tf2_geometry_msgs
-    auv_core_helper
+    bleurov_core_helper
     rclcpp_lifecycle
     nav_msgs
     std_srvs
@@ -139,7 +139,7 @@ foreach(target kinematic_control_layer_node)
     ${CTRL_LIBRARY}
     ${GEOGRAPHICLIB_LIBRARIES}
     ${DYNAMIC_GOAL_ALOS_LIBRARY}
-    ${auv_core_helper_LIBRARIES}
+    ${bleurov_core_helper_LIBRARIES}
   )
 endforeach()
 

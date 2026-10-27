@@ -21,8 +21,8 @@ fsm::retval WayPointNavigationState::OnEntry() noexcept
 
     /* arm vehicle & select flight mode */
     ctrlData->armed_desired      = true;
-    ctrlData->flightMode_desired = auv_core_helper::FlightMode::GUIDED;
-    ctrlData->deisiredCtrlMode   = auv_core_helper::BrigdeMode::PoseCtrl;
+    ctrlData->flightMode_desired = bleurov_core_helper::FlightMode::GUIDED;
+    ctrlData->deisiredCtrlMode   = bleurov_core_helper::BrigdeMode::PoseCtrl;
 
     /* ── cache waypoint (lat/lon, depth) ────────────────────────── */
     waypoint_.latitude  = ctrlData->poseGoalGlobal(0);

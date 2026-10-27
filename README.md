@@ -10,7 +10,7 @@ Top-level packages in this workspace:
 
 | Package | Purpose | Details |
 |---|---|---|
-| `auv_core_helper` | Shared helpers, parameters, and common utilities | [`auv_core_helper/README.md`](./auv_core_helper/README.md) |
+| `bleurov_core_helper` | Shared helpers, parameters, and common utilities | [`bleurov_core_helper/README.md`](./bleurov_core_helper/README.md) |
 | `bridge` | MAVLink and camera/data bridge components | [`bridge/README.md`](./bridge/README.md) |
 | `ctrl_station` | Command/control station and MQTT-related interfaces | [`ctrl_station/README.md`](./ctrl_station/README.md) |
 | `logger` | Mission/navigation logging utilities | [`logger/README.md`](./logger/README.md) |

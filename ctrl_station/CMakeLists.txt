@@ -38,7 +38,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_action REQUIRED)
 find_package(std_msgs REQUIRED)
-find_package(auv_core_helper REQUIRED)
+find_package(bleurov_core_helper REQUIRED)
 find_package(ament_index_cpp REQUIRED)
 #find_package(mission_ctrl REQUIRED)
 find_package(ctrl_toolbox REQUIRED)
@@ -83,7 +83,7 @@ target_link_libraries(mqtt_client
 #   rclcpp
 #   rclcpp_action
 #   std_msgs
-#   auv_core_helper
+#   bleurov_core_helper
 #   ament_index_cpp
 #   ctrl_toolbox
 # )

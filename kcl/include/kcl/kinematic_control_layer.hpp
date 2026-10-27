@@ -9,13 +9,13 @@
 #include <geometry_msgs/msg/twist.hpp>
 #include <std_msgs/msg/string.hpp>
 #include <nav_msgs/msg/path.hpp>
-#include "auv_core_helper/msg/kcl_status.hpp"
+#include "bleurov_core_helper/msg/kcl_status.hpp"
 #include "geometry_msgs/msg/vector3_stamped.hpp"
 
 // AUV-specific headers
 #include "kcl/data_structs.hpp"
-#include "auv_core_helper/msg/pose_stamped.hpp"
-#include "auv_core_helper/helper_lib.hpp"
+#include "bleurov_core_helper/msg/pose_stamped.hpp"
+#include "bleurov_core_helper/helper_lib.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 
 
@@ -30,24 +30,24 @@
 #include "states/commands.hpp"
 
 // AUV-specific topic names
-#include "auv_core_helper/topicnames.hpp"
+#include "bleurov_core_helper/topicnames.hpp"
 
 // AUV-specific message types between mission control and the AUV
-#include "auv_core_helper/action/set_kcl.hpp"
+#include "bleurov_core_helper/action/set_kcl.hpp"
 
-#include "auv_core_helper/bridgemode.hpp"
+#include "bleurov_core_helper/bridgemode.hpp"
 
 
 // AUV service types
 #include "std_srvs/srv/set_bool.hpp"             
-#include "auv_core_helper/srv/set_flight_mode.hpp" 
+#include "bleurov_core_helper/srv/set_flight_mode.hpp"
 
 // Graal library 
 #include "fsm/fsm.h"
 #include "rml/Functions.h"
 #include "ctrl_toolbox/ctrl_toolbox.hpp"
 
-using SetKCL = auv_core_helper::action::SetKCL;
+using SetKCL = bleurov_core_helper::action::SetKCL;
 
 
 class KCL : public rclcpp::Node {
@@ -80,12 +80,12 @@ private:
     // ROS 2 Publishers
     // --------------------
     // LOCAL
-    rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr poseGoalLocalPublisher_;
+    rclcpp::Publisher<bleurov_core_helper::msg::PoseStamped>::SharedPtr poseGoalLocalPublisher_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocityLocalDesiredPublisher_;
-    rclcpp::Publisher<auv_core_helper::msg::KclStatus>::SharedPtr statePublisher_;
+    rclcpp::Publisher<bleurov_core_helper::msg::KclStatus>::SharedPtr statePublisher_;
 
     // GLOBAL
-    rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr poseGoalGlobalPublisher_;
+    rclcpp::Publisher<bleurov_core_helper::msg::PoseStamped>::SharedPtr poseGoalGlobalPublisher_;
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr velocityDesiredGlobalPublisher_;
     rclcpp::Publisher<nav_msgs::msg::Path>::SharedPtr pathPublisher_;
     rclcpp::Publisher<geometry_msgs::msg::Vector3Stamped>::SharedPtr pathFollowingStatusPublisher_;
@@ -96,23 +96,23 @@ private:
     // --------------------
     // ROS 2 Subscriptions
     // --------------------
-    rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr poseActualGlobalSubscription_;
+    rclcpp::Subscription<bleurov_core_helper::msg::PoseStamped>::SharedPtr poseActualGlobalSubscription_;
     rclcpp::Subscription<geometry_msgs::msg::Vector3Stamped>::SharedPtr positionActualLocalSubscription_;
 
     // --------------------
     // ROS 2 Services
     // --------------------
     rclcpp::Client<std_srvs::srv::SetBool>::SharedPtr armingClient_;
-    rclcpp::Client<auv_core_helper::srv::SetFlightMode>::SharedPtr flightModeClient_;
+    rclcpp::Client<bleurov_core_helper::srv::SetFlightMode>::SharedPtr flightModeClient_;
 
 
     // --------------------
     // ROS 2 Action Server
     // --------------------
-    rclcpp_action::Server<auv_core_helper::action::SetKCL>::SharedPtr KCLSetter_;
-    std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> activeGoal_;
-    rclcpp_action::GoalResponse HandleGoal(const rclcpp_action::GoalUUID & uuid,std::shared_ptr<const auv_core_helper::action::SetKCL::Goal> goal);
-    rclcpp_action::CancelResponse HandleCancel(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> goal_handle);
+    rclcpp_action::Server<bleurov_core_helper::action::SetKCL>::SharedPtr KCLSetter_;
+    std::shared_ptr<rclcpp_action::ServerGoalHandle<bleurov_core_helper::action::SetKCL>> activeGoal_;
+    rclcpp_action::GoalResponse HandleGoal(const rclcpp_action::GoalUUID & uuid,std::shared_ptr<const bleurov_core_helper::action::SetKCL::Goal> goal);
+    rclcpp_action::CancelResponse HandleCancel(const std::shared_ptr<rclcpp_action::ServerGoalHandle<bleurov_core_helper::action::SetKCL>> goal_handle);
     std::mutex goalMutex_; ///< Mutex to protect access to the active goal.
 
     // --------------------
@@ -132,7 +132,7 @@ private:
     void SetupTransitions();
 
     /// Callback for actual pose data.
-    void PoseActualGlobalCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
+    void PoseActualGlobalCallback(const bleurov_core_helper::msg::PoseStamped::SharedPtr msg);
 
     /// Callback for actual local position data.
     void PositionActualLocalCallback(const geometry_msgs::msg::Vector3Stamped::SharedPtr msg);
@@ -141,7 +141,7 @@ private:
     void AccelerationActualCallback(const geometry_msgs::msg::Twist::SharedPtr msg);
 
     /// Callback for control command service.
-    void HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> goal_handle);
+    void HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<bleurov_core_helper::action::SetKCL>> goal_handle);
 
     /// Call the arming service.
     void CallArmingService(bool arm);

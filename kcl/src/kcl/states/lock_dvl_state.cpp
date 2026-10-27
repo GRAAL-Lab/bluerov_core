@@ -14,8 +14,8 @@ fsm::retval LockDvlState::OnEntry() noexcept {
     }
     // //disarm vehicle
     // ctrlData->armed_desired = false;
-    // ctrlData->flightMode_desired = auv_core_helper::FlightMode::POSHOLD;
-    // ctrlData->deisiredCtrlMode = auv_core_helper::BrigdeMode::PoseCtrl;
+    // ctrlData->flightMode_desired = bleurov_core_helper::FlightMode::POSHOLD;
+    // ctrlData->deisiredCtrlMode = bleurov_core_helper::BrigdeMode::PoseCtrl;
     return fsm::ok;
 }
 

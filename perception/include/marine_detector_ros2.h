@@ -42,7 +42,7 @@ private:
     void Init(const std::string& bagPath, bool isSim);
 
     rclcpp::Subscription<image_pipeline_msgs::msg::BoundingBox2DArray>::SharedPtr cameraObstaclesSub_;
-    rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr geoPoseStampedSub_;
+    rclcpp::Subscription<bleurov_core_helper::msg::PoseStamped>::SharedPtr geoPoseStampedSub_;
 
     void ObstacleDetectionCallbackInternal(const sensor_msgs::msg::PointCloud2::ConstSharedPtr& pointCloudMsg, const bool worldF_pos_set, const bool worldF_orient_set);
 
@@ -65,7 +65,7 @@ private:
 
     odtc::FrameType frameType_;
 
-    bool PerceptionCallback(const auv_core_helper::msg::PoseStamped::ConstSharedPtr& geoPoseStamped_msg);
+    bool PerceptionCallback(const bleurov_core_helper::msg::PoseStamped::ConstSharedPtr& geoPoseStamped_msg);
     Pipe GetPipeInfo(const image_pipeline_msgs::msg::PipeDirection::ConstPtr msg);
 
     // Subscribers
@@ -90,8 +90,8 @@ private:
     rclcpp::Publisher<image_pipeline_msgs::msg::Obstacles>::SharedPtr obstaclesPub_;
     std::map<std::string, sensorTopics> sensorsPub_;
 
-    rclcpp::Subscription<auv_core_helper::msg::MissionStatus>::SharedPtr missionStatusSub_;
-    void MissionStatusCallback(const auv_core_helper::msg::MissionStatus::SharedPtr msg);
+    rclcpp::Subscription<bleurov_core_helper::msg::MissionStatus>::SharedPtr missionStatusSub_;
+    void MissionStatusCallback(const bleurov_core_helper::msg::MissionStatus::SharedPtr msg);
 
     DtcRequest currentRequest_;
 

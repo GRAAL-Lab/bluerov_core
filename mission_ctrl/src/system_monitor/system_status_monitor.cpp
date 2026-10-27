@@ -14,52 +14,52 @@ namespace mission
         lastPerceptionTime = rclcpp::Time(0, 0, this->get_clock()->get_clock_type());
         rcvMissionCmdTime = rclcpp::Time(0, 0, this->get_clock()->get_clock_type());
 
-        missionCtrlSub_ = this->create_subscription<auv_core_helper::msg::MissionStatus>(
-            auv_core_helper::topicnames::mission_status, rclcpp::SystemDefaultsQoS(),
+        missionCtrlSub_ = this->create_subscription<bleurov_core_helper::msg::MissionStatus>(
+            bleurov_core_helper::topicnames::mission_status, rclcpp::SystemDefaultsQoS(),
             std::bind(&SystemStatusMonitor::MissionCtrlCB, this, std::placeholders::_1));
 
         bridgeHeartBeathSub_ = this->create_subscription<std_msgs::msg::Int8>(
-            auv_core_helper::topicnames::bridge_heartbeat, rclcpp::SystemDefaultsQoS(),
+            bleurov_core_helper::topicnames::bridge_heartbeat, rclcpp::SystemDefaultsQoS(),
             std::bind(&SystemStatusMonitor::BridgeCB, this, std::placeholders::_1));
 
-        ardusubHeartBeathSub_ = this->create_subscription<auv_core_helper::msg::HeartBeat>(
-            auv_core_helper::topicnames::ardusub_heartbeat, rclcpp::SystemDefaultsQoS(),
+        ardusubHeartBeathSub_ = this->create_subscription<bleurov_core_helper::msg::HeartBeat>(
+            bleurov_core_helper::topicnames::ardusub_heartbeat, rclcpp::SystemDefaultsQoS(),
             std::bind(&SystemStatusMonitor::ArdusubCB, this, std::placeholders::_1));
 
-        kclSub_ = this->create_subscription<auv_core_helper::msg::KclStatus>(
-            auv_core_helper::topicnames::kcl_state, rclcpp::SystemDefaultsQoS(),
+        kclSub_ = this->create_subscription<bleurov_core_helper::msg::KclStatus>(
+            bleurov_core_helper::topicnames::kcl_state, rclcpp::SystemDefaultsQoS(),
             std::bind(&SystemStatusMonitor::KclCB, this, std::placeholders::_1));
-        serverKclClient_ = rclcpp_action::create_client<auv_core_helper::action::SetKCL>(
-            this, auv_core_helper::topicnames::kcl_setter_action);
+        serverKclClient_ = rclcpp_action::create_client<bleurov_core_helper::action::SetKCL>(
+            this, bleurov_core_helper::topicnames::kcl_setter_action);
 
         perceptionSub_ = this->create_subscription<std_msgs::msg::Bool>(
-            auv_core_helper::topicnames::perception_heartbeat, rclcpp::SystemDefaultsQoS(),
+            bleurov_core_helper::topicnames::perception_heartbeat, rclcpp::SystemDefaultsQoS(),
             std::bind(&SystemStatusMonitor::PerceptionCB, this, std::placeholders::_1));
 
-        poseSub_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(
-            auv_core_helper::topicnames::pose_actual_global_, rclcpp::SystemDefaultsQoS(),
+        poseSub_ = this->create_subscription<bleurov_core_helper::msg::PoseStamped>(
+            bleurov_core_helper::topicnames::pose_actual_global_, rclcpp::SystemDefaultsQoS(),
             std::bind(&SystemStatusMonitor::PoseCB, this, std::placeholders::_1));
 
         safetySwitchSub_ = this->create_subscription<std_msgs::msg::Bool>(
-            auv_core_helper::topicnames::safety_switch, rclcpp::SystemDefaultsQoS(),
+            bleurov_core_helper::topicnames::safety_switch, rclcpp::SystemDefaultsQoS(),
             std::bind(&SystemStatusMonitor::SafetySwitchCB, this, std::placeholders::_1));
 
         customSwitchSub_ = this->create_subscription<std_msgs::msg::Bool>(
-            auv_core_helper::topicnames::custom_switch, rclcpp::SystemDefaultsQoS(),
+            bleurov_core_helper::topicnames::custom_switch, rclcpp::SystemDefaultsQoS(),
             std::bind(&SystemStatusMonitor::CustomSwitchCB, this, std::placeholders::_1));
 
         int pub_rate = 1; // Default rateù
         std::chrono::milliseconds pub_duration(1000 / pub_rate);
         runTimer_ = this->create_wall_timer(pub_duration, std::bind(&SystemStatusMonitor::StatusPub, this));
-        systemStatusPub_ = this->create_publisher<auv_core_helper::msg::SystemStatus>(
-            auv_core_helper::topicnames::system_status, rclcpp::SystemDefaultsQoS());
+        systemStatusPub_ = this->create_publisher<bleurov_core_helper::msg::SystemStatus>(
+            bleurov_core_helper::topicnames::system_status, rclcpp::SystemDefaultsQoS());
 
         RCLCPP_INFO(this->get_logger(), "System Status Monitor is running.");
     };
 
     void SystemStatusMonitor::StatusPub()
     {
-        auv_core_helper::msg::SystemStatus status;
+        bleurov_core_helper::msg::SystemStatus status;
         status.stamp = this->get_clock()->now();
         status.mission_ctrl = true;
         status.kcl = true;
@@ -131,7 +131,7 @@ namespace mission
                   << "            mission under execution:          " << (missionUnderExecution ? "Yes" : "No") << "\n       )]\n";
     }
 
-    void SystemStatusMonitor::MissionCtrlCB(const auv_core_helper::msg::MissionStatus::SharedPtr msg)
+    void SystemStatusMonitor::MissionCtrlCB(const bleurov_core_helper::msg::MissionStatus::SharedPtr msg)
     {
         if (missionCtrlStatus_ == "WAITING FOR CMD" && msg->state != missionCtrlStatus_)
         {
@@ -156,7 +156,7 @@ namespace mission
         lastBridgeTime = this->get_clock()->now();
     }
     
-    void SystemStatusMonitor::ArdusubCB(const auv_core_helper::msg::HeartBeat::SharedPtr msg)
+    void SystemStatusMonitor::ArdusubCB(const bleurov_core_helper::msg::HeartBeat::SharedPtr msg)
     {
         (void)msg; // Unused parameter
         // auto timeSinceLastArdusub = this->get_clock()->now() - lastArdusubTime;
@@ -164,7 +164,7 @@ namespace mission
         lastArdusubTime = this->get_clock()->now();
     }
 
-    void SystemStatusMonitor::KclCB(const auv_core_helper::msg::KclStatus::SharedPtr msg)
+    void SystemStatusMonitor::KclCB(const bleurov_core_helper::msg::KclStatus::SharedPtr msg)
     {
         (void)msg;
         lastKCLTime = this->get_clock()->now();
@@ -187,7 +187,7 @@ namespace mission
         (void)msg; // Unused parameter
     }
 
-    void SystemStatusMonitor::PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg)
+    void SystemStatusMonitor::PoseCB(const bleurov_core_helper::msg::PoseStamped::SharedPtr msg)
     {
         if (!rcvFirstPose_)
         {
@@ -252,7 +252,7 @@ namespace mission
     {
 
         // Load configuration from file
-        std::string package_share_directory = ament_index_cpp::get_package_share_directory("auv_core_helper");
+        std::string package_share_directory = ament_index_cpp::get_package_share_directory("bleurov_core_helper");
         std::string confPath = package_share_directory + "/param/" + "system_monitor.conf";
         libconfig::Config confObj;
 

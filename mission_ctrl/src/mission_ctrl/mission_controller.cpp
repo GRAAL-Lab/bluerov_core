@@ -13,36 +13,36 @@ MissionController::MissionController()
     debugPub_ = this->create_publisher<std_msgs::msg::String>(
         "/auv/mission/debug", rclcpp::SystemDefaultsQoS());
 
-    missionStatusPub_ = this->create_publisher<auv_core_helper::msg::MissionStatus>(
-        auv_core_helper::topicnames::mission_status, rclcpp::SystemDefaultsQoS());
+    missionStatusPub_ = this->create_publisher<bleurov_core_helper::msg::MissionStatus>(
+        bleurov_core_helper::topicnames::mission_status, rclcpp::SystemDefaultsQoS());
 
-    systemStatusSub_ = this->create_subscription<auv_core_helper::msg::SystemStatus>(
-        auv_core_helper::topicnames::system_status, rclcpp::SystemDefaultsQoS(),
+    systemStatusSub_ = this->create_subscription<bleurov_core_helper::msg::SystemStatus>(
+        bleurov_core_helper::topicnames::system_status, rclcpp::SystemDefaultsQoS(),
         std::bind(&mission::MissionController::SystemStatusCB, this, std::placeholders::_1));
 
-    setKCLClient_ = rclcpp_action::create_client<auv_core_helper::action::SetKCL>(
-        this, auv_core_helper::topicnames::kcl_setter_action);
+    setKCLClient_ = rclcpp_action::create_client<bleurov_core_helper::action::SetKCL>(
+        this, bleurov_core_helper::topicnames::kcl_setter_action);
 
-    perceptionSub_ = this->create_subscription<auv_core_helper::msg::DtcList>(
-        auv_core_helper::topicnames::objects, rclcpp::SystemDefaultsQoS(),
+    perceptionSub_ = this->create_subscription<bleurov_core_helper::msg::DtcList>(
+        bleurov_core_helper::topicnames::objects, rclcpp::SystemDefaultsQoS(),
         std::bind(&MissionController::PerceptionCB, this, std::placeholders::_1));
 
-    KclSub_ = this->create_subscription<auv_core_helper::msg::KclStatus>(
-        auv_core_helper::topicnames::kcl_state, rclcpp::SystemDefaultsQoS(),
+    KclSub_ = this->create_subscription<bleurov_core_helper::msg::KclStatus>(
+        bleurov_core_helper::topicnames::kcl_state, rclcpp::SystemDefaultsQoS(),
         std::bind(&MissionController::KclCB, this, std::placeholders::_1));
 
-    poseSub_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_actual_global_,
+    poseSub_ = this->create_subscription<bleurov_core_helper::msg::PoseStamped>(bleurov_core_helper::topicnames::pose_actual_global_,
         rclcpp::SystemDefaultsQoS(),
         std::bind(&MissionController::PoseCB, this, std::placeholders::_1));
 
-    missionCommandService_ = this->create_service<auv_core_helper::srv::MissionCommand>(
-        auv_core_helper::topicnames::mission_cmd_service,
+    missionCommandService_ = this->create_service<bleurov_core_helper::srv::MissionCommand>(
+        bleurov_core_helper::topicnames::mission_cmd_service,
         std::bind(&MissionController::MissionCommandCB, this, std::placeholders::_1, std::placeholders::_2));
 
-    setGimbalAttitudeService_ = this->create_client<auv_core_helper::srv::SetGimbalAttitude>(
-        auv_core_helper::topicnames::gimbal_service);
+    setGimbalAttitudeService_ = this->create_client<bleurov_core_helper::srv::SetGimbalAttitude>(
+        bleurov_core_helper::topicnames::gimbal_service);
 
-    kclSendGoalOptions_ = rclcpp_action::Client<auv_core_helper::action::SetKCL>::SendGoalOptions();
+    kclSendGoalOptions_ = rclcpp_action::Client<bleurov_core_helper::action::SetKCL>::SendGoalOptions();
     kclSendGoalOptions_.result_callback = std::bind(&MissionController::ActionResultCallback, this, std::placeholders::_1);
     kclSendGoalOptions_.feedback_callback = std::bind(&MissionController::ActionFeedbackCallback, this,
         std::placeholders::_1, std::placeholders::_2);
@@ -70,7 +70,7 @@ MissionController::MissionController()
 
 void MissionController::StatusPub()
 {
-    auv_core_helper::msg::MissionStatus status;
+    bleurov_core_helper::msg::MissionStatus status;
     status.stamp = this->get_clock()->now();
     if (systemStatus_->State() == MissionCtrlState::WAITING_FOR_SYSTEM_TO_BE_READY) {
         status.state = states::ID::init;
@@ -172,7 +172,7 @@ void MissionController::Run()
     // }
 };
 
-void MissionController::SystemStatusCB(const auv_core_helper::msg::SystemStatus::SharedPtr msg)
+void MissionController::SystemStatusCB(const bleurov_core_helper::msg::SystemStatus::SharedPtr msg)
 {
     bool bridgeAlive = systemStatus_->conf.simBridge || msg->bridge;
     bool kclAlive = systemStatus_->conf.simKcl || msg->kcl;
@@ -202,7 +202,7 @@ void MissionController::SystemStatusCB(const auv_core_helper::msg::SystemStatus:
     }
 }
 
-void MissionController::PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg)
+void MissionController::PerceptionCB(const bleurov_core_helper::msg::DtcList::SharedPtr msg)
 {
 
     ctrlData_->perceptionData.newDtcFromPerception = true;
@@ -249,15 +249,15 @@ void MissionController::PerceptionCB(const auv_core_helper::msg::DtcList::Shared
     }
 }
 
-void MissionController::KclCB(const auv_core_helper::msg::KclStatus::SharedPtr msg)
+void MissionController::KclCB(const bleurov_core_helper::msg::KclStatus::SharedPtr msg)
 {
     (void)msg;
     // systemStatus_->lastKCLTime = this->get_clock()->now();
 }
 
 void MissionController::MissionCommandCB(
-    const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request,
-    std::shared_ptr<auv_core_helper::srv::MissionCommand::Response> response)
+    const std::shared_ptr<bleurov_core_helper::srv::MissionCommand::Request> request,
+    std::shared_ptr<bleurov_core_helper::srv::MissionCommand::Response> response)
 {
     RCLCPP_INFO_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "Mission command received, tbm_id: " << request->tbm_id);
 
@@ -339,7 +339,7 @@ bool MissionController::StartMission()
     return true;
 }
 
-void MissionController::PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg)
+void MissionController::PoseCB(const bleurov_core_helper::msg::PoseStamped::SharedPtr msg)
 {
     // systemStatus_->readFirstPose = true;
     ctrlData_->inertialF_linearPosition.latitude = msg->position.latitude;
@@ -369,7 +369,7 @@ bool MissionController::kclStopCmd()
 {
     RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "Sending IDLE cmd and moving to INIT state.");
 
-    auv_core_helper::action::SetKCL::Goal goal;
+    bleurov_core_helper::action::SetKCL::Goal goal;
     goal.desired_state = "IDLE";
     // while (!setKCLClient_->wait_for_action_server(std::chrono::seconds(1))) {
     //     RCLCPP_WARN(this->get_logger(), "Waiting for KCL action server to be ready...");
@@ -385,7 +385,7 @@ bool MissionController::kclCmd()
 {
     // kclCancelCmd();
 
-    auv_core_helper::action::SetKCL::Goal goal;
+    bleurov_core_helper::action::SetKCL::Goal goal;
     goal = ctrlData_->kclData.kclActionCmd.goal;
 
     if (systemStatus_->conf.debugPrints) {
@@ -424,7 +424,7 @@ bool MissionController::kclCmd()
     return true;
 }
 
-void MissionController::ActionResultCallback(const rclcpp_action::ClientGoalHandle<auv_core_helper::action::SetKCL>::WrappedResult& result)
+void MissionController::ActionResultCallback(const rclcpp_action::ClientGoalHandle<bleurov_core_helper::action::SetKCL>::WrappedResult& result)
 {
     ctrlData_->kclData.kclActionCmd.result.success = result.result->success;
     ctrlData_->kclData.kclActionCmd.result.message = result.result->message;
@@ -444,8 +444,8 @@ void MissionController::ActionResultCallback(const rclcpp_action::ClientGoalHand
 }
 
 void MissionController::ActionFeedbackCallback(
-    rclcpp_action::ClientGoalHandle<auv_core_helper::action::SetKCL>::SharedPtr,
-    const std::shared_ptr<const auv_core_helper::action::SetKCL::Feedback>& feedback)
+    rclcpp_action::ClientGoalHandle<bleurov_core_helper::action::SetKCL>::SharedPtr,
+    const std::shared_ptr<const bleurov_core_helper::action::SetKCL::Feedback>& feedback)
 {
     if (systemStatus_->State() != MissionCtrlState::ON_A_MISSION) {
         // RCLCPP_WARN_STREAM_THROTTLE(this->get_logger(), *get_clock(), 1000, "Received KCL feedback but mission controller is not ON_A_MISSION, ignoring feedback.");
@@ -481,7 +481,7 @@ void MissionController::SetGimbalAttitude()
         std::cerr << "Setting gimbal attitude to: " << ctrlData_->perceptionData.desiredGimbalAttitude << std::endl;
         lastSetGimbalAttitude_ = ctrlData_->perceptionData.desiredGimbalAttitude;
         // if (setGimbalAttitudeService_->service_is_ready()) {
-        //     auto request = std::make_shared<auv_core_helper::srv::SetGimbalAttitude::Request>();
+        //     auto request = std::make_shared<bleurov_core_helper::srv::SetGimbalAttitude::Request>();
         //     request->yaw = ctrlData_->perceptionData.desiredGimbalAttitude;
 
         //     auto future = setGimbalAttitudeService_->async_send_request(request);
@@ -514,7 +514,7 @@ void MissionController::LoadConfiguration()
     // Load configuration from file
     // std::string package_share_directory = ament_index_cpp::get_package_share_directory("mission_ctrl");
     // std::string confPath = package_share_directory + "/conf/" + "system.conf";
-    std::string package_share_directory = ament_index_cpp::get_package_share_directory("auv_core_helper");
+    std::string package_share_directory = ament_index_cpp::get_package_share_directory("bleurov_core_helper");
     std::string confPath = package_share_directory + "/param/ctrl/" + "mission_ctrl.conf";
     libconfig::Config confObj;
 

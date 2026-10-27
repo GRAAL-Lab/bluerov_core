@@ -12,7 +12,7 @@
 #include <cmath>
 #include <filesystem>
 #include <limits>
-#include <auv_core_helper/path_modes.hpp>
+#include <bleurov_core_helper/path_modes.hpp>
 #include <dynamic_goal_ALOS.hpp>
 
 

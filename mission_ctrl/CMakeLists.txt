@@ -21,7 +21,7 @@ find_package(rml                REQUIRED)
 find_package(fsm                REQUIRED)
 find_package(ctrl_toolbox       REQUIRED)
 find_package(sisl_toolbox       REQUIRED)
-find_package(auv_core_helper    REQUIRED)
+find_package(bleurov_core_helper    REQUIRED)
 
 find_library(GEOGRAPHIC_LIBRARY NAMES Geographic)
 
@@ -55,12 +55,12 @@ add_executable(controller_node
 target_include_directories(controller_node
   PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    ${auv_core_helper_INCLUDE_DIRS}
+    ${bleurov_core_helper_INCLUDE_DIRS}
     ${JSONCPP_INCLUDE_DIRS}
 )
 
 ament_target_dependencies(controller_node
-  rclcpp rclcpp_action ament_index_cpp auv_core_helper std_msgs
+  rclcpp rclcpp_action ament_index_cpp bleurov_core_helper std_msgs
 )
 
 target_link_libraries(controller_node
@@ -71,7 +71,7 @@ target_link_libraries(controller_node
   ctrl_toolbox
   sisl_toolbox
   ${JSONCPP_LIBRARIES}
-  ${auv_core_helper_LIBRARIES}
+  ${bleurov_core_helper_LIBRARIES}
 )
 
 # --- monitor_node executable ---
@@ -83,11 +83,11 @@ add_executable(monitor_node
 target_include_directories(monitor_node
   PRIVATE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-    ${auv_core_helper_INCLUDE_DIRS}
+    ${bleurov_core_helper_INCLUDE_DIRS}
 )
 
 ament_target_dependencies(monitor_node
-  rclcpp rclcpp_action ament_index_cpp auv_core_helper std_msgs
+  rclcpp rclcpp_action ament_index_cpp bleurov_core_helper std_msgs
 )
 
 target_link_libraries(monitor_node
@@ -95,7 +95,7 @@ target_link_libraries(monitor_node
   ctrl_toolbox
   rml
   config++
-  ${auv_core_helper_LIBRARIES}
+  ${bleurov_core_helper_LIBRARIES}
 )
 
 # --- Install targets ---

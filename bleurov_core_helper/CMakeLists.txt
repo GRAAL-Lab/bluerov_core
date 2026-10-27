@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(auv_core_helper)
+project(bleurov_core_helper)
 
 # Set C++ standard
 set(CMAKE_CXX_STANDARD 17)

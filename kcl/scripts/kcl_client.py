@@ -7,11 +7,11 @@ import rclpy
 from rclpy.action import ActionClient
 from rclpy.node import Node
 
-from auv_core_helper.action import SetKCL
-from auv_core_helper.msg import LatLong
-from auv_core_helper.msg import SpiralPathData
-from auv_core_helper.msg import SerpentinePathData
-from auv_core_helper.msg import CircularPathData
+from bleurov_core_helper.action import SetKCL
+from bleurov_core_helper.msg import LatLong
+from bleurov_core_helper.msg import SpiralPathData
+from bleurov_core_helper.msg import SerpentinePathData
+from bleurov_core_helper.msg import CircularPathData
 
 
 def _parse_bool(value: str) -> bool:

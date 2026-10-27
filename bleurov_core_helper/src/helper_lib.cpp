@@ -1,4 +1,4 @@
-#include "auv_core_helper/helper_lib.hpp"
+#include "bleurov_core_helper/helper_lib.hpp"
 
 namespace fs = std::filesystem;
 
@@ -10,7 +10,7 @@ void LoadParamsFromConf(const std::string& config_name, Eigen::VectorXd* thruste
 
     libconfig::Config cfg;
     try {
-        std::string package_path = ament_index_cpp::get_package_share_directory("auv_core_helper");
+        std::string package_path = ament_index_cpp::get_package_share_directory("bleurov_core_helper");
         std::string conf_file_path = package_path + "/param/ctrl/" + config_name + ".conf";
 
         // Check if the configuration file exists
@@ -173,7 +173,7 @@ void LoadBridgeParamsFromConf(const std::string& config_name, bool* simulation_m
  {
     libconfig::Config cfg;
     try {
-        std::string package_path = ament_index_cpp::get_package_share_directory("auv_core_helper");
+        std::string package_path = ament_index_cpp::get_package_share_directory("bleurov_core_helper");
         std::string conf_file_path = package_path + "/param/ctrl/" + config_name + ".conf";
 
         if (!std::filesystem::exists(conf_file_path)) {
@@ -276,8 +276,8 @@ void LoadBridgeParamsFromConf(const std::string& config_name, bool* simulation_m
     }
 }
 
-void PublishEigenPose(const rclcpp::Publisher<auv_core_helper::msg::PoseStamped>::SharedPtr& publisher, const Eigen::Matrix<double, 6, 1>& pose, const rclcpp::Time& time) {
-    auto message = std::make_unique<auv_core_helper::msg::PoseStamped>();
+void PublishEigenPose(const rclcpp::Publisher<bleurov_core_helper::msg::PoseStamped>::SharedPtr& publisher, const Eigen::Matrix<double, 6, 1>& pose, const rclcpp::Time& time) {
+    auto message = std::make_unique<bleurov_core_helper::msg::PoseStamped>();
     message->header.stamp = time;
     message->position.latitude = pose(0);
     message->position.longitude = pose(1);

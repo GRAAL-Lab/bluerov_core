@@ -28,43 +28,43 @@ KCL::KCL()
         std::bind(&KCL::ExecuteFSM, this));
 
     // Create subscriptions
-    poseActualGlobalSubscription_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(
-        auv_core_helper::topicnames::pose_actual_global_,
+    poseActualGlobalSubscription_ = this->create_subscription<bleurov_core_helper::msg::PoseStamped>(
+        bleurov_core_helper::topicnames::pose_actual_global_,
         1,
         std::bind(&KCL::PoseActualGlobalCallback, this, std::placeholders::_1));
     positionActualLocalSubscription_ = this->create_subscription<geometry_msgs::msg::Vector3Stamped>(
-        auv_core_helper::topicnames::position_actual,
+        bleurov_core_helper::topicnames::position_actual,
         1,
         std::bind(&KCL::PositionActualLocalCallback, this, std::placeholders::_1));
 
     // Create publishers
-    statePublisher_ = this->create_publisher<auv_core_helper::msg::KclStatus>(auv_core_helper::topicnames::kcl_state, 1);
-    poseGoalGlobalPublisher_ = this->create_publisher<auv_core_helper::msg::PoseStamped>(auv_core_helper::topicnames::pose_desired_global, 1);
-    velocityDesiredGlobalPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(auv_core_helper::topicnames::velocity_desired_global, 1);
+    statePublisher_ = this->create_publisher<bleurov_core_helper::msg::KclStatus>(bleurov_core_helper::topicnames::kcl_state, 1);
+    poseGoalGlobalPublisher_ = this->create_publisher<bleurov_core_helper::msg::PoseStamped>(bleurov_core_helper::topicnames::pose_desired_global, 1);
+    velocityDesiredGlobalPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(bleurov_core_helper::topicnames::velocity_desired_global, 1);
     pathPublisher_ = this->create_publisher<nav_msgs::msg::Path>("planned_path", 1);
-    deisiredCtrlModePublisher_ = this->create_publisher<std_msgs::msg::String>(auv_core_helper::topicnames::desired_ctrl_mode, 1);
+    deisiredCtrlModePublisher_ = this->create_publisher<std_msgs::msg::String>(bleurov_core_helper::topicnames::desired_ctrl_mode, 1);
     pathFollowingStatusPublisher_ = this->create_publisher<geometry_msgs::msg::Vector3Stamped>(
-        auv_core_helper::topicnames::path_status,
+        bleurov_core_helper::topicnames::path_status,
         1);
 
 
     // Create action server for KCL
-    KCLSetter_ = rclcpp_action::create_server<auv_core_helper::action::SetKCL>(
+    KCLSetter_ = rclcpp_action::create_server<bleurov_core_helper::action::SetKCL>(
     this,
-    auv_core_helper::topicnames::kcl_setter_action,
+    bleurov_core_helper::topicnames::kcl_setter_action,
     std::bind(&KCL::HandleGoal, this, std::placeholders::_1, std::placeholders::_2),
     std::bind(&KCL::HandleCancel, this, std::placeholders::_1),
     std::bind(&KCL::HandleSetKCL, this, std::placeholders::_1)
     );
 
     // Create clients
-    armingClient_ = this->create_client<std_srvs::srv::SetBool>(auv_core_helper::topicnames::arming_service);
-    flightModeClient_ = this->create_client<auv_core_helper::srv::SetFlightMode>(auv_core_helper::topicnames::flight_mode_service);
+    armingClient_ = this->create_client<std_srvs::srv::SetBool>(bleurov_core_helper::topicnames::arming_service);
+    flightModeClient_ = this->create_client<bleurov_core_helper::srv::SetFlightMode>(bleurov_core_helper::topicnames::flight_mode_service);
 
 
 }
 
-void KCL::PoseActualGlobalCallback(const auv_core_helper::msg::PoseStamped::SharedPtr msg) {
+void KCL::PoseActualGlobalCallback(const bleurov_core_helper::msg::PoseStamped::SharedPtr msg) {
     // Update actual pose in control data
     ctrlData_->poseActualGlobal << msg->position.latitude, msg->position.longitude, msg->depth, msg->roll, msg->pitch, msg->yaw;
     ctrlData_->timeActual = msg->header.stamp;
@@ -76,19 +76,19 @@ void KCL::PositionActualLocalCallback(const geometry_msgs::msg::Vector3Stamped::
     ctrlData_->poseActualLocal.head<3>() << msg->vector.x, msg->vector.y, msg->vector.z;
 }
 
-rclcpp_action::GoalResponse KCL::HandleGoal(const rclcpp_action::GoalUUID &, std::shared_ptr<const auv_core_helper::action::SetKCL::Goal> goal)
+rclcpp_action::GoalResponse KCL::HandleGoal(const rclcpp_action::GoalUUID &, std::shared_ptr<const bleurov_core_helper::action::SetKCL::Goal> goal)
 {
     RCLCPP_INFO(this->get_logger(), "Received goal request with state: %s", goal->desired_state.c_str());
     std::lock_guard<std::mutex> lock(goalMutex_);
     return rclcpp_action::GoalResponse::ACCEPT_AND_EXECUTE;
 }
 
-rclcpp_action::CancelResponse KCL::HandleCancel(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> /*goal_handle*/)
+rclcpp_action::CancelResponse KCL::HandleCancel(const std::shared_ptr<rclcpp_action::ServerGoalHandle<bleurov_core_helper::action::SetKCL>> /*goal_handle*/)
 {
     return rclcpp_action::CancelResponse::ACCEPT;
 }
 
-void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<auv_core_helper::action::SetKCL>> goal_handle)
+void KCL::HandleSetKCL(const std::shared_ptr<rclcpp_action::ServerGoalHandle<bleurov_core_helper::action::SetKCL>> goal_handle)
 {
 
     {   // remember the goal
@@ -307,13 +307,13 @@ void KCL::CallArmingService(bool arm)
 
 void KCL::CallFlightModeService(const std::string &mode)
 {
-    auto request = std::make_shared<auv_core_helper::srv::SetFlightMode::Request>();
+    auto request = std::make_shared<bleurov_core_helper::srv::SetFlightMode::Request>();
     request->mode = mode;
     //print
     RCLCPP_INFO(this->get_logger(), "Flight mode requested: %s", request->mode.c_str());
 
     auto future = flightModeClient_->async_send_request(request,
-        [this](rclcpp::Client<auv_core_helper::srv::SetFlightMode>::SharedFuture result) {
+        [this](rclcpp::Client<bleurov_core_helper::srv::SetFlightMode>::SharedFuture result) {
             if (result.get()->success) {
                 RCLCPP_INFO(this->get_logger(), "Flight mode set: %s", result.get()->message.c_str());
                 ctrlData_->flightMode_actual = ctrlData_->flightMode_desired;
@@ -348,16 +348,16 @@ void KCL::ExecuteFSM() {
     fsm_.ExecuteState();
 
     // Publish current state
-    auv_core_helper::msg::KclStatus stateMsg;
+    bleurov_core_helper::msg::KclStatus stateMsg;
     stateMsg.stamp = this->get_clock()->now();
     statePublisher_->publish(stateMsg);
     //stateMsg.state = fsm_.GetCurrentStateName();
     //statePublisher_->publish(stateMsg);
 
-    if (ctrlData_->deisiredCtrlMode == auv_core_helper::BrigdeMode::PoseCtrl) {
+    if (ctrlData_->deisiredCtrlMode == bleurov_core_helper::BrigdeMode::PoseCtrl) {
         PublishEigenPose(poseGoalGlobalPublisher_, ctrlData_->poseGoalGlobal, this->get_clock()->now());
     }
-    else if (ctrlData_->deisiredCtrlMode == auv_core_helper::BrigdeMode::VelCtrl) {
+    else if (ctrlData_->deisiredCtrlMode == bleurov_core_helper::BrigdeMode::VelCtrl) {
         PublishEigenPose(poseGoalGlobalPublisher_, ctrlData_->poseGoalGlobal, this->get_clock()->now());
         PublishEigenVelocity(velocityDesiredGlobalPublisher_, ctrlData_->velocityDesiredNED);
     }

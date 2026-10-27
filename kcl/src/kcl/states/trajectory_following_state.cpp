@@ -12,8 +12,8 @@ fsm::retval TrajectoryFollowingState::OnEntry() {
     RCLCPP_INFO(rclcpp::get_logger("TrajectoryFollowingState"), "Entering TRAJECTORY_FOLLOWING state");
 
     ctrlData->armed_desired = true;
-    ctrlData->flightMode_desired = auv_core_helper::FlightMode::GUIDED;
-    ctrlData->deisiredCtrlMode = auv_core_helper::BrigdeMode::VelCtrl;
+    ctrlData->flightMode_desired = bleurov_core_helper::FlightMode::GUIDED;
+    ctrlData->deisiredCtrlMode = bleurov_core_helper::BrigdeMode::VelCtrl;
 
     t_total_ = ctrlData->tpGoalTime;
     t_current_start_ = ctrlData->timeActual.seconds();

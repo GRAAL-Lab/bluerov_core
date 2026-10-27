@@ -17,7 +17,7 @@ To build and use the `AUV Core Helper` package, ensure the following dependencie
 ### Building the package
    ```bash
    git clone https://bitbucket.org/isme_robotics/auv_core_ros2/src/main/
-   colcon build --packages-select auv_core_helper
+   colcon build --packages-select bleurov_core_helper
    source install/setup.bash
    ```
 

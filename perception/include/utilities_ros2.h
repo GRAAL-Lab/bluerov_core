@@ -35,13 +35,13 @@
 #include <image_pipeline_msgs/msg/obstacle_array.hpp>
 #include <image_pipeline_msgs/msg/obst_detection_settings.hpp>
 #include <image_pipeline_msgs/msg/obst_detection_stats.hpp>
-#include <auv_core_helper/msg/mission_status.hpp>
-#include <auv_core_helper/msg/buoy.hpp>
-#include <auv_core_helper/msg/generic_object.hpp>
-#include <auv_core_helper/msg/dtc_request.hpp>
-#include <auv_core_helper/msg/dtc_list.hpp>
-#include <auv_core_helper/msg/pose_stamped.hpp>
-#include <auv_core_helper/topicnames.hpp>
+#include <bleurov_core_helper/msg/mission_status.hpp>
+#include <bleurov_core_helper/msg/buoy.hpp>
+#include <bleurov_core_helper/msg/generic_object.hpp>
+#include <bleurov_core_helper/msg/dtc_request.hpp>
+#include <bleurov_core_helper/msg/dtc_list.hpp>
+#include <bleurov_core_helper/msg/pose_stamped.hpp>
+#include <bleurov_core_helper/topicnames.hpp>
 
 #include <pcl_conversions/pcl_conversions.h>
 
@@ -167,7 +167,7 @@ class UtilitiesROS2 {
 
     static image_pipeline_msgs::msg::Obstacle FillObstacleMsg(rclcpp::Time t, std::shared_ptr<odtc::BoundingBox<2>> box,
               std::shared_ptr<odtc::TrackData> filterInfo, const std::map<std::string, odtc::IDAssocParams> &assocParams);
-    static auv_core_helper::msg::DtcList FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &trck, const TrackType trackType,
+    static bleurov_core_helper::msg::DtcList FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &trck, const TrackType trackType,
               const Eigen::Vector3d &llhCentroid, const bool enableDbgPrint = false, std::vector<odtc::BoundingBox<2>> boxes = {});
     static image_pipeline_msgs::msg::ObstacleArray FillObstacleArrayMsg(rclcpp::Time t, std::vector<odtc::Obstacle<2>> &obstacles,
       std::vector<odtc::PolarRegion> &excludedRegions, const Eigen::Vector3d &llhCentroid, const Eigen::TransformationMatrix &worldF_T_vehicleF,

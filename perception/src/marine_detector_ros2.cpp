@@ -28,8 +28,8 @@ MarineDetectorROS2::MarineDetectorROS2 (
         std::cerr << "[MarineDetectorROS2] setting RAMI callbacks..." << std::endl;
 
         // Create the pose subscription
-        geoPoseStampedSub_ = this->create_subscription<auv_core_helper::msg::PoseStamped>(
-            auv_core_helper::topicnames::pose_actual_global_,  // Replace with actual pose topic
+        geoPoseStampedSub_ = this->create_subscription<bleurov_core_helper::msg::PoseStamped>(
+            bleurov_core_helper::topicnames::pose_actual_global_,  // Replace with actual pose topic
             rclcpp::SensorDataQoS(),  // You can customize QoS here
             std::bind(&MarineDetectorROS2::PerceptionCallback, this, std::placeholders::_1)
         );
@@ -48,7 +48,7 @@ MarineDetectorROS2::MarineDetectorROS2 (
     );
 }
 
-void MarineDetectorROS2::MissionStatusCallback(const auv_core_helper::msg::MissionStatus::SharedPtr msg) {
+void MarineDetectorROS2::MissionStatusCallback(const bleurov_core_helper::msg::MissionStatus::SharedPtr msg) {
     // Access the requests object
     const auto& requests = msg->requests;
     DtcRequest dtcRequest;
@@ -82,7 +82,7 @@ void MarineDetectorROS2::InitSubscribers() {
     std::cerr << std::endl << tc::bluL << "[InitSubscribers] Starting..." << tc::none << std::endl;
     dsc_.Print();
 
-    missionStatusSub_ = this->create_subscription<auv_core_helper::msg::MissionStatus>(
+    missionStatusSub_ = this->create_subscription<bleurov_core_helper::msg::MissionStatus>(
         "mission_status", 
         10,  // Queue size
         std::bind(&MarineDetectorROS2::MissionStatusCallback, this, std::placeholders::_1)
@@ -120,7 +120,7 @@ void MarineDetectorROS2::InitPublishers() {
     worldF_vehiclePosePub_ = this->create_publisher<geometry_msgs::msg::PoseStamped>("/dtc/worldF_vehiclePose", 10);
 }
 
-bool MarineDetectorROS2::PerceptionCallback(const auv_core_helper::msg::PoseStamped::ConstSharedPtr& odometry_msg) {
+bool MarineDetectorROS2::PerceptionCallback(const bleurov_core_helper::msg::PoseStamped::ConstSharedPtr& odometry_msg) {
     if (odometry_msg != nullptr) {
         tsRos_ = odometry_msg->header.stamp;
         ts_ = UtilitiesROS2::ROSTimeToTimestamp(tsRos_);

@@ -10,13 +10,13 @@
 #include "rclcpp/rclcpp.hpp"
 #include "std_msgs/msg/int32.hpp"
 #include "std_msgs/msg/float64.hpp"
-#include "auv_core_helper/srv/mission_command.hpp"
+#include "bleurov_core_helper/srv/mission_command.hpp"
 #include <libconfig.h++>
 #include "ament_index_cpp/get_package_share_directory.hpp"
 #include "mission_ctrl/mission_data_structs.hpp"
 #include "std_msgs/msg/empty.hpp"
 
-using MissionCommand = auv_core_helper::srv::MissionCommand;
+using MissionCommand = bleurov_core_helper::srv::MissionCommand;
 using namespace mission;
 
 class CommandDispatcherNode : public rclcpp::Node
@@ -187,7 +187,7 @@ private:
 
   bool LoadConfiguration(std::shared_ptr<TaskBenchmarkSettings> &conf)
   {
-    std::string pkg = ament_index_cpp::get_package_share_directory("auv_core_helper");
+    std::string pkg = ament_index_cpp::get_package_share_directory("bleurov_core_helper");
     std::string path = pkg + "/param/ctrl_station_conf/tasks.conf";
     libconfig::Config cfg;
     try
@@ -271,7 +271,7 @@ private:
       request->n_buoys = insp->numberOfBuoys;
       for (const auto &p : insp->pipelinePipes)
       {
-        auv_core_helper::msg::PipelinePipe pipe_msg;
+        bleurov_core_helper::msg::PipelinePipe pipe_msg;
         pipe_msg.number = p.number;
         pipe_msg.pipeline_structure_id = p.number;
         pipe_msg.orientation = p.orientation;
@@ -296,7 +296,7 @@ private:
       request->n_damage_markers = combo->numberOfMainPipeDamageMarkers;
       for (const auto &p : combo->pipelinePipes)
       {
-        auv_core_helper::msg::PipelinePipe pipe_msg;
+        bleurov_core_helper::msg::PipelinePipe pipe_msg;
         pipe_msg.number = p.number;
         pipe_msg.pipeline_structure_id = p.number;
         pipe_msg.orientation = p.orientation;

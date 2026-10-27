@@ -7,7 +7,7 @@
 #include <Eigen/Dense>
 #include <vector>
 #include <ctrl_toolbox/DataStructs.h>
-#include "auv_core_helper/bridgemode.hpp"
+#include "bleurov_core_helper/bridgemode.hpp"
 #include <limits>
 
 

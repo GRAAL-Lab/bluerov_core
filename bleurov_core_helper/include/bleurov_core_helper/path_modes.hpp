@@ -3,7 +3,7 @@
 
 #include <string>
 
-namespace auv_core_helper {
+namespace bleurov_core_helper {
 
     namespace PathMode {
         const std::string Serpentine2D = "Serpentine2D";
@@ -11,6 +11,6 @@ namespace auv_core_helper {
         const std::string Circular2D = "Circular2D";
     }
 
-} // namespace auv_core_helper
+} // namespace bleurov_core_helper
 
 #endif // PATH_MODES_HPP

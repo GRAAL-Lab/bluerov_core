@@ -11,7 +11,7 @@ repositories:
     type: git
     url: git@bitbucket.org:isme_robotics/perception.git
     version: main
-  auv_core_helper:
+  bleurov_core_helper:
     type: git
     url: git@bitbucket.org:isme_robotics/auv_core_helper.git
     version: main

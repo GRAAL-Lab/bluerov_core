@@ -5,7 +5,7 @@ Kinematic Control Layer (KCL) package for BlueROV motion/state control in ROS 2.
 ## What it provides
 
 - Main node: `kinematic_control_layer_node`
-- Action server for mission/controller requests: `/set_kcl_state` (`auv_core_helper/action/SetKCL`)
+- Action server for mission/controller requests: `/set_kcl_state` (`bleurov_core_helper/action/SetKCL`)
 - Internal FSM states for:
   - `IDLE`
   - `HOLD`
@@ -18,7 +18,7 @@ Kinematic Control Layer (KCL) package for BlueROV motion/state control in ROS 2.
 From workspace root:
 
 ```bash
-colcon build --packages-select auv_core_helper kcl
+colcon build --packages-select bleurov_core_helper kcl
 source install/setup.bash
 ```
 

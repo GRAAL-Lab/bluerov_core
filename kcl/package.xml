@@ -18,7 +18,7 @@
   <depend>Eigen3</depend>
   <depend>sensor_msgs</depend> 
   <depend>tf2_geometry_msgs</depend>
-  <depend>auv_core_helper</depend>
+  <depend>bleurov_core_helper</depend>
   <depend>std_srvs</depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>python3-pyqt5</exec_depend>

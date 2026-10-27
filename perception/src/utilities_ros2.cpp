@@ -618,10 +618,10 @@ image_pipeline_msgs::msg::Pipe UtilitiesROS2::PipeToPipeMsg(const Pipe& pipe, co
     return msg;
 }
 
-auv_core_helper::msg::DtcList UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &trck, const TrackType trackType, const Eigen::Vector3d &llhCentroid,
+bleurov_core_helper::msg::DtcList UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t, const odtc::Tracking &trck, const TrackType trackType, const Eigen::Vector3d &llhCentroid,
     const bool enableDbgPrint, std::vector<odtc::BoundingBox<2>> boxes) {
 
-    auv_core_helper::msg::DtcList msg;
+    bleurov_core_helper::msg::DtcList msg;
     msg.header.stamp = t;
     auto measObstacles = trck.ObstacleMeasurements();
     auto filters = trck.Filters();
@@ -641,7 +641,7 @@ auv_core_helper::msg::DtcList UtilitiesROS2::FillObstacleArrayMsg(rclcpp::Time t
         obstacleMsg.class_area = 0;// infoBox.Volume();
         if (f.second.label.find("buoy") != std::string::npos) {
             if (enableDbgPrint) std::cerr << "[FillObstacleArrayMsg] buoy!" << std::endl;
-            auv_core_helper::msg::Buoy b;
+            bleurov_core_helper::msg::Buoy b;
             b.id = std::to_string(f.first);
             Eigen::Matrix3d extF_T_boxF_3D = box.ExtF_T_BoxF();
             Eigen::TransformationMatrix extF_T_boxF;

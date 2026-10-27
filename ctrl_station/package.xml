@@ -12,7 +12,7 @@
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
   
-  <depend>auv_core_helper</depend>
+  <depend>bleurov_core_helper</depend>
   <!--depend>mission_ctrl</depend-->
   <depend>ament_index_cpp</depend>
   <depend>rclcpp</depend>

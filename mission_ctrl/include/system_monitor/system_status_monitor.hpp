@@ -6,14 +6,14 @@
 #include "rclcpp/rclcpp.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 
-#include "auv_core_helper/action/set_kcl.hpp"
-#include "auv_core_helper/msg/dtc_list.hpp"
-#include "auv_core_helper/msg/heart_beat.hpp"
-#include "auv_core_helper/msg/kcl_status.hpp"
-#include "auv_core_helper/msg/mission_status.hpp"
-#include "auv_core_helper/msg/pose_stamped.hpp"
-#include "auv_core_helper/msg/system_status.hpp"
-#include "auv_core_helper/topicnames.hpp"
+#include "bleurov_core_helper/action/set_kcl.hpp"
+#include "bleurov_core_helper/msg/dtc_list.hpp"
+#include "bleurov_core_helper/msg/heart_beat.hpp"
+#include "bleurov_core_helper/msg/kcl_status.hpp"
+#include "bleurov_core_helper/msg/mission_status.hpp"
+#include "bleurov_core_helper/msg/pose_stamped.hpp"
+#include "bleurov_core_helper/msg/system_status.hpp"
+#include "bleurov_core_helper/topicnames.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_msgs/msg/int8.hpp"
 
@@ -35,19 +35,19 @@ class SystemStatusMonitor : public rclcpp::Node {
     std::vector<ctb::LatLong> safetyBoundary_;
 
     // Pubs and Subs, action client to KCL and service for mission command
-    rclcpp::Publisher<auv_core_helper::msg::SystemStatus>::SharedPtr systemStatusPub_;
-    rclcpp::Subscription<auv_core_helper::msg::MissionStatus>::SharedPtr missionCtrlSub_;
+    rclcpp::Publisher<bleurov_core_helper::msg::SystemStatus>::SharedPtr systemStatusPub_;
+    rclcpp::Subscription<bleurov_core_helper::msg::MissionStatus>::SharedPtr missionCtrlSub_;
     rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr bridgeHeartBeathSub_;
-    rclcpp::Subscription<auv_core_helper::msg::HeartBeat>::SharedPtr ardusubHeartBeathSub_;
-    rclcpp::Subscription<auv_core_helper::msg::KclStatus>::SharedPtr kclSub_;
-    rclcpp_action::Client<auv_core_helper::action::SetKCL>::SharedPtr serverKclClient_;
+    rclcpp::Subscription<bleurov_core_helper::msg::HeartBeat>::SharedPtr ardusubHeartBeathSub_;
+    rclcpp::Subscription<bleurov_core_helper::msg::KclStatus>::SharedPtr kclSub_;
+    rclcpp_action::Client<bleurov_core_helper::action::SetKCL>::SharedPtr serverKclClient_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr perceptionSub_;
 
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr safetySwitchSub_;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr customSwitchSub_;
 
     bool rcvFirstPose_ = false;
-    rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr poseSub_;
+    rclcpp::Subscription<bleurov_core_helper::msg::PoseStamped>::SharedPtr poseSub_;
 
     rclcpp::Time lastMissionCtrlTime;
     rclcpp::Time lastBridgeTime;
@@ -63,10 +63,10 @@ class SystemStatusMonitor : public rclcpp::Node {
 
     // Callbacks
     void StatusPub();
-    void MissionCtrlCB(const auv_core_helper::msg::MissionStatus::SharedPtr msg);
+    void MissionCtrlCB(const bleurov_core_helper::msg::MissionStatus::SharedPtr msg);
     void BridgeCB(const std_msgs::msg::Int8::SharedPtr msg);
-    void ArdusubCB(const auv_core_helper::msg::HeartBeat::SharedPtr msg);
-    void KclCB(const auv_core_helper::msg::KclStatus::SharedPtr msg);
+    void ArdusubCB(const bleurov_core_helper::msg::HeartBeat::SharedPtr msg);
+    void KclCB(const bleurov_core_helper::msg::KclStatus::SharedPtr msg);
     void PerceptionCB(const std_msgs::msg::Bool::SharedPtr msg);
 
     void SafetySwitchCB(const std_msgs::msg::Bool::SharedPtr msg);
@@ -74,7 +74,7 @@ class SystemStatusMonitor : public rclcpp::Node {
     
 
 
-    void PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
+    void PoseCB(const bleurov_core_helper::msg::PoseStamped::SharedPtr msg);
 
     void LoadConfiguration();
 

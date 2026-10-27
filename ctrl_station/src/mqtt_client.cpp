@@ -155,7 +155,7 @@ private:
 	
 	bool LoadMqttConf(){
                   
-	  std::string path = ament_index_cpp::get_package_share_directory("auv_core_helper") + "/param/ctrl_station_conf/mqtt_config.conf";
+	  std::string path = ament_index_cpp::get_package_share_directory("bleurov_core_helper") + "/param/ctrl_station_conf/mqtt_config.conf";
 
 	  std::ifstream file(path);
 	  if (!file.is_open())

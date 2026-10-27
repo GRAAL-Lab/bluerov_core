@@ -7,8 +7,8 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
     RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Entering PATH_FOLLOWING state");
 
     ctrlData->armed_desired = true;
-    ctrlData->flightMode_desired = auv_core_helper::FlightMode::GUIDED;
-    ctrlData->deisiredCtrlMode = auv_core_helper::BrigdeMode::VelCtrl;
+    ctrlData->flightMode_desired = bleurov_core_helper::FlightMode::GUIDED;
+    ctrlData->deisiredCtrlMode = bleurov_core_helper::BrigdeMode::VelCtrl;
      /* progress starts at 0 %                                        */
     ctrlData->actionProgress = 0.0;
     ctrlData->actionSuccess  = false;
@@ -26,7 +26,7 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
         currentAbscissa_ = 0.0;
         ctrlData->velocityDesiredNED.setZero();
         alosController_.reset();
-        if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Serpentine2D) {
+        if (ctrlData->pathPlanningMode == bleurov_core_helper::PathMode::Serpentine2D) {
             RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path Planning Serpentine 2D");
                 std::cout << "pathArea:\n" << ctrlData->pathArea << std::endl;
 
@@ -69,7 +69,7 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
 
         
 
-        } else if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Spiral2D) {
+        } else if (ctrlData->pathPlanningMode == bleurov_core_helper::PathMode::Spiral2D) {
             RCLCPP_INFO(rclcpp::get_logger("PathFollowingState"), "Path Planning Spiral 2D");
             // set offset with a 90 degree which is pi/2 radians
             path = sisl::PathFactory::NewOutwardSpiral(
@@ -79,7 +79,7 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
             );
             std::cout << "Spiral path created with diameter: " << ctrlData->spiralDiameter << " and increment: " << ctrlData->spiralIncrement << std::endl;
 
-        } else if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Circular2D) {
+        } else if (ctrlData->pathPlanningMode == bleurov_core_helper::PathMode::Circular2D) {
             std::cout << "Diameter: " << ctrlData->circularDiameter << std::endl;
             std::cout << "Center: " << ctrlData->circularCenterLocal.head<3>().transpose() << std::endl;
             std::cout << "Clockwise: " << ctrlData->circularClockwise << std::endl;
@@ -151,7 +151,7 @@ fsm::retval PathFollowingState::OnEntry() noexcept {
     pidPitch_.Initialize(gainsPitch, ctrlData->dt, std::max(ctrlData->maxVelocity(4), std::abs(ctrlData->minVelocity(4))));
     pidYaw_.Initialize(gainsYaw, ctrlData->dt, std::max(ctrlData->maxVelocity(5), std::abs(ctrlData->minVelocity(5))));
 
-    std::string alosPath_ = ament_index_cpp::get_package_share_directory("auv_core_helper") + "/param/ctrl/alosed_params";
+    std::string alosPath_ = ament_index_cpp::get_package_share_directory("bleurov_core_helper") + "/param/ctrl/alosed_params";
     dynamic_goal_alos::DynamicGoalBasedALOSParams alosParams = dynamic_goal_alos::LoadALOSParamsFromConf(alosPath_);
     alosController_ = std::make_unique<dynamic_goal_alos::DynamicGoalBasedALOS>(alosParams);
     delta_ = alosParams.deltaMax;
@@ -257,7 +257,7 @@ fsm::retval PathFollowingState::Execute() noexcept {
         double theta_psi_d = pi_h;
 
 
-        if (!(ctrlData->pathPlanningMode == auv_core_helper::PathMode::Spiral2D)){
+        if (!(ctrlData->pathPlanningMode == bleurov_core_helper::PathMode::Spiral2D)){
             bool alosSuccess = alosController_->ALOS3D(
             ctrlData->poseActualLocal.head(3),
             nextPoint,
@@ -289,11 +289,11 @@ fsm::retval PathFollowingState::Execute() noexcept {
         ctrlData->poseGoalLocal(3) = 0;
         ctrlData->poseGoalLocal(4) = psi_d; // desired pitch
         ctrlData->poseGoalLocal(5) = theta_psi_d; // desired yaw
-        if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Spiral2D || (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Circular2D && !ctrlData->circularClockwise)) {
+        if (ctrlData->pathPlanningMode == bleurov_core_helper::PathMode::Spiral2D || (ctrlData->pathPlanningMode == bleurov_core_helper::PathMode::Circular2D && !ctrlData->circularClockwise)) {
             ctrlData->poseGoalLocal(5) -= M_PI / 2.0; // adjust yaw for spiral path
             ctb::NormalizeAngle(ctrlData->poseGoalLocal(5));
         }
-        else if (ctrlData->pathPlanningMode == auv_core_helper::PathMode::Circular2D && ctrlData->circularClockwise) {
+        else if (ctrlData->pathPlanningMode == bleurov_core_helper::PathMode::Circular2D && ctrlData->circularClockwise) {
             ctrlData->poseGoalLocal(5) += M_PI / 2.0; // adjust yaw for circular path
             ctb::NormalizeAngle(ctrlData->poseGoalLocal(5));
         }

@@ -18,16 +18,16 @@
 #include "mission_ctrl/states/state_sleep.hpp"
 
 #include "std_msgs/msg/string.hpp"
-#include "auv_core_helper/action/set_kcl.hpp"
-#include "auv_core_helper/msg/dtc_list.hpp"
-#include "auv_core_helper/msg/heart_beat.hpp"
-#include "auv_core_helper/msg/kcl_status.hpp"
-#include "auv_core_helper/msg/mission_status.hpp"
-#include "auv_core_helper/msg/pose_stamped.hpp"
-#include "auv_core_helper/msg/system_status.hpp"
-#include "auv_core_helper/srv/mission_command.hpp"
-#include "auv_core_helper/srv/set_gimbal_attitude.hpp"
-#include "auv_core_helper/topicnames.hpp"
+#include "bleurov_core_helper/action/set_kcl.hpp"
+#include "bleurov_core_helper/msg/dtc_list.hpp"
+#include "bleurov_core_helper/msg/heart_beat.hpp"
+#include "bleurov_core_helper/msg/kcl_status.hpp"
+#include "bleurov_core_helper/msg/mission_status.hpp"
+#include "bleurov_core_helper/msg/pose_stamped.hpp"
+#include "bleurov_core_helper/msg/system_status.hpp"
+#include "bleurov_core_helper/srv/mission_command.hpp"
+#include "bleurov_core_helper/srv/set_gimbal_attitude.hpp"
+#include "bleurov_core_helper/topicnames.hpp"
 
 namespace mission {
 
@@ -53,14 +53,14 @@ class MissionController : public rclcpp::Node {
     std::shared_ptr<states::StateSleep> stateSleep_;
 
     // Pubs and Subs, action client to KCL and service for mission command
-    rclcpp::Publisher<auv_core_helper::msg::MissionStatus>::SharedPtr missionStatusPub_;
-    rclcpp::Subscription<auv_core_helper::msg::SystemStatus>::SharedPtr systemStatusSub_;
-    rclcpp::Subscription<auv_core_helper::msg::PoseStamped>::SharedPtr poseSub_;
-    rclcpp::Subscription<auv_core_helper::msg::DtcList>::SharedPtr perceptionSub_;
-    rclcpp::Subscription<auv_core_helper::msg::KclStatus>::SharedPtr KclSub_;
-    rclcpp_action::Client<auv_core_helper::action::SetKCL>::SharedPtr setKCLClient_;
-    rclcpp::Service<auv_core_helper::srv::MissionCommand>::SharedPtr missionCommandService_;
-    rclcpp::Client<auv_core_helper::srv::SetGimbalAttitude>::SharedPtr setGimbalAttitudeService_;
+    rclcpp::Publisher<bleurov_core_helper::msg::MissionStatus>::SharedPtr missionStatusPub_;
+    rclcpp::Subscription<bleurov_core_helper::msg::SystemStatus>::SharedPtr systemStatusSub_;
+    rclcpp::Subscription<bleurov_core_helper::msg::PoseStamped>::SharedPtr poseSub_;
+    rclcpp::Subscription<bleurov_core_helper::msg::DtcList>::SharedPtr perceptionSub_;
+    rclcpp::Subscription<bleurov_core_helper::msg::KclStatus>::SharedPtr KclSub_;
+    rclcpp_action::Client<bleurov_core_helper::action::SetKCL>::SharedPtr setKCLClient_;
+    rclcpp::Service<bleurov_core_helper::srv::MissionCommand>::SharedPtr missionCommandService_;
+    rclcpp::Client<bleurov_core_helper::srv::SetGimbalAttitude>::SharedPtr setGimbalAttitudeService_;
     double lastSetGimbalAttitude_ = 0.0;
 
     std_msgs::msg::String debugMsg;
@@ -70,11 +70,11 @@ class MissionController : public rclcpp::Node {
     rclcpp::TimerBase::SharedPtr delayMissionStartTimer_;
     rclcpp::TimerBase::SharedPtr simCtrlStationTimer_;
 
-    rclcpp_action::Client<auv_core_helper::action::SetKCL>::SendGoalOptions kclSendGoalOptions_;
+    rclcpp_action::Client<bleurov_core_helper::action::SetKCL>::SendGoalOptions kclSendGoalOptions_;
 
     // bool latestMissionCmdSet_ = false;
     // bool restartingLatestMissionCmd_ = false;
-    // auv_core_helper::srv::MissionCommand::Request::SharedPtr latestMissionCmdRequest_;
+    // bleurov_core_helper::srv::MissionCommand::Request::SharedPtr latestMissionCmdRequest_;
 
     void SimulateMissionCmdFromFile();
     void LoadConfiguration();
@@ -97,16 +97,16 @@ class MissionController : public rclcpp::Node {
     void StatusPub();
 
     // Callbacks
-    void SystemStatusCB(const auv_core_helper::msg::SystemStatus::SharedPtr msg);
-    void PoseCB(const auv_core_helper::msg::PoseStamped::SharedPtr msg);
-    void PerceptionCB(const auv_core_helper::msg::DtcList::SharedPtr msg);
-    void KclCB(const auv_core_helper::msg::KclStatus::SharedPtr msg);
-    void MissionCommandCB(const std::shared_ptr<auv_core_helper::srv::MissionCommand::Request> request,
-        std::shared_ptr<auv_core_helper::srv::MissionCommand::Response> response);
-    void ActionResultCallback(const rclcpp_action::ClientGoalHandle<auv_core_helper::action::SetKCL>::WrappedResult& result);
+    void SystemStatusCB(const bleurov_core_helper::msg::SystemStatus::SharedPtr msg);
+    void PoseCB(const bleurov_core_helper::msg::PoseStamped::SharedPtr msg);
+    void PerceptionCB(const bleurov_core_helper::msg::DtcList::SharedPtr msg);
+    void KclCB(const bleurov_core_helper::msg::KclStatus::SharedPtr msg);
+    void MissionCommandCB(const std::shared_ptr<bleurov_core_helper::srv::MissionCommand::Request> request,
+        std::shared_ptr<bleurov_core_helper::srv::MissionCommand::Response> response);
+    void ActionResultCallback(const rclcpp_action::ClientGoalHandle<bleurov_core_helper::action::SetKCL>::WrappedResult& result);
     void ActionFeedbackCallback(
-        rclcpp_action::ClientGoalHandle<auv_core_helper::action::SetKCL>::SharedPtr,
-        const std::shared_ptr<const auv_core_helper::action::SetKCL::Feedback>& feedback);
+        rclcpp_action::ClientGoalHandle<bleurov_core_helper::action::SetKCL>::SharedPtr,
+        const std::shared_ptr<const bleurov_core_helper::action::SetKCL::Feedback>& feedback);
 
 public:
     MissionController();

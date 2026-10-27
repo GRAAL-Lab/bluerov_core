@@ -8,8 +8,8 @@ import rclpy
 from rclpy.action import ActionClient
 from rclpy.node import Node
 
-from auv_core_helper.action import SetKCL
-from auv_core_helper.msg import LatLong, SpiralPathData, SerpentinePathData, CircularPathData
+from bleurov_core_helper.action import SetKCL
+from bleurov_core_helper.msg import LatLong, SpiralPathData, SerpentinePathData, CircularPathData
 
 
 class KclActionClient(Node):
