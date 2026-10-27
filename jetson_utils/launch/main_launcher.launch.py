@@ -36,7 +36,7 @@ def generate_launch_description():
         name='monitor_node'
     )
     kcl = Node(
-        package='kcl',
+        package='bluerov_kcl',
         executable='kinematic_control_layer_node',
         name='kinematic_control_layer_node'
     )

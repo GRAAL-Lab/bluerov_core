@@ -1,4 +1,4 @@
-# kcl
+# bluerov_kcl
 
 Kinematic Control Layer (KCL) package for BlueROV motion/state control in ROS 2.
 
@@ -18,7 +18,7 @@ Kinematic Control Layer (KCL) package for BlueROV motion/state control in ROS 2.
 From workspace root:
 
 ```bash
-colcon build --packages-select bleurov_core_helper kcl
+colcon build --packages-select bleurov_core_helper bluerov_kcl
 source install/setup.bash
 ```
 
@@ -27,19 +27,19 @@ source install/setup.bash
 Run the KCL node:
 
 ```bash
-ros2 run kcl kinematic_control_layer_node
+ros2 run bluerov_kcl kinematic_control_layer_node
 ```
 
 Send action goals via CLI client script:
 
 ```bash
-ros2 run kcl kcl_client.py --ros-args --params-file src/kcl/param/kcl_client.yaml
+ros2 run bluerov_kcl kcl_client.py --ros-args --params-file src/bluerov_kcl/param/kcl_client.yaml
 ```
 
 Run the optional PyQt GUI client:
 
 ```bash
-ros2 run kcl kcl_client_gui.py
+ros2 run bluerov_kcl kcl_client_gui.py
 ```
 
 ## Package layout

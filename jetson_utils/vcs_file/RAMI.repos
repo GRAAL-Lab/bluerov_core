@@ -19,7 +19,7 @@ repositories:
     type: git
     url: git@bitbucket.org:isme_robotics/bridge.git
     version: main
-  kcl:
+  bluerov_kcl:
     type: git
     url: git@bitbucket.org:isme_robotics/kcl.git
     version: main

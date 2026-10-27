@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(kcl)
+project(bluerov_kcl)
 
 # Set C++ Standard to C++17 directly
 set(CMAKE_CXX_STANDARD 17)
