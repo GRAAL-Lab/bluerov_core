@@ -12,20 +12,14 @@ Top-level packages in this workspace:
 |---|---|---|
 | `bleurov_core_helper` | Shared helpers, parameters, and common utilities | [`bleurov_core_helper/README.md`](./bleurov_core_helper/README.md) |
 | `bridge` | MAVLink and camera/data bridge components | [`bridge/README.md`](./bridge/README.md) |
-| `ctrl_station` | Command/control station and MQTT-related interfaces | [`ctrl_station/README.md`](./ctrl_station/README.md) |
-| `logger` | Mission/navigation logging utilities | [`logger/README.md`](./logger/README.md) |
-| `mission_ctrl` | Mission controller state-machine logic | [`mission_ctrl/README.md`](./mission_ctrl/README.md) |
-| `perception` | Perception and obstacle tracking pipeline | [`perception/README.md`](./perception/README.md) |
-| `bluerov_kcl` | Vehicle control/action layer package | [`bluerov_kcl/README.md`](./bluerov_kcl/README.md) |
-| `jetson_utils` | Jetson-side utility nodes/modules | [`jetson_utils/README.md`](./jetson_utils/README.md) |
-| `udp_camera` | UDP camera package/integration | [`udp_camera/README.md`](./udp_camera/README.md) |
+| `bluerov_video_viewer` | Low-latency BlueROV UDP video bridge and viewer | [`bluerov_video_viewer/README.md`](./bluerov_video_viewer/README.md) |
 
 ## Quick usage
 
 ### 1) Prerequisites
 
-- Ubuntu 22.04
-- ROS 2 Humble environment sourced
+- Ubuntu 24.04
+- ROS 2 Jazzy environment sourced
 - `colcon` toolchain installed
 
 ### 2) Build workspace

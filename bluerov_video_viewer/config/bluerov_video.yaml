@@ -1,0 +1,14 @@
+bluerov_video_viewer:
+  ros__parameters:
+    port: 5601
+    # Leave empty to generate the standard BlueROV H.264/RTP pipeline from `port`.
+    pipeline: ""
+    window_name: "BlueROV camera"
+    frame_id: "bluerov_camera"
+    # Restart the decoder if no complete frame arrives for this many seconds.
+    frame_timeout: 2.0
+    # Delay between attempts to rebuild a stopped pipeline.
+    reconnect_interval: 1.0
+    show_window: true
+    # Set false to display the stream without publishing /image_raw.
+    publish_ros_topic: true

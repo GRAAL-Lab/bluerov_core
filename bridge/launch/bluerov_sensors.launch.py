@@ -48,13 +48,16 @@ def generate_launch_description():
             ],
         ),
         Node(
-            package='udp_camera',
-            executable='camera_node.py',
-            name='udp_camera_node',
+            package='bluerov_video_viewer',
+            executable='bluerov_video_viewer_node',
+            name='bluerov_video_viewer',
             output='screen',
             parameters=[{
-                'udp_port': ParameterValue(camera_port, value_type=int),
+                'port': ParameterValue(camera_port, value_type=int),
+                'show_window': False,
+                'publish_ros_topic': True,
             }],
+            remappings=[('image_raw', 'camera/image_raw')],
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
