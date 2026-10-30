@@ -23,6 +23,7 @@ const std::string mission_status = "/auv/mission/status";
 const std::string objects = "/detections";
 
 // CTRL
+const std::string velocity_desired = "/auv/velocity_desired";
 const std::string pose_desired_global = "/auv/global/pose_desired";
 const std::string velocity_desired_global = "/auv/global/velocity_desired";
 

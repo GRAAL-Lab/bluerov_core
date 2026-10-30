@@ -82,7 +82,7 @@ ament_export_dependencies(
   ament_index_cpp
 )
 ament_export_include_directories(include)
-ament_export_libraries(${PROJECT_NAME}_lib)
+ament_export_targets(export_${PROJECT_NAME} HAS_LIBRARY_TARGET)
 
 # Install include files (modified to include all subdirectories)
 install(DIRECTORY include/
@@ -96,6 +96,7 @@ install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/rosidl_generator_cpp/${PROJECT_NAM
 
 # Install library
 install(TARGETS ${PROJECT_NAME}_lib
+  EXPORT export_${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin

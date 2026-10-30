@@ -1,6 +1,84 @@
 #include "bleurov_core_helper/helper_lib.hpp"
 
+#include <limits>
+#include <stdexcept>
+
 namespace fs = std::filesystem;
+
+namespace {
+
+template<size_t N>
+void LoadDoubleArray(
+    const libconfig::Setting& setting, std::array<double, N>* output,
+    const std::string& name) {
+    if (setting.getLength() != static_cast<int>(N)) {
+        throw std::runtime_error(name + " must contain exactly " + std::to_string(N) + " values");
+    }
+    for (size_t i = 0; i < N; ++i) {
+        (*output)[i] = static_cast<double>(setting[static_cast<int>(i)]);
+    }
+}
+
+template<typename T, size_t N>
+void LoadUnsignedArray(
+    const libconfig::Setting& setting, std::array<T, N>* output,
+    const std::string& name) {
+    if (setting.getLength() != static_cast<int>(N)) {
+        throw std::runtime_error(name + " must contain exactly " + std::to_string(N) + " values");
+    }
+    for (size_t i = 0; i < N; ++i) {
+        const int value = setting[static_cast<int>(i)];
+        if (value < 0 || value > static_cast<int>(std::numeric_limits<T>::max())) {
+            throw std::runtime_error(name + " contains an out-of-range value");
+        }
+        (*output)[i] = static_cast<T>(value);
+    }
+}
+
+}  // namespace
+
+bool bleurov_core_helper::LoadVelocityRcOverrideConfig(
+    VelocityRcOverrideConfig* config) {
+    if (config == nullptr) {
+        return false;
+    }
+
+    try {
+        const std::string package_path =
+            ament_index_cpp::get_package_share_directory("bleurov_core_helper");
+        const std::string config_path =
+            package_path + "/param/ctrl/velocity_rc_override.conf";
+        libconfig::Config cfg;
+        cfg.readFile(config_path.c_str());
+        const libconfig::Setting& root = cfg.lookup("velocity_rc_override");
+
+        config->enabled = root["enabled"];
+        config->require_poshold = root["require_poshold"];
+        config->frame_id = static_cast<const char*>(root["frame_id"]);
+        config->rate_hz = root["rate_hz"];
+        config->command_timeout_s = root["command_timeout_s"];
+        LoadDoubleArray(root["velocity_min_flu"], &config->velocity_min_flu,
+                        "velocity_min_flu");
+        LoadDoubleArray(root["velocity_max_flu"], &config->velocity_max_flu,
+                        "velocity_max_flu");
+        LoadUnsignedArray(root["rc_channels"], &config->rc_channels, "rc_channels");
+        LoadUnsignedArray(root["pwm_min"], &config->pwm_min, "pwm_min");
+        LoadUnsignedArray(root["pwm_neutral"], &config->pwm_neutral, "pwm_neutral");
+        LoadUnsignedArray(root["pwm_max"], &config->pwm_max, "pwm_max");
+
+        const int attitude_neutral_pwm = root["attitude_neutral_pwm"];
+        if (attitude_neutral_pwm < 0 ||
+            attitude_neutral_pwm > std::numeric_limits<uint16_t>::max()) {
+            throw std::runtime_error("attitude_neutral_pwm is out of range");
+        }
+        config->attitude_neutral_pwm = static_cast<uint16_t>(attitude_neutral_pwm);
+        return true;
+    } catch (const std::exception& exception) {
+        std::cerr << "Failed to load velocity RC override config: "
+                  << exception.what() << std::endl;
+        return false;
+    }
+}
 
 void LoadParamsFromConf(const std::string& config_name, Eigen::VectorXd* thruster_upper_limits,
                         Eigen::VectorXd* thruster_lower_limits, Eigen::VectorXd* thruster_allocation_weights,

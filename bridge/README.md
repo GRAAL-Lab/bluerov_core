@@ -27,6 +27,51 @@ If the Jetson pipeline cannot start, the bridge falls back to a CPU decode path.
 Bridge connection settings and every ROS topic/service name live in
 `bridge/param/bridge.yaml` as ordinary ROS parameters.
 
+## Vehicle command services
+
+After the bridge discovers the ArduSub heartbeat, it provides:
+
+- `/auv/service/arming` (`std_srvs/srv/SetBool`): `true` arms and `false`
+  disarms the vehicle.
+- `/auv/service/flight_mode` (`bleurov_core_helper/srv/SetFlightMode`): accepts
+  `MANUAL`, `STABILIZE`, `ALT_HOLD`, `GUIDED`, `SURFACE`, `POSHOLD`, or
+  `SURFTRAK`.
+
+A successful service response means the MAVLink command was transmitted.
+ArduSub's later `COMMAND_ACK` is reported in the bridge log.
+
+## KCL velocity control in POSHOLD
+
+The bridge subscribes to the `bleurov_core_helper::topicnames::velocity_desired`
+topic (`/auv/velocity_desired`) as `geometry_msgs/msg/TwistStamped`. Commands
+must use `frame_id: auv_base_link` and ROS FLU axes. The bridge converts them to
+ArduSub conventions and sends `RC_CHANNELS_OVERRIDE` at 100 Hz while ArduSub is
+in `POSHOLD`:
+
+- FLU forward is mapped to the ArduSub forward channel.
+- FLU left is negated and mapped to the lateral/right channel.
+- FLU up is mapped to ArduSub's climb-positive throttle channel.
+- FLU counter-clockwise yaw rate is negated and mapped to clockwise yaw.
+- Roll and pitch are always held at their neutral PWM values.
+
+The shared configuration is
+`bleurov_core_helper/param/ctrl/velocity_rc_override.conf`. Its
+`velocity_min_flu` and `velocity_max_flu` values must match KCL's configured
+velocity limits. Each command is saturated to that range and mapped piecewise
+through neutral to `pwm_min`, `pwm_neutral`, and `pwm_max`. Those four PWM
+arrays are ordered as forward, lateral/right, vertical/up, and yaw/clockwise.
+
+`rc_channels` is ordered as roll, pitch, throttle, yaw, forward, and lateral. It
+must match the vehicle's `RCMAP_*` parameters. The shared configuration uses
+the current ArduSub defaults: `[1, 2, 3, 4, 6, 7]`.
+
+For ArduSub to accept `RC_CHANNELS_OVERRIDE`, its `SYSID_MYGCS` parameter must
+equal the bridge `system_id` parameter (42 by default). If no fresh KCL command
+arrives within `command_timeout_s`, the bridge continuously sends neutral
+controls so POSHOLD holds position, depth, and heading. Overrides are released
+when the vehicle leaves POSHOLD. Set `enabled = false` in the shared config to
+disable this command path completely.
+
 The bridge also publishes `sensor_msgs/msg/CameraInfo` on
 `/auv/camera/camera_info` so RViz camera displays can subscribe cleanly.
 

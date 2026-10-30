@@ -28,6 +28,8 @@ find_package(geometry_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(builtin_interfaces REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
+find_package(bleurov_core_helper REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(ament_index_cpp REQUIRED)
@@ -94,6 +96,8 @@ ament_target_dependencies(bridge_node
   visualization_msgs
   tf2_ros
   geometry_msgs
+  std_srvs
+  bleurov_core_helper
   Eigen3
   sensor_msgs
   tf2_geometry_msgs

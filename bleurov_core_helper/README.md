@@ -29,6 +29,22 @@ The package defines the following message types:
 - `PoseStamped`: Used for pose-related information.
 - `ControlCommand`: Custom service for control commands.
 
+The shared topic-name header defines `/auv/velocity_desired` as
+`bleurov_core_helper::topicnames::velocity_desired`. KCL publishes
+`geometry_msgs/msg/TwistStamped` on this topic in the `auv_base_link` FLU frame.
+
+## KCL to ArduSub velocity mapping
+
+`param/ctrl/velocity_rc_override.conf` is the single configuration source for
+the bridge's KCL velocity to ArduSub `RC_CHANNELS_OVERRIDE` mapping. It contains
+the KCL velocity limits, ArduSub channel map, PWM min/neutral/max values,
+command timeout, frame ID, and output rate.
+
+The default output rate is 100 Hz, matching KCL's `dt = 0.01 s`. This is
+appropriate for the local Ethernet/UDP BlueROV connection and prevents the
+bridge from adding a slower 20 Hz sample-and-hold stage. The rate remains
+configurable through `rate_hz`.
+
 # System Architecture
 See the [Architecture Diagram](sw.md).
 

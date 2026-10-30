@@ -3,6 +3,7 @@
 #include <cstring>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 
@@ -142,6 +143,8 @@ private:
       gst_object_unref(pipeline_);
       pipeline_ = nullptr;
     }
+    media_time_origin_.reset();
+    ros_time_origin_.reset();
   }
 
   void schedule_reconnect(const std::string & reason)
@@ -244,7 +247,7 @@ private:
 
     if (publish_ros_topic_) {
       auto message = std::make_unique<sensor_msgs::msg::Image>();
-      message->header.stamp = now();
+      message->header.stamp = media_stamp(buffer);
       message->header.frame_id = frame_id_;
       message->height = static_cast<uint32_t>(height);
       message->width = static_cast<uint32_t>(width);
@@ -263,6 +266,27 @@ private:
     gst_video_frame_unmap(&video_frame);
   }
 
+  rclcpp::Time media_stamp(GstBuffer * buffer)
+  {
+    GstClockTime media_time = GST_BUFFER_PTS(buffer);
+    if (!GST_CLOCK_TIME_IS_VALID(media_time)) {
+      media_time = GST_BUFFER_DTS(buffer);
+    }
+    if (!GST_CLOCK_TIME_IS_VALID(media_time)) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Camera frame has no RTP/GStreamer timestamp; using ROS reception time");
+      return now();
+    }
+
+    if (!media_time_origin_ || !ros_time_origin_ || media_time < *media_time_origin_) {
+      media_time_origin_ = media_time;
+      ros_time_origin_ = now();
+    }
+    return *ros_time_origin_ +
+      rclcpp::Duration::from_nanoseconds(static_cast<int64_t>(media_time - *media_time_origin_));
+  }
+
   std::string pipeline_description_;
   std::string window_name_;
   std::string frame_id_;
@@ -274,6 +298,8 @@ private:
   std::chrono::steady_clock::time_point next_reconnect_time_{};
   GstElement * pipeline_{nullptr};
   GstAppSink * appsink_{nullptr};
+  std::optional<GstClockTime> media_time_origin_;
+  std::optional<rclcpp::Time> ros_time_origin_;
   rclcpp::Publisher<sensor_msgs::msg::Image>::SharedPtr publisher_;
   rclcpp::TimerBase::SharedPtr timer_;
 };

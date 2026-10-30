@@ -31,8 +31,9 @@ constexpr double kMradpsToRadps = 1.0 / 1000.0;
 constexpr double kMilligaussToTesla = 1.0e-7;
 constexpr double kNominalFallbackVoltageV = 16.0;
 constexpr auto kBatteryVoltageWarningDelay = std::chrono::seconds(5);
+constexpr uint32_t kArduSubPosholdMode = 16U;
 // MAVLink/ArduPilot aircraft body axes are forward-right-down (FRD), while
-// ROS REP-103 base_link axes are forward-left-up (FLU). This is a pi rotation
+// ROS REP-103 auv_base_link axes are forward-left-up (FLU). This is a pi rotation
 // about the shared forward X axis: v_flu = R_flu_frd * v_frd.
 const Eigen::Matrix3d kFrdToFlu = (Eigen::Matrix3d() <<
      1.0,  0.0,  0.0,
@@ -173,6 +174,22 @@ const rclcpp::Duration BlueROVBridge::HeartbeatTimeout = rclcpp::Duration::from_
 BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_bridge", options){
   int configured_system_id = static_cast<int>(system_id_);
   int configured_component_id = static_cast<int>(component_id_);
+  bleurov_core_helper::VelocityRcOverrideConfig velocity_rc_config;
+  if (!bleurov_core_helper::LoadVelocityRcOverrideConfig(&velocity_rc_config)) {
+    throw std::runtime_error("Unable to load the shared KCL velocity RC override configuration");
+  }
+  rc_override_enabled_ = velocity_rc_config.enabled;
+  rc_override_require_poshold_ = velocity_rc_config.require_poshold;
+  velocity_desired_frame_id_ = velocity_rc_config.frame_id;
+  rc_override_rate_hz_ = velocity_rc_config.rate_hz;
+  velocity_command_timeout_s_ = velocity_rc_config.command_timeout_s;
+  velocity_command_min_flu_ = velocity_rc_config.velocity_min_flu;
+  velocity_command_max_flu_ = velocity_rc_config.velocity_max_flu;
+  rc_override_channels_ = velocity_rc_config.rc_channels;
+  rc_override_pwm_min_ = velocity_rc_config.pwm_min;
+  rc_override_pwm_neutral_ = velocity_rc_config.pwm_neutral;
+  rc_override_pwm_max_ = velocity_rc_config.pwm_max;
+  rc_override_attitude_neutral_pwm_ = velocity_rc_config.attitude_neutral_pwm;
 
   this->declare_parameter<bool>("simulation_mode", simulation_mode_);
   this->declare_parameter<std::string>("remote_address", remote_addr_str_);
@@ -232,6 +249,39 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   this->get_parameter("pressure_topic", pressure_topic_);
   this->get_parameter("pressure_frame_id", pressure_frame_id_);
   this->get_parameter("thrust_table_csv_path", thrust_table_csv_path_);
+  if (rc_override_attitude_neutral_pwm_ < 800 ||
+      rc_override_attitude_neutral_pwm_ > 2200) {
+    throw std::invalid_argument("attitude_neutral_pwm must be between 800 and 2200");
+  }
+  if (rc_override_rate_hz_ <= 0.0 || velocity_command_timeout_s_ <= 0.0) {
+    throw std::invalid_argument(
+        "rc_override_rate_hz and velocity_command_timeout_s must be greater than zero");
+  }
+  for (const size_t axis : {size_t{0}, size_t{1}, size_t{2}, size_t{5}}) {
+    if (!std::isfinite(velocity_command_min_flu_[axis]) ||
+        !std::isfinite(velocity_command_max_flu_[axis]) ||
+        velocity_command_min_flu_[axis] >= 0.0 ||
+        velocity_command_max_flu_[axis] <= 0.0) {
+      throw std::invalid_argument(
+          "Controlled velocity limits must have a finite negative minimum and positive maximum");
+    }
+  }
+  std::array<bool, 19> used_channels{};
+  for (const auto channel : rc_override_channels_) {
+    if (channel < 1 || channel > 18 || used_channels[channel]) {
+      throw std::invalid_argument(
+          "rc_override_channels must contain six unique channel numbers from 1 through 18");
+    }
+    used_channels[channel] = true;
+  }
+  for (size_t axis = 0; axis < rc_override_pwm_min_.size(); ++axis) {
+    if (rc_override_pwm_min_[axis] < 800 || rc_override_pwm_max_[axis] > 2200 ||
+        rc_override_pwm_min_[axis] >= rc_override_pwm_neutral_[axis] ||
+        rc_override_pwm_neutral_[axis] >= rc_override_pwm_max_[axis]) {
+      throw std::invalid_argument(
+          "Each RC PWM axis must satisfy 800 <= min < neutral < max <= 2200");
+    }
+  }
   this->get_parameter("camera_enabled", camera_config_.enabled);
   this->get_parameter("camera_source_uri", camera_config_.source_uri);
   this->get_parameter("camera_rtp_caps", camera_config_.rtp_caps);
@@ -279,6 +329,24 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   magneticFieldPublisher_ = this->create_publisher<sensor_msgs::msg::MagneticField>(magnetic_field_topic_, 20);
   forcesActualPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(forces_actual_topic_, 10);
   pressureScaled2Publisher_ = this->create_publisher<sensor_msgs::msg::FluidPressure>(pressure_topic_, 20);
+  if (rc_override_enabled_) {
+    velocityDesiredSubscription_ =
+        this->create_subscription<geometry_msgs::msg::TwistStamped>(
+            velocity_desired_topic_, rclcpp::QoS(rclcpp::KeepLast(1)).reliable(),
+            std::bind(
+                &BlueROVBridge::velocityDesiredCallback, this,
+                std::placeholders::_1));
+  }
+  armingService_ = this->create_service<SetArm>(
+    "/auv/service/arming",
+    std::bind(
+      &BlueROVBridge::armingServiceCallback, this,
+      std::placeholders::_1, std::placeholders::_2));
+  flightModeService_ = this->create_service<SetFlightMode>(
+    "/auv/service/flight_mode",
+    std::bind(
+      &BlueROVBridge::flightModeServiceCallback, this,
+      std::placeholders::_1, std::placeholders::_2));
 #ifdef BRIDGE_ENABLE_CAMERA
   if (camera_config_.enabled) {
     auto camera_qos = rclcpp::SensorDataQoS().keep_last(1);
@@ -310,6 +378,21 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   // forwarded to ROS in 10 ms batches.
   data_timer_ = this->create_wall_timer(
       std::chrono::milliseconds(1), std::bind(&BlueROVBridge::receiveData, this));
+  if (rc_override_enabled_) {
+    const auto command_period = std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::duration<double>(1.0 / rc_override_rate_hz_));
+    rc_override_timer_ = this->create_wall_timer(
+        command_period, std::bind(&BlueROVBridge::sendVelocityRcOverride, this));
+    RCLCPP_INFO(
+        this->get_logger(),
+        "KCL velocity RC override enabled: %s (%s), %.1f Hz, %.3f s timeout",
+        velocity_desired_topic_.c_str(), velocity_desired_frame_id_.c_str(),
+        rc_override_rate_hz_, velocity_command_timeout_s_);
+    RCLCPP_WARN(
+        this->get_logger(),
+        "ArduSub SYSID_MYGCS must match bridge system_id=%u for RC overrides to be accepted",
+        static_cast<unsigned>(system_id_));
+  }
 
   last_heartbeat_time_ = this->now();
 
@@ -347,6 +430,9 @@ BlueROVBridge::~BlueROVBridge(){
 #ifdef BRIDGE_ENABLE_CAMERA
   stopCameraStream();
 #endif
+  if (rc_override_active_ && got_heartbeat_ && sock_fd_ >= 0) {
+    releaseRcOverrides();
+  }
   if (sock_fd_ != -1) {
     close(sock_fd_);
   }
@@ -432,6 +518,8 @@ void BlueROVBridge::destroyCameraPipeline() {
   if (pipeline != nullptr) {
     gst_object_unref(pipeline);
   }
+  camera_media_time_origin_ns_.reset();
+  camera_ros_time_origin_.reset();
 }
 
 std::string BlueROVBridge::buildCameraPipelineDescription(const bool use_hw_decoder) const {
@@ -594,7 +682,7 @@ bool BlueROVBridge::publishCameraSample(GstSample* sample) {
 
   const auto width = static_cast<uint32_t>(GST_VIDEO_INFO_WIDTH(&video_info));
   const auto height = static_cast<uint32_t>(GST_VIDEO_INFO_HEIGHT(&video_info));
-  const auto stamp = this->now();
+  const auto stamp = cameraMediaStamp(sample);
   auto image_msg = std::make_unique<sensor_msgs::msg::Image>();
   image_msg->header.stamp = stamp;
   image_msg->header.frame_id = camera_config_.frame_id;
@@ -630,6 +718,29 @@ bool BlueROVBridge::publishCameraSample(GstSample* sample) {
     cameraImagePublisher_->publish(std::move(image_msg));
   }
   return true;
+}
+
+rclcpp::Time BlueROVBridge::cameraMediaStamp(GstSample* sample) {
+  GstBuffer* buffer = sample == nullptr ? nullptr : gst_sample_get_buffer(sample);
+  GstClockTime media_time = buffer == nullptr ? GST_CLOCK_TIME_NONE : GST_BUFFER_PTS(buffer);
+  if (!GST_CLOCK_TIME_IS_VALID(media_time) && buffer != nullptr) {
+    media_time = GST_BUFFER_DTS(buffer);
+  }
+  if (!GST_CLOCK_TIME_IS_VALID(media_time)) {
+    RCLCPP_WARN_THROTTLE(
+      get_logger(), *get_clock(), 5000,
+      "Camera frame has no RTP/GStreamer timestamp; using ROS reception time");
+    return now();
+  }
+
+  const uint64_t media_ns = static_cast<uint64_t>(media_time);
+  if (!camera_media_time_origin_ns_ || !camera_ros_time_origin_ ||
+      media_ns < *camera_media_time_origin_ns_) {
+    camera_media_time_origin_ns_ = media_ns;
+    camera_ros_time_origin_ = now();
+  }
+  return *camera_ros_time_origin_ + rclcpp::Duration::from_nanoseconds(
+    static_cast<int64_t>(media_ns - *camera_media_time_origin_ns_));
 }
 
 void BlueROVBridge::publishCameraInfo(const uint32_t width, const uint32_t height, const rclcpp::Time& stamp) {
@@ -1018,12 +1129,14 @@ const char* BlueROVBridge::get_message_name(uint16_t message_id) {
 
 void BlueROVBridge::handleArduSubHeartbeat(const mavlink_message_t& msg, const sockaddr_in& sender_addr){
 
-  mavlink_msg_heartbeat_decode(&msg, &hb);
+  mavlink_heartbeat_t received_heartbeat;
+  mavlink_msg_heartbeat_decode(&msg, &received_heartbeat);
 
   // If the message is not from an autopilot, ignore it
-  if (hb.type == MAV_AUTOPILOT_INVALID) return;
+  if (received_heartbeat.autopilot == MAV_AUTOPILOT_INVALID) return;
 
-  if (!got_heartbeat_ && (hb.type == MAV_TYPE_SUBMARINE) ) {
+  if (!got_heartbeat_ && (received_heartbeat.type == MAV_TYPE_SUBMARINE) ) {
+    hb = received_heartbeat;
     target_system_    = msg.sysid;
     target_component_ = msg.compid;
     got_heartbeat_    = true;
@@ -1055,6 +1168,7 @@ void BlueROVBridge::handleArduSubHeartbeat(const mavlink_message_t& msg, const s
     configureDataStreams();
   } 
   else if (msg.sysid == target_system_ && msg.compid == target_component_) {
+    hb = received_heartbeat;
     last_heartbeat_time_ = this->now();
     return;
   }
@@ -1279,8 +1393,10 @@ void BlueROVBridge::handleServoOutputRaw(const mavlink_message_t& msg) {
     }
   }
 
-  forces_actual_msg_.header.stamp = this->now();
-  forces_actual_msg_.header.frame_id = "base_link";
+  // SERVO_OUTPUT_RAW.time_usec is the ArduSub boot-relative sample time.
+  forces_actual_msg_.header.stamp =
+      ardusubBootTimeToRos(servo_output_raw.time_usec, 1000ULL);
+  forces_actual_msg_.header.frame_id = "auv_base_link";
   for (size_t i = 0; i < kThrusterCount; ++i) {
     forces_actual_msg_.effort[i] =
         getThrust(static_cast<double>(thruster_pwm[i]), interpolation_voltage_v);
@@ -1370,7 +1486,239 @@ void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg) {
     RCLCPP_INFO(this->get_logger(),
                 "ArduSub acknowledged SET_MESSAGE_INTERVAL with MAV_RESULT=%u.",
                 static_cast<unsigned>(ack.result));
+  } else if (ack.command == MAV_CMD_COMPONENT_ARM_DISARM ||
+             ack.command == MAV_CMD_DO_SET_MODE) {
+    RCLCPP_INFO(this->get_logger(),
+                "ArduSub acknowledged command %u with MAV_RESULT=%u.",
+                static_cast<unsigned>(ack.command),
+                static_cast<unsigned>(ack.result));
   }
+}
+
+void BlueROVBridge::armingServiceCallback(
+    const std::shared_ptr<SetArm::Request> request,
+    std::shared_ptr<SetArm::Response> response) {
+  if (!sendArmCommand(request->data)) {
+    response->success = false;
+    response->message = "Command not sent: no ArduSub heartbeat or MAVLink socket unavailable";
+    return;
+  }
+
+  response->success = true;
+  response->message = request->data ? "Arm command sent" : "Disarm command sent";
+}
+
+void BlueROVBridge::flightModeServiceCallback(
+    const std::shared_ptr<SetFlightMode::Request> request,
+    std::shared_ptr<SetFlightMode::Response> response) {
+  const auto custom_mode = flightModeNumber(request->mode);
+  if (!custom_mode) {
+    response->success = false;
+    response->message =
+      "Unsupported mode. Use MANUAL, STABILIZE, ALT_HOLD, GUIDED, SURFACE, POSHOLD, or SURFTRAK";
+    return;
+  }
+  if (!sendFlightModeCommand(*custom_mode)) {
+    response->success = false;
+    response->message = "Command not sent: no ArduSub heartbeat or MAVLink socket unavailable";
+    return;
+  }
+
+  response->success = true;
+  response->message = "Flight-mode command sent: " + request->mode;
+}
+
+bool BlueROVBridge::sendArmCommand(const bool arm_vehicle) {
+  if (!got_heartbeat_ || sock_fd_ < 0) {
+    return false;
+  }
+
+  mavlink_message_t msg;
+  mavlink_msg_command_long_pack(
+    system_id_, component_id_, &msg, target_system_, target_component_,
+    MAV_CMD_COMPONENT_ARM_DISARM, 0,
+    arm_vehicle ? 1.0f : 0.0f,
+    0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+  sendMavlinkMessage(msg);
+  RCLCPP_INFO(get_logger(), "%s command sent", arm_vehicle ? "Arm" : "Disarm");
+  return true;
+}
+
+std::optional<uint32_t> BlueROVBridge::flightModeNumber(const std::string& mode) const {
+  if (mode == "STABILIZE") return 0U;
+  if (mode == "ALT_HOLD") return 2U;
+  if (mode == "GUIDED") return 4U;
+  if (mode == "SURFACE") return 9U;
+  if (mode == "POSHOLD") return 16U;
+  if (mode == "MANUAL") return 19U;
+  if (mode == "SURFTRAK") return 21U;
+  return std::nullopt;
+}
+
+bool BlueROVBridge::sendFlightModeCommand(const uint32_t custom_mode) {
+  if (!got_heartbeat_ || sock_fd_ < 0) {
+    return false;
+  }
+
+  mavlink_message_t msg;
+  mavlink_msg_command_long_pack(
+    system_id_, component_id_, &msg, target_system_, target_component_,
+    MAV_CMD_DO_SET_MODE, 0,
+    static_cast<float>(MAV_MODE_FLAG_CUSTOM_MODE_ENABLED),
+    static_cast<float>(custom_mode),
+    0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
+  sendMavlinkMessage(msg);
+  RCLCPP_INFO(get_logger(), "Flight-mode command sent (custom mode %u)", custom_mode);
+  return true;
+}
+
+void BlueROVBridge::velocityDesiredCallback(
+    const geometry_msgs::msg::TwistStamped::SharedPtr msg) {
+  if (msg->header.frame_id != velocity_desired_frame_id_) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Ignoring velocity command in frame '%s'; expected '%s'",
+        msg->header.frame_id.c_str(), velocity_desired_frame_id_.c_str());
+    return;
+  }
+
+  const Eigen::Vector3d linear_flu(
+      msg->twist.linear.x, msg->twist.linear.y, msg->twist.linear.z);
+  const Eigen::Vector3d angular_flu(
+      msg->twist.angular.x, msg->twist.angular.y, msg->twist.angular.z);
+  if (!linear_flu.allFinite() || !angular_flu.allFinite()) {
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "Ignoring non-finite KCL velocity command");
+    return;
+  }
+
+  // The FLU<->FRD rotation is its own inverse.
+  const Eigen::Vector3d linear_frd = kFrdToFlu * linear_flu;
+  const Eigen::Vector3d angular_frd = kFrdToFlu * angular_flu;
+
+  std::lock_guard<std::mutex> lock(velocity_command_mutex_);
+  latest_velocity_command_frd_.linear.x = linear_frd.x();
+  latest_velocity_command_frd_.linear.y = linear_frd.y();
+  latest_velocity_command_frd_.linear.z = linear_frd.z();
+  // POSHOLD expects roll and pitch angle inputs. Keep both centered and use
+  // only the yaw-rate component from KCL.
+  latest_velocity_command_frd_.angular.x = 0.0;
+  latest_velocity_command_frd_.angular.y = 0.0;
+  latest_velocity_command_frd_.angular.z = angular_frd.z();
+  latest_velocity_command_received_ = std::chrono::steady_clock::now();
+  velocity_command_received_ = true;
+}
+
+uint16_t BlueROVBridge::velocityToPwm(
+    const double value, const double input_min, const double input_max,
+    const size_t pwm_axis) const {
+  const double bounded_value = std::clamp(value, input_min, input_max);
+  const double pwm_neutral = rc_override_pwm_neutral_[pwm_axis];
+  double pwm = pwm_neutral;
+  if (bounded_value > 0.0) {
+    const double fraction = bounded_value / input_max;
+    pwm += fraction * (rc_override_pwm_max_[pwm_axis] - pwm_neutral);
+  } else if (bounded_value < 0.0) {
+    const double fraction = bounded_value / input_min;
+    pwm -= fraction * (pwm_neutral - rc_override_pwm_min_[pwm_axis]);
+  }
+  return static_cast<uint16_t>(std::lround(pwm));
+}
+
+void BlueROVBridge::sendVelocityRcOverride() {
+  if (!got_heartbeat_ || sock_fd_ < 0) {
+    return;
+  }
+
+  geometry_msgs::msg::Twist command_frd;
+  std::chrono::steady_clock::time_point received_time;
+  {
+    std::lock_guard<std::mutex> lock(velocity_command_mutex_);
+    if (!velocity_command_received_) {
+      return;
+    }
+    command_frd = latest_velocity_command_frd_;
+    received_time = latest_velocity_command_received_;
+  }
+
+  if (rc_override_require_poshold_ && hb.custom_mode != kArduSubPosholdMode) {
+    if (rc_override_active_) {
+      releaseRcOverrides();
+    }
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "KCL velocity command is ready, but ArduSub is not in POSHOLD; RC overrides are released");
+    return;
+  }
+
+  const double command_age_s = std::chrono::duration<double>(
+      std::chrono::steady_clock::now() - received_time).count();
+  if (command_age_s > velocity_command_timeout_s_) {
+    command_frd = geometry_msgs::msg::Twist{};
+    RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 2000,
+        "KCL velocity command is stale (%.3f s); sending neutral RC override",
+        command_age_s);
+  }
+
+  // KCL is FLU, while the stored command is FRD. ArduSub's pilot throttle is
+  // climb-positive, so its vertical RC input is the negative of FRD down.
+  const double forward = command_frd.linear.x;
+  const double right = command_frd.linear.y;
+  const double up = -command_frd.linear.z;
+  const double clockwise_yaw_rate = command_frd.angular.z;
+
+  const uint16_t forward_pwm = velocityToPwm(
+      forward, velocity_command_min_flu_[0], velocity_command_max_flu_[0], 0);
+  const uint16_t lateral_pwm = velocityToPwm(
+      right, -velocity_command_max_flu_[1], -velocity_command_min_flu_[1], 1);
+  const uint16_t vertical_pwm = velocityToPwm(
+      up, velocity_command_min_flu_[2], velocity_command_max_flu_[2], 2);
+  const uint16_t yaw_pwm = velocityToPwm(
+      clockwise_yaw_rate,
+      -velocity_command_max_flu_[5], -velocity_command_min_flu_[5], 3);
+
+  // Channels 1-8 use UINT16_MAX to mean "ignore". Extension channels 9-18
+  // use zero for the same purpose.
+  std::array<uint16_t, 18> channels{};
+  std::fill_n(channels.begin(), 8, UINT16_MAX);
+  const auto set_channel = [&channels](const uint8_t channel, const uint16_t pwm) {
+    channels.at(static_cast<size_t>(channel - 1)) = pwm;
+  };
+  set_channel(rc_override_channels_[0], rc_override_attitude_neutral_pwm_);  // roll
+  set_channel(rc_override_channels_[1], rc_override_attitude_neutral_pwm_);  // pitch
+  set_channel(rc_override_channels_[2], vertical_pwm);                       // throttle
+  set_channel(rc_override_channels_[3], yaw_pwm);
+  set_channel(rc_override_channels_[4], forward_pwm);
+  set_channel(rc_override_channels_[5], lateral_pwm);
+
+  sendRcChannels(channels);
+  rc_override_active_ = true;
+}
+
+void BlueROVBridge::sendRcChannels(const std::array<uint16_t, 18>& channels) {
+  mavlink_message_t msg;
+  mavlink_msg_rc_channels_override_pack(
+      system_id_, component_id_, &msg, target_system_, target_component_,
+      channels[0], channels[1], channels[2], channels[3], channels[4], channels[5],
+      channels[6], channels[7], channels[8], channels[9], channels[10], channels[11],
+      channels[12], channels[13], channels[14], channels[15], channels[16], channels[17]);
+  sendMavlinkMessage(msg);
+}
+
+void BlueROVBridge::releaseRcOverrides() {
+  std::array<uint16_t, 18> channels{};
+  std::fill_n(channels.begin(), 8, UINT16_MAX);
+  const auto release_channel = [&channels](const uint8_t channel) {
+    channels.at(static_cast<size_t>(channel - 1)) =
+        channel <= 8 ? 0U : static_cast<uint16_t>(UINT16_MAX - 1U);
+  };
+  for (const auto channel : rc_override_channels_) {
+    release_channel(channel);
+  }
+  sendRcChannels(channels);
+  rc_override_active_ = false;
 }
 
 void BlueROVBridge::handleScaledPressure2(const mavlink_message_t& msg){
