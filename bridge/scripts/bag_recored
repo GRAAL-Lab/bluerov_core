@@ -11,7 +11,7 @@ CAMERA_TOPIC = "/camera/image_raw"
 
 TOPICS = [
     "/auv/dvl",
-    "/auv/dvl/distance",
+    "/dvl/data",
     "/auv/forces_actual",
     "/auv/global/velocity_actual",
     "/auv/imu/data_raw",

@@ -42,6 +42,10 @@ ArduSub's later `COMMAND_ACK` is reported in the bridge log.
 
 ## KCL velocity control in POSHOLD
 
+The bridge listens on UDP `14551`; UDP `14550` is reserved for
+QGroundControl. This separation applies both to the SITL launch file and to a
+plain `ros2 run bridge bridge_node` invocation.
+
 The bridge subscribes to the `bleurov_core_helper::topicnames::velocity_desired`
 topic (`/auv/velocity_desired`) as `geometry_msgs/msg/TwistStamped`. Commands
 must use `frame_id: auv_base_link` and ROS FLU axes. The bridge converts them to
@@ -63,7 +67,7 @@ arrays are ordered as forward, lateral/right, vertical/up, and yaw/clockwise.
 
 `rc_channels` is ordered as roll, pitch, throttle, yaw, forward, and lateral. It
 must match the vehicle's `RCMAP_*` parameters. The shared configuration uses
-the current ArduSub defaults: `[1, 2, 3, 4, 6, 7]`.
+the ArduSub defaults selected by this SITL build: `[2, 1, 3, 4, 5, 6]`.
 
 For ArduSub to accept `RC_CHANNELS_OVERRIDE`, its `SYSID_MYGCS` parameter must
 equal the bridge `system_id` parameter (42 by default). If no fresh KCL command

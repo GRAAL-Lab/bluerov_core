@@ -13,7 +13,7 @@
 #include "sensor_msgs/msg/image.hpp"
 #include "sensor_msgs/msg/camera_info.hpp"
 #endif
-#include "std_msgs/msg/float64.hpp"                  
+#include "dvl_msgs/msg/dvl.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 #include "helper_lib.hpp"
 #include "bleurov_core_helper/srv/set_flight_mode.hpp"
@@ -57,7 +57,7 @@ private:
     // ROS Publishers, Subscribers & Services
     //--------------------------------------------------------------------------
     rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr globalVelocityActualPublisher_;
-    rclcpp::Publisher<std_msgs::msg::Float64>::SharedPtr dvlDistancePublisher_;
+    rclcpp::Publisher<dvl_msgs::msg::DVL>::SharedPtr dvlReportPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imuPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr magneticFieldPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr forcesActualPublisher_;
@@ -88,7 +88,8 @@ private:
     //--------------------------------------------------------------------------
     int sock_fd_{-1};                   // UDP socket file descriptor
     struct sockaddr_in remote_addr_{};  // Remote address for sending MAVLink
-    int port_{14550};
+    // Keep the bridge separate from QGroundControl's conventional UDP 14550.
+    int port_{14551};
     std::string remote_addr_str_{"192.168.2.2"};
 
     // Our GCS system ID
@@ -108,7 +109,8 @@ private:
     //--------------------------------------------------------------------------
     bool simulation_mode_{false};
     std::string velocity_actual_topic_{"/auv/global/velocity_actual"};
-    std::string dvl_distance_topic_{"/auv/dvl/distance"};
+    std::string dvl_report_topic_{"/dvl/data"};
+    std::string dvl_frame_id_{"auv/dvl_link"};
     std::string imu_topic_{"/auv/imu/data_raw"};
     std::string magnetic_field_topic_{"/auv/imu/magnetic_field"};
     std::string imu_frame_id_{"auv_base_link"};
@@ -118,10 +120,12 @@ private:
     std::string pressure_topic_{"/auv/pressure/scaled2"};
     std::string pressure_frame_id_{"auv_base_link"};
     std::string thrust_table_csv_path_;
-    float pressure_rate_hz_{100.0f};
+    float pressure_rate_hz_{200.0f};
     bool rc_override_enabled_{true};
     bool rc_override_require_poshold_{true};
     std::string velocity_desired_topic_{bleurov_core_helper::topicnames::velocity_desired};
+    std::string arming_service_name_{"/auv/service/arming"};
+    std::string flight_mode_service_name_{"/auv/service/flight_mode"};
     std::string velocity_desired_frame_id_{"auv_base_link"};
     double rc_override_rate_hz_{100.0};
     double velocity_command_timeout_s_{0.25};
@@ -130,7 +134,7 @@ private:
     std::array<double, 6> velocity_command_min_flu_{{-2.0, -1.8, -0.55, -2.0, -2.2, -1.85}};
     std::array<double, 6> velocity_command_max_flu_{{ 2.0,  1.8,  0.55,  2.0,  2.2,  1.85}};
     // ArduSub RCMAP order: roll, pitch, throttle, yaw, forward, lateral.
-    std::array<uint8_t, 6> rc_override_channels_{{1, 2, 3, 4, 6, 7}};
+    std::array<uint8_t, 6> rc_override_channels_{{2, 1, 3, 4, 5, 6}};
     // PWM order: forward, lateral/right, vertical/up, yaw/clockwise.
     std::array<uint16_t, 4> rc_override_pwm_min_{{1100, 1100, 1100, 1100}};
     std::array<uint16_t, 4> rc_override_pwm_neutral_{{1500, 1500, 1500, 1500}};
@@ -256,7 +260,7 @@ private:
 
     void handleScaledPressure2(const mavlink_message_t& msg);
 
-    void handleDvlDistance(const mavlink_message_t& msg);
+    void handleDvlReport(const mavlink_message_t& msg);
 
     void handleServoOutputRaw(const mavlink_message_t& msg);
      

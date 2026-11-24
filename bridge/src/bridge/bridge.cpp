@@ -197,7 +197,8 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   this->declare_parameter<int>("component_id", configured_component_id);
   this->declare_parameter<int>("port", port_);
   this->declare_parameter<std::string>("velocity_actual_topic", velocity_actual_topic_);
-  this->declare_parameter<std::string>("dvl_distance_topic", dvl_distance_topic_);
+  this->declare_parameter<std::string>("dvl_report_topic", dvl_report_topic_);
+  this->declare_parameter<std::string>("dvl_frame_id", dvl_frame_id_);
   system_id_ = static_cast<uint8_t>(configured_system_id);
   component_id_ = static_cast<uint8_t>(configured_component_id);
 
@@ -210,6 +211,10 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   this->declare_parameter<std::string>("forces_actual_topic", forces_actual_topic_);
   this->declare_parameter<std::string>("pressure_topic", pressure_topic_);
   this->declare_parameter<std::string>("pressure_frame_id", pressure_frame_id_);
+  this->declare_parameter<std::string>("velocity_desired_topic", velocity_desired_topic_);
+  this->declare_parameter<std::string>("velocity_desired_frame_id", velocity_desired_frame_id_);
+  this->declare_parameter<std::string>("arming_service", arming_service_name_);
+  this->declare_parameter<std::string>("flight_mode_service", flight_mode_service_name_);
   this->declare_parameter<std::string>("thrust_table_csv_path", getDefaultThrustCsvPath());
   this->declare_parameter<bool>("camera_enabled", camera_config_.enabled);
   this->declare_parameter<std::string>("camera_source_uri", camera_config_.source_uri);
@@ -236,7 +241,8 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   this->get_parameter("component_id", configured_component_id);
   this->get_parameter("port", port_);
   this->get_parameter("velocity_actual_topic", velocity_actual_topic_);
-  this->get_parameter("dvl_distance_topic", dvl_distance_topic_);
+  this->get_parameter("dvl_report_topic", dvl_report_topic_);
+  this->get_parameter("dvl_frame_id", dvl_frame_id_);
   system_id_ = static_cast<uint8_t>(configured_system_id);
   component_id_ = static_cast<uint8_t>(configured_component_id);
   this->get_parameter("imu_topic", imu_topic_);
@@ -248,6 +254,10 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   this->get_parameter("forces_actual_topic", forces_actual_topic_);
   this->get_parameter("pressure_topic", pressure_topic_);
   this->get_parameter("pressure_frame_id", pressure_frame_id_);
+  this->get_parameter("velocity_desired_topic", velocity_desired_topic_);
+  this->get_parameter("velocity_desired_frame_id", velocity_desired_frame_id_);
+  this->get_parameter("arming_service", arming_service_name_);
+  this->get_parameter("flight_mode_service", flight_mode_service_name_);
   this->get_parameter("thrust_table_csv_path", thrust_table_csv_path_);
   if (rc_override_attitude_neutral_pwm_ < 800 ||
       rc_override_attitude_neutral_pwm_ > 2200) {
@@ -324,7 +334,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
 
   // Setup ROS pubs/subs
   globalVelocityActualPublisher_ = this->create_publisher<geometry_msgs::msg::Twist>(velocity_actual_topic_,1);
-  dvlDistancePublisher_ = this->create_publisher<std_msgs::msg::Float64>(dvl_distance_topic_,1);
+  dvlReportPublisher_ = this->create_publisher<dvl_msgs::msg::DVL>(dvl_report_topic_, rclcpp::SensorDataQoS());
   imuPublisher_ = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic_, 20);
   magneticFieldPublisher_ = this->create_publisher<sensor_msgs::msg::MagneticField>(magnetic_field_topic_, 20);
   forcesActualPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(forces_actual_topic_, 10);
@@ -338,12 +348,12 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
                 std::placeholders::_1));
   }
   armingService_ = this->create_service<SetArm>(
-    "/auv/service/arming",
+    arming_service_name_,
     std::bind(
       &BlueROVBridge::armingServiceCallback, this,
       std::placeholders::_1, std::placeholders::_2));
   flightModeService_ = this->create_service<SetFlightMode>(
-    "/auv/service/flight_mode",
+    flight_mode_service_name_,
     std::bind(
       &BlueROVBridge::flightModeServiceCallback, this,
       std::placeholders::_1, std::placeholders::_2));
@@ -390,7 +400,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
         rc_override_rate_hz_, velocity_command_timeout_s_);
     RCLCPP_WARN(
         this->get_logger(),
-        "ArduSub SYSID_MYGCS must match bridge system_id=%u for RC overrides to be accepted",
+        "ArduSub MAV_GCS_SYSID must match bridge system_id=%u for RC overrides to be accepted",
         static_cast<unsigned>(system_id_));
   }
 
@@ -993,7 +1003,7 @@ void BlueROVBridge::receiveData(){
             break;  
           
           case MAVLINK_MSG_ID_DISTANCE_SENSOR:  
-            handleDvlDistance(msg);
+            handleDvlReport(msg);
             break;
             
           case MAVLINK_MSG_ID_BATTERY_STATUS:
@@ -1194,14 +1204,22 @@ void BlueROVBridge::ardusubHeartbeatWatchdog() {
   }
 }
 
- void BlueROVBridge::handleDvlDistance(const mavlink_message_t& msg){
+void BlueROVBridge::handleDvlReport(const mavlink_message_t& msg){
   mavlink_distance_sensor_t distance_sensor;
   mavlink_msg_distance_sensor_decode(&msg, &distance_sensor);
 
-  auto dvl_distance_msg = std::make_unique<std_msgs::msg::Float64>();
-  dvl_distance_msg->data = distance_sensor.current_distance;  //Distance in cm 
+  auto dvl_msg = std::make_unique<dvl_msgs::msg::DVL>();
+  dvl_msg->header.stamp =
+      ardusubBootTimeToRos(distance_sensor.time_boot_ms, 1000000ULL);
+  dvl_msg->header.frame_id = dvl_frame_id_;
+  // MAVLink DISTANCE_SENSOR uses centimetres; dvl_msgs/DVL uses SI units.
+  dvl_msg->altitude = static_cast<double>(distance_sensor.current_distance) * 0.01;
+  // DISTANCE_SENSOR contains no DVL velocity or beam solution. Do not present
+  // the default zero vector as a valid measurement.
+  dvl_msg->velocity_valid = false;
+  dvl_msg->form = "mavlink_distance_sensor";
 
-  dvlDistancePublisher_->publish(std::move(dvl_distance_msg));
+  dvlReportPublisher_->publish(std::move(dvl_msg));
 }
 
 void BlueROVBridge::handleBatteryStatus(const mavlink_message_t& msg){
@@ -1679,6 +1697,15 @@ void BlueROVBridge::sendVelocityRcOverride() {
       clockwise_yaw_rate,
       -velocity_command_max_flu_[5], -velocity_command_min_flu_[5], 3);
 
+  RCLCPP_INFO_THROTTLE(
+      get_logger(), *get_clock(), 1000,
+      "RC_OVERRIDE forward=%.2f m/s -> %u us, lateral=%.2f -> %u us, "
+      "vertical=%.2f -> %u us, yaw=%.2f -> %u us",
+      forward, static_cast<unsigned>(forward_pwm),
+      right, static_cast<unsigned>(lateral_pwm),
+      up, static_cast<unsigned>(vertical_pwm),
+      clockwise_yaw_rate, static_cast<unsigned>(yaw_pwm));
+
   // Channels 1-8 use UINT16_MAX to mean "ignore". Extension channels 9-18
   // use zero for the same purpose.
   std::array<uint16_t, 18> channels{};
@@ -1740,6 +1767,14 @@ rclcpp::Time BlueROVBridge::ardusubBootTimeToRos(
     const uint64_t nanoseconds_per_unit) {
   const uint64_t boot_time_ns = boot_time * nanoseconds_per_unit;
   const int64_t now_ns = this->now().nanoseconds();
+
+  // With use_sim_time enabled, ROS time is zero until the first /clock
+  // sample. Do not anchor the ArduSub boot clock to that placeholder or every
+  // later sensor message will retain a large negative/old offset.
+  if (now_ns <= 0) {
+    return rclcpp::Time(0, 0, this->get_clock()->get_clock_type());
+  }
+
   const int64_t observed_offset_ns = now_ns - static_cast<int64_t>(boot_time_ns);
 
   // Establish the offset on the first sensor sample. Reset it if ArduSub

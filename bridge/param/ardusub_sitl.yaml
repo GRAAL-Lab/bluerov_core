@@ -1,0 +1,25 @@
+mavlink_bridge:
+  ros__parameters:
+    use_sim_time: true
+    simulation_mode: true
+    remote_address: 127.0.0.1
+    system_id: 42
+    component_id: 190
+    port: 14551
+    velocity_actual_topic: /auv/velocity_estimate
+    dvl_report_topic: /dvl/data
+    dvl_frame_id: auv/dvl_link
+    imu_topic: /auv/imu/data_raw
+    magnetic_field_topic: /auv/imu/magnetic_field
+    imu_frame_id: auv_base_link
+    imu_rate_hz: 200.0
+    pressure_rate_hz: 200.0
+    servo_output_rate_hz: 20.0
+    forces_actual_topic: /auv/forces_actual
+    pressure_topic: /auv/pressure/scaled2
+    pressure_frame_id: auv_base_link
+    velocity_desired_topic: /auv/velocity_desired
+    velocity_desired_frame_id: auv_base_link
+    arming_service: /auv/service/arming
+    flight_mode_service: /auv/service/flight_mode
+    camera_enabled: false
