@@ -27,6 +27,21 @@ If the Jetson pipeline cannot start, the bridge falls back to a CPU decode path.
 Bridge connection settings and every ROS topic/service name live in
 `bridge/param/bridge.yaml` as ordinary ROS parameters.
 
+The bridge publishes `sensor_msgs/msg/MagneticField` on two topics:
+
+| ROS topic | MAVLink message | Default requested rate |
+| --- | --- | --- |
+| `/auv/imu/magnetic_field` | `SCALED_IMU` (26) | 200 Hz |
+| `/auv/imu/magnetic_field2` | `SCALED_IMU2` (116) | 200 Hz |
+
+Both requests use `imu_rate_hz` (5,000 µs at 200 Hz). The bridge publishes
+in tesla with ROS FLU axes and timestamps derived from ArduSub boot time.
+`SCALED_IMU2` uses ArduSub's second compass instance. The bridge skips
+all-zero magnetic vectors because ArduSub can send this packet for a second
+accelerometer or gyro with no second compass. The received rate depends on
+the firmware, link, and hardware. Check it with
+`ros2 topic hz /auv/imu/magnetic_field2`.
+
 ## Vehicle command services
 
 After the bridge discovers the ArduSub heartbeat, it provides:
@@ -80,7 +95,7 @@ The bridge also publishes `sensor_msgs/msg/CameraInfo` on
 `/auv/camera/camera_info` so RViz camera displays can subscribe cleanly.
 
 The same camera settings can also be overridden with the ROS parameter file at
-`src/bridge/param/bridge.yaml`.
+`param/bridge.yaml`.
 
 The ROS image topic is a preview stream. The bridge keeps the original H.264
 transport compressed, decodes with the Jetson hardware decoder when available,
@@ -120,10 +135,17 @@ To explicitly compile camera support, pass
 `--cmake-args -DBRIDGE_ENABLE_CAMERA=ON`; it remains disabled at runtime unless
 `camera_enabled` is also set to `true`.
 
+The standalone UDP video viewer is also available in the `bridge` package.
+Build and install it with `--cmake-args -DBRIDGE_ENABLE_VIDEO_VIEWER=ON`.
+This option defaults to `OFF`. See the [viewer guide](docs/video_viewer.md)
+for OpenCV and GStreamer dependencies and configuration.
+Use a fresh install directory when switching from `ON` to `OFF` if you
+want to exclude previously installed viewer files.
+
 ## Launch bridge and sensors
 
-The combined launch starts the MAVLink bridge, Sonar 3D-15 driver, A50 DVL
-driver, and UDP camera driver:
+The combined launch starts the MAVLink bridge, Sonar 3D-15 driver, and A50
+DVL driver:
 
 ```bash
 ros2 launch bridge bluerov_sensors.launch.py
@@ -134,13 +156,20 @@ It uses the existing driver defaults: host Ethernet `192.168.2.1`, BlueOS
 also reachable at its fallback address `192.168.194.96`. Override the sensor addresses with
 `sonar_ip:=<address>` and `dvl_ip:=<address>`.
 
-The ROS camera listens on UDP port `5601` by default, leaving `5600` available
-for QGroundControl. Override it with `camera_port:=<port>` when launching.
+To start the optional UDP viewer headlessly, build it with
+`BRIDGE_ENABLE_VIDEO_VIEWER=ON` and run:
 
-The UDP camera driver publishes `sensor_msgs/msg/Image` on
-`/camera/image_raw`. The `bag_recored` executable records that stream together
-with the sonar point cloud and the sonar driver's IMU topic,
-`/sonar/imu/data_raw`.
+```bash
+ros2 launch bridge bluerov_sensors.launch.py camera_enabled:=true
+```
+
+The viewer listens on UDP port `5601` by default, leaving `5600` available for
+QGroundControl. Override it with `camera_port:=<port>` when launching.
+For a display window, run `ros2 launch bridge bluerov_video_viewer.launch.py`.
+
+The combined launch publishes viewer images on `/camera/image_raw`.
+`bag_recored` records both compass topics by default, alongside the sonar
+point cloud and `/sonar/imu/data_raw`.
 
 Camera recording is enabled by default. Disable or explicitly enable it with:
 

@@ -11,8 +11,7 @@ Top-level packages in this workspace:
 | Package | Purpose | Details |
 |---|---|---|
 | `bleurov_core_helper` | Shared helpers, parameters, and common utilities | [`bleurov_core_helper/README.md`](./bleurov_core_helper/README.md) |
-| `bridge` | MAVLink and camera/data bridge components | [`bridge/README.md`](./bridge/README.md) |
-| `bluerov_video_viewer` | Low-latency BlueROV UDP video bridge and viewer | [`bluerov_video_viewer/README.md`](./bluerov_video_viewer/README.md) |
+| `bridge` | MAVLink and sensor bridge with an optional UDP video viewer | [Bridge guide](./bridge/README.md), [viewer guide](./bridge/docs/video_viewer.md) |
 
 ## Quick usage
 

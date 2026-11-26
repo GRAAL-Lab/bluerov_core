@@ -16,6 +16,7 @@ TOPICS = [
     "/auv/global/velocity_actual",
     "/auv/imu/data_raw",
     "/auv/imu/magnetic_field",
+    "/auv/imu/magnetic_field2",
     "/auv/pressure/scaled2",
     "/dvl/command/response",
     "/dvl/config/command",

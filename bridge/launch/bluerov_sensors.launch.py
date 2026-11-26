@@ -1,5 +1,6 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -11,6 +12,7 @@ def generate_launch_description():
     dvl_ip = LaunchConfiguration('dvl_ip')
     sonar_ip = LaunchConfiguration('sonar_ip')
     host_ip = LaunchConfiguration('host_ip')
+    camera_enabled = LaunchConfiguration('camera_enabled')
     camera_port = LaunchConfiguration('camera_port')
 
     return LaunchDescription([
@@ -28,6 +30,11 @@ def generate_launch_description():
             'host_ip',
             default_value='192.168.2.1',
             description="This computer's sensor-network IPv4 address",
+        ),
+        DeclareLaunchArgument(
+            'camera_enabled',
+            default_value='false',
+            description='Start the optional headless UDP video viewer',
         ),
         DeclareLaunchArgument(
             'camera_port',
@@ -48,8 +55,9 @@ def generate_launch_description():
             ],
         ),
         Node(
-            package='bluerov_video_viewer',
+            package='bridge',
             executable='bluerov_video_viewer_node',
+            condition=IfCondition(camera_enabled),
             name='bluerov_video_viewer',
             output='screen',
             parameters=[{

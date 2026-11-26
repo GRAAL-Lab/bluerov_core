@@ -9,8 +9,8 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     default_config = str(
-        Path(get_package_share_directory("bluerov_video_viewer"))
-        / "config"
+        Path(get_package_share_directory("bridge"))
+        / "param"
         / "bluerov_video.yaml"
     )
 
@@ -18,7 +18,7 @@ def generate_launch_description():
         [
             DeclareLaunchArgument("config", default_value=default_config),
             Node(
-                package="bluerov_video_viewer",
+                package="bridge",
                 executable="bluerov_video_viewer_node",
                 name="bluerov_video_viewer",
                 output="screen",

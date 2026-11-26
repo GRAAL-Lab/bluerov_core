@@ -11,6 +11,7 @@ mavlink_bridge:
     dvl_frame_id: auv/dvl_link
     imu_topic: /auv/imu/data_raw
     magnetic_field_topic: /auv/imu/magnetic_field
+    magnetic_field2_topic: /auv/imu/magnetic_field2
     imu_frame_id: auv_base_link
     imu_rate_hz: 200.0
     pressure_rate_hz: 200.0

@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.8)
 project(bridge)
 
 option(BRIDGE_ENABLE_CAMERA "Build the optional GStreamer camera bridge" OFF)
+option(BRIDGE_ENABLE_VIDEO_VIEWER "Build and install the optional UDP video viewer" OFF)
 
 ################################################################################
 # Set compiler flags
@@ -38,9 +39,10 @@ find_package(rclcpp_lifecycle REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(mavlink REQUIRED)
 
-if(BRIDGE_ENABLE_CAMERA)
+if(BRIDGE_ENABLE_CAMERA OR BRIDGE_ENABLE_VIDEO_VIEWER)
   find_package(PkgConfig REQUIRED)
-  pkg_check_modules(GSTREAMER REQUIRED gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0)
+  pkg_check_modules(GSTREAMER REQUIRED IMPORTED_TARGET
+    gstreamer-1.0 gstreamer-app-1.0 gstreamer-video-1.0)
 endif()
 
 # Prefer shared libraries over static ones
@@ -52,7 +54,6 @@ set(CMAKE_FIND_LIBRARY_SUFFIXES .so .a)
 include_directories(
   include
   ${mavlink_INCLUDE_DIRS}
-  ${GSTREAMER_INCLUDE_DIRS}
 )
 
 
@@ -86,7 +87,6 @@ endif()
 target_include_directories(bridge_node PRIVATE
   include
   ${mavlink_INCLUDE_DIRS}
-  ${GSTREAMER_INCLUDE_DIRS}
 )
 
 ################################################################################
@@ -94,6 +94,7 @@ target_include_directories(bridge_node PRIVATE
 ################################################################################
 ament_target_dependencies(bridge_node
   rclcpp
+  std_msgs
   visualization_msgs
   tf2_ros
   geometry_msgs
@@ -109,9 +110,21 @@ ament_target_dependencies(bridge_node
   ament_index_cpp
 )
 
-target_link_libraries(bridge_node
-  ${GSTREAMER_LIBRARIES}
-)
+if(BRIDGE_ENABLE_CAMERA)
+  target_link_libraries(bridge_node PkgConfig::GSTREAMER)
+endif()
+
+if(BRIDGE_ENABLE_VIDEO_VIEWER)
+  find_package(OpenCV REQUIRED COMPONENTS core highgui)
+  add_executable(bluerov_video_viewer_node src/bluerov_video_viewer_node.cpp)
+  target_include_directories(bluerov_video_viewer_node PRIVATE ${OpenCV_INCLUDE_DIRS})
+  target_link_libraries(bluerov_video_viewer_node ${OpenCV_LIBRARIES} PkgConfig::GSTREAMER)
+  ament_target_dependencies(bluerov_video_viewer_node rclcpp sensor_msgs)
+
+  install(TARGETS bluerov_video_viewer_node DESTINATION lib/${PROJECT_NAME})
+  install(FILES launch/bluerov_video_viewer.launch.py DESTINATION share/${PROJECT_NAME}/launch)
+  install(FILES param/bluerov_video.yaml DESTINATION share/${PROJECT_NAME}/param)
+endif()
 
 ################################################################################
 # Installation
@@ -137,6 +150,8 @@ install(DIRECTORY
   docs
   DESTINATION share/${PROJECT_NAME}
   OPTIONAL
+  PATTERN "bluerov_video_viewer.launch.py" EXCLUDE
+  PATTERN "bluerov_video.yaml" EXCLUDE
 )
 
 ################################################################################

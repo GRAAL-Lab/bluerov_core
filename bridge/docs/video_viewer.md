@@ -1,7 +1,7 @@
-# BlueROV Camera ROS 2 Bridge
+# BlueROV UDP video viewer
 
-A ROS 2 C++ package that receives the BlueROV H.264 camera stream over
-RTP/UDP, decodes it with GStreamer through OpenCV, and displays the live video.
+An optional executable in the `bridge` package receives the BlueROV H.264 camera
+stream over RTP/UDP, decodes it with GStreamer, and displays it through OpenCV.
 It can optionally publish every decoded frame as a ROS 2 image topic for use by
 recording, perception, or visualization nodes.
 
@@ -20,7 +20,7 @@ recording, perception, or visualization nodes.
 
 - Ubuntu with ROS 2 Jazzy
 - A C++17 compiler
-- OpenCV with GStreamer support
+- OpenCV (core and highgui)
 - GStreamer H.264/RTP plugins
 
 Install the required Ubuntu packages:
@@ -33,35 +33,25 @@ sudo apt install libopencv-dev gstreamer1.0-tools \
   gstreamer1.0-plugins-bad gstreamer1.0-libav
 ```
 
-## Clone and build
+## Build
 
-Clone the package into the `src` directory of a ROS 2 workspace:
+From the ROS 2 workspace containing `bluerov_core`:
 
 ```bash
-mkdir -p ~/ros2_ws/src
-cd ~/ros2_ws/src
-git clone git@github.com:youssefattia98/BlueROV_Cam_ROS2_bridge.git bluerov_video_viewer
-
 cd ~/ros2_ws
 source /opt/ros/jazzy/setup.bash
-colcon build --packages-select bluerov_video_viewer
+colcon build --packages-select bridge --cmake-args -DBRIDGE_ENABLE_VIDEO_VIEWER=ON
 source install/setup.bash
-```
-
-Use the HTTPS clone URL instead if GitHub SSH keys are not configured:
-
-```bash
-git clone https://github.com/youssefattia98/BlueROV_Cam_ROS2_bridge.git bluerov_video_viewer
 ```
 
 ## Configuration
 
-Edit [`config/bluerov_video.yaml`](config/bluerov_video.yaml):
+Edit [`param/bluerov_video.yaml`](../param/bluerov_video.yaml):
 
 ```yaml
 bluerov_video_viewer:
   ros__parameters:
-    port: 5600
+    port: 5601
     pipeline: ""
     window_name: "BlueROV camera"
     frame_id: "bluerov_camera"
@@ -69,9 +59,9 @@ bluerov_video_viewer:
     publish_ros_topic: true
 ```
 
-| Parameter | Default | Description |
+| Parameter | Launch default | Description |
 | --- | --- | --- |
-| `port` | `5600` | Local UDP port carrying the H.264/RTP stream. |
+| `port` | `5601` | Local UDP port carrying the H.264/RTP stream. |
 | `pipeline` | empty | Complete custom GStreamer pipeline. Empty uses the generated default pipeline. |
 | `window_name` | `BlueROV camera` | Title of the display window. |
 | `frame_id` | `bluerov_camera` | Frame ID assigned to published image messages. |
@@ -82,7 +72,7 @@ bluerov_video_viewer:
 
 The receiver listens on all local network interfaces. In BlueOS, configure the
 video stream destination to use the current PC's IP address and the same UDP
-`port` specified in `config/bluerov_video.yaml`. The stream will not arrive if
+`port` specified in `param/bluerov_video.yaml`. The stream will not arrive if
 BlueOS points to another computer, an old DHCP address, or a different port.
 
 To find the current PC network addresses, run:
@@ -99,7 +89,7 @@ Start the BlueROV camera stream, source the workspace, and launch the node:
 cd ~/ros2_ws
 source /opt/ros/jazzy/setup.bash
 source install/setup.bash
-ros2 launch bluerov_video_viewer bluerov_video_viewer.launch.py
+ros2 launch bridge bluerov_video_viewer.launch.py
 ```
 
 Parameters can also be overridden from the command line. For example, use port
@@ -107,7 +97,7 @@ Parameters can also be overridden from the command line. For example, use port
 configured to stream to port `5601` on this PC:
 
 ```bash
-ros2 run bluerov_video_viewer bluerov_video_viewer_node --ros-args \
+ros2 run bridge bluerov_video_viewer_node --ros-args \
   -p port:=5601 \
   -p publish_ros_topic:=false
 ```
@@ -115,7 +105,8 @@ ros2 run bluerov_video_viewer bluerov_video_viewer_node --ros-args \
 For a headless ROS image bridge without a display window:
 
 ```bash
-ros2 run bluerov_video_viewer bluerov_video_viewer_node --ros-args \
+ros2 run bridge bluerov_video_viewer_node --ros-args \
+  -p port:=5601 \
   -p show_window:=false \
   -p publish_ros_topic:=true
 ```
@@ -146,12 +137,11 @@ On a Jetson with the NVIDIA GStreamer plugins installed, replace the generated
 pipeline by setting `pipeline` in the YAML file, or pass one directly:
 
 ```bash
-ros2 run bluerov_video_viewer bluerov_video_viewer_node --ros-args \
+ros2 run bridge bluerov_video_viewer_node --ros-args \
   -p pipeline:='udpsrc port=5600 caps="application/x-rtp,media=video,encoding-name=H264,payload=96" ! rtph264depay ! nvv4l2decoder ! nvvidconv ! video/x-raw,format=BGRx ! videoconvert ! video/x-raw,format=BGR ! appsink max-buffers=1 drop=true sync=false'
 ```
 
-Any custom pipeline must end with an `appsink` that supplies BGR frames to
-OpenCV.
+Any custom pipeline must end with an `appsink` that supplies BGR frames.
 
 ## Troubleshooting
 
@@ -172,11 +162,10 @@ gst-inspect-1.0 avdec_h264
 If there is no video:
 
 1. Confirm that BlueOS is sending H.264/RTP to the current PC's IP address and
-   the port configured in `config/bluerov_video.yaml`.
+   the port configured in `param/bluerov_video.yaml`.
 2. Allow the UDP port through the computer firewall.
-3. Check that OpenCV reports GStreamer support.
-4. Verify that another application is not already using the same UDP port.
+3. Verify that another application is not already using the same UDP port.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+The viewer is licensed under the [MIT License](video_viewer_LICENSE).

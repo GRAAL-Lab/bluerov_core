@@ -1,5 +1,6 @@
 #include "bluerov-bridge/bluerov_bridge.hpp"
 #include <ament_index_cpp/get_package_share_directory.hpp>
+#include <std_msgs/msg/header.hpp>
 #ifdef BRIDGE_ENABLE_CAMERA
 #include <gst/app/gstappsink.h>
 #include <gst/gst.h>
@@ -40,6 +41,19 @@ const Eigen::Matrix3d kFrdToFlu = (Eigen::Matrix3d() <<
      1.0,  0.0,  0.0,
      0.0, -1.0,  0.0,
      0.0,  0.0, -1.0).finished();
+
+sensor_msgs::msg::MagneticField makeMagneticField(
+    const std_msgs::msg::Header& header, int16_t xmag, int16_t ymag, int16_t zmag) {
+  const Eigen::Vector3d field =
+      kFrdToFlu * (kMilligaussToTesla * Eigen::Vector3d(xmag, ymag, zmag));
+  sensor_msgs::msg::MagneticField msg;
+  msg.header = header;
+  msg.magnetic_field.x = field.x();
+  msg.magnetic_field.y = field.y();
+  msg.magnetic_field.z = field.z();
+  // An all-zero covariance denotes unknown covariance.
+  return msg;
+}
 #ifdef BRIDGE_ENABLE_CAMERA
 constexpr char kCameraAppsinkName[] = "bridge_camera_sink";
 const auto kCameraSampleTimeout = std::chrono::milliseconds(100);
@@ -205,6 +219,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
 
   this->declare_parameter<std::string>("imu_topic", imu_topic_);
   this->declare_parameter<std::string>("magnetic_field_topic", magnetic_field_topic_);
+  this->declare_parameter<std::string>("magnetic_field2_topic", magnetic_field2_topic_);
   this->declare_parameter<std::string>("imu_frame_id", imu_frame_id_);
   this->declare_parameter<double>("imu_rate_hz", static_cast<double>(imu_rate_hz_));
   this->declare_parameter<double>("pressure_rate_hz", static_cast<double>(pressure_rate_hz_));
@@ -248,6 +263,7 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   component_id_ = static_cast<uint8_t>(configured_component_id);
   this->get_parameter("imu_topic", imu_topic_);
   this->get_parameter("magnetic_field_topic", magnetic_field_topic_);
+  this->get_parameter("magnetic_field2_topic", magnetic_field2_topic_);
   this->get_parameter("imu_frame_id", imu_frame_id_);
   imu_rate_hz_ = static_cast<float>(this->get_parameter("imu_rate_hz").as_double());
   pressure_rate_hz_ = static_cast<float>(this->get_parameter("pressure_rate_hz").as_double());
@@ -338,6 +354,8 @@ BlueROVBridge::BlueROVBridge(const rclcpp::NodeOptions& options): Node("mavlink_
   dvlReportPublisher_ = this->create_publisher<dvl_msgs::msg::DVL>(dvl_report_topic_, rclcpp::SensorDataQoS());
   imuPublisher_ = this->create_publisher<sensor_msgs::msg::Imu>(imu_topic_, 20);
   magneticFieldPublisher_ = this->create_publisher<sensor_msgs::msg::MagneticField>(magnetic_field_topic_, 20);
+  magneticField2Publisher_ =
+      this->create_publisher<sensor_msgs::msg::MagneticField>(magnetic_field2_topic_, 20);
   forcesActualPublisher_ = this->create_publisher<sensor_msgs::msg::JointState>(forces_actual_topic_, 10);
   pressureScaled2Publisher_ = this->create_publisher<sensor_msgs::msg::FluidPressure>(pressure_topic_, 20);
   if (rc_override_enabled_) {
@@ -995,6 +1013,10 @@ void BlueROVBridge::receiveData(){
             handleScaledImu(msg);
             break;
 
+          case MAVLINK_MSG_ID_SCALED_IMU2:
+            handleScaledImu2(msg);
+            break;
+
           case MAVLINK_MSG_ID_SCALED_PRESSURE2:
             handleScaledPressure2(msg);
             break;
@@ -1102,6 +1124,7 @@ void BlueROVBridge::configureDataStreams() {
               stream_config_attempts_);
   setMessageInterval(MAVLINK_MSG_ID_HEARTBEAT, 1.0f);
   setMessageInterval(MAVLINK_MSG_ID_SCALED_IMU, imu_rate_hz_);
+  setMessageInterval(MAVLINK_MSG_ID_SCALED_IMU2, imu_rate_hz_);
   setMessageInterval(MAVLINK_MSG_ID_SCALED_PRESSURE2, pressure_rate_hz_);
   setMessageInterval(MAVLINK_MSG_ID_GLOBAL_POSITION_INT, 10.0f);
   setMessageInterval(MAVLINK_MSG_ID_DISTANCE_SENSOR, 5.0f);
@@ -1125,6 +1148,8 @@ const char* BlueROVBridge::get_message_name(uint16_t message_id) {
       return "RAW_IMU";
     case MAVLINK_MSG_ID_SCALED_IMU:
       return "SCALED_IMU";
+    case MAVLINK_MSG_ID_SCALED_IMU2:
+      return "SCALED_IMU2";
     case MAVLINK_MSG_ID_SCALED_PRESSURE2:
       return "SCALED_PRESSURE2";
     case MAVLINK_MSG_ID_GPS_GLOBAL_ORIGIN:
@@ -1454,16 +1479,28 @@ void BlueROVBridge::handleScaledImu(const mavlink_message_t& msg) {
       scaled_imu.xmag, scaled_imu.ymag, scaled_imu.zmag);
 }
 
+void BlueROVBridge::handleScaledImu2(const mavlink_message_t& msg) {
+  mavlink_scaled_imu2_t imu2;
+  mavlink_msg_scaled_imu2_decode(&msg, &imu2);
+  // ArduSub can send this packet for a second accel/gyro with no second compass.
+  if (imu2.xmag == 0 && imu2.ymag == 0 && imu2.zmag == 0) {
+    return;
+  }
+
+  std_msgs::msg::Header header;
+  header.stamp = ardusubBootTimeToRos(imu2.time_boot_ms, 1000000ULL);
+  header.frame_id = imu_frame_id_;
+  magneticField2Publisher_->publish(makeMagneticField(header, imu2.xmag, imu2.ymag, imu2.zmag));
+}
+
 void BlueROVBridge::publishImuAndMag(
     const uint64_t boot_time, const uint64_t nanoseconds_per_unit,
     const int16_t xacc, const int16_t yacc, const int16_t zacc,
     const int16_t xgyro, const int16_t ygyro, const int16_t zgyro,
     const int16_t xmag, const int16_t ymag, const int16_t zmag) {
   sensor_msgs::msg::Imu imu_msg;
-  sensor_msgs::msg::MagneticField magnetic_field_msg;
   imu_msg.header.frame_id = imu_frame_id_;
   imu_msg.header.stamp = ardusubBootTimeToRos(boot_time, nanoseconds_per_unit);
-  magnetic_field_msg.header = imu_msg.header;
 
   const Eigen::Vector3d acceleration = kFrdToFlu * Eigen::Vector3d(
       static_cast<double>(xacc) * kMilligToMps2,
@@ -1473,10 +1510,6 @@ void BlueROVBridge::publishImuAndMag(
       static_cast<double>(xgyro) * kMradpsToRadps,
       static_cast<double>(ygyro) * kMradpsToRadps,
       static_cast<double>(zgyro) * kMradpsToRadps);
-  const Eigen::Vector3d magnetic_field = kFrdToFlu * Eigen::Vector3d(
-      static_cast<double>(xmag) * kMilligaussToTesla,
-      static_cast<double>(ymag) * kMilligaussToTesla,
-      static_cast<double>(zmag) * kMilligaussToTesla);
 
   imu_msg.linear_acceleration.x = acceleration.x();
   imu_msg.linear_acceleration.y = acceleration.y();
@@ -1489,14 +1522,8 @@ void BlueROVBridge::publishImuAndMag(
   imu_msg.angular_velocity_covariance.fill(-1.0);
   imu_msg.linear_acceleration_covariance.fill(-1.0);
 
-  magnetic_field_msg.magnetic_field.x = magnetic_field.x();
-  magnetic_field_msg.magnetic_field.y = magnetic_field.y();
-  magnetic_field_msg.magnetic_field.z = magnetic_field.z();
-  // sensor_msgs/MagneticField uses an all-zero matrix for unknown covariance.
-  magnetic_field_msg.magnetic_field_covariance.fill(0.0);
-
   imuPublisher_->publish(imu_msg);
-  magneticFieldPublisher_->publish(magnetic_field_msg);
+  magneticFieldPublisher_->publish(makeMagneticField(imu_msg.header, xmag, ymag, zmag));
 }
 
 void BlueROVBridge::handleCommandAck(const mavlink_message_t& msg) {

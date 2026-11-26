@@ -60,6 +60,7 @@ private:
     rclcpp::Publisher<dvl_msgs::msg::DVL>::SharedPtr dvlReportPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::Imu>::SharedPtr imuPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr magneticFieldPublisher_;
+    rclcpp::Publisher<sensor_msgs::msg::MagneticField>::SharedPtr magneticField2Publisher_;
     rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr forcesActualPublisher_;
     rclcpp::Publisher<sensor_msgs::msg::FluidPressure>::SharedPtr pressureScaled2Publisher_;
     rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr velocityDesiredSubscription_;
@@ -113,6 +114,7 @@ private:
     std::string dvl_frame_id_{"auv/dvl_link"};
     std::string imu_topic_{"/auv/imu/data_raw"};
     std::string magnetic_field_topic_{"/auv/imu/magnetic_field"};
+    std::string magnetic_field2_topic_{"/auv/imu/magnetic_field2"};
     std::string imu_frame_id_{"auv_base_link"};
     float imu_rate_hz_{200.0f};
     float servo_output_rate_hz_{50.0f};
@@ -225,6 +227,8 @@ private:
     void handleAttitude(const mavlink_message_t& msg);
 
     void handleScaledImu(const mavlink_message_t& msg);
+
+    void handleScaledImu2(const mavlink_message_t& msg);
 
     void publishImuAndMag(uint64_t boot_time, uint64_t nanoseconds_per_unit,
                           int16_t xacc, int16_t yacc, int16_t zacc,
