@@ -25,6 +25,7 @@
 
 namespace {
 
+// ROS sensor_msgs/Imu and MagneticField use SI units at this boundary.
 constexpr double kGravityMps2 = 9.80550;
 constexpr double kMilligToMps2 = kGravityMps2 / 1000.0;
 constexpr double kMradpsToRadps = 1.0 / 1000.0;
@@ -1491,7 +1492,8 @@ void BlueROVBridge::publishImuAndMag(
   magnetic_field_msg.magnetic_field.x = magnetic_field.x();
   magnetic_field_msg.magnetic_field.y = magnetic_field.y();
   magnetic_field_msg.magnetic_field.z = magnetic_field.z();
-  magnetic_field_msg.magnetic_field_covariance[0] = -1.0;
+  // sensor_msgs/MagneticField uses an all-zero matrix for unknown covariance.
+  magnetic_field_msg.magnetic_field_covariance.fill(0.0);
 
   imuPublisher_->publish(imu_msg);
   magneticFieldPublisher_->publish(magnetic_field_msg);
